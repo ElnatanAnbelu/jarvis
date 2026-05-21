@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Dark background -->
+  <rect width="1024" height="1024" rx="220" fill="#020912"/>
+  <!-- Outer subtle ring -->
+  <circle cx="512" cy="512" r="440" fill="none" stroke="#00D4FF" stroke-width="2" opacity="0.15"/>
+  <!-- Second ring -->
+  <circle cx="512" cy="512" r="380" fill="none" stroke="#00D4FF" stroke-width="3" opacity="0.25"/>
+  <!-- Main ring glow (thick) -->
+  <circle cx="512" cy="512" r="310" fill="none" stroke="#00D4FF" stroke-width="18" opacity="0.12"/>
+  <circle cx="512" cy="512" r="310" fill="none" stroke="#00D4FF" stroke-width="8" opacity="0.5"/>
+  <!-- Arc segments -->
+  <circle cx="512" cy="512" r="310" fill="none" stroke="#00D4FF" stroke-width="12"
+          stroke-dasharray="320 640" stroke-linecap="round" opacity="0.9"
+          transform="rotate(-90 512 512)"/>
+  <circle cx="512" cy="512" r="270" fill="none" stroke="#00D4FF" stroke-width="6"
+          stroke-dasharray="180 510" stroke-linecap="round" opacity="0.6"
+          transform="rotate(30 512 512)"/>
+  <!-- Inner ring -->
+  <circle cx="512" cy="512" r="200" fill="none" stroke="#00D4FF" stroke-width="4" opacity="0.35"/>
+  <!-- Center hex -->
+  <polygon points="512,420 584,464 584,552 512,596 440,552 440,464"
+           fill="#020912" stroke="#00D4FF" stroke-width="4" opacity="0.7"/>
+  <!-- Center glow -->
+  <circle cx="512" cy="512" r="80" fill="#00D4FF" opacity="0.08"/>
+  <circle cx="512" cy="512" r="50" fill="#00D4FF" opacity="0.15"/>
+  <circle cx="512" cy="512" r="28" fill="#00D4FF" opacity="0.8"/>
+  <!-- 8 dots on main ring -->
+  <circle cx="512" cy="200" r="8" fill="#00D4FF" opacity="0.9"/>
+  <circle cx="732" cy="292" r="6" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="824" cy="512" r="8" fill="#00D4FF" opacity="0.9"/>
+  <circle cx="732" cy="732" r="6" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="512" cy="824" r="8" fill="#00D4FF" opacity="0.9"/>
+  <circle cx="292" cy="732" r="6" fill="#00D4FF" opacity="0.6"/>
+  <circle cx="200" cy="512" r="8" fill="#00D4FF" opacity="0.9"/>
+  <circle cx="292" cy="292" r="6" fill="#00D4FF" opacity="0.6"/>
+  <!-- Tick marks at cardinals (outside main ring) -->
+  <line x1="512" y1="155" x2="512" y2="185" stroke="#00D4FF" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <line x1="512" y1="839" x2="512" y2="869" stroke="#00D4FF" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <line x1="155" y1="512" x2="185" y2="512" stroke="#00D4FF" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <line x1="839" y1="512" x2="869" y2="512" stroke="#00D4FF" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+</svg>

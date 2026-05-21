@@ -1,0 +1,68 @@
+# ─── Secrets — never commit these ───────────────────────────────────────────
+.env
+google_credentials.json
+contacts.json
+*.pem
+*.key
+*.credentials.json
+
+# ─── Personal data databases ─────────────────────────────────────────────────
+memory/*.db
+memory/*.db-shm
+memory/*.db-wal
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+*.log.*
+
+# ─── Runtime state files ─────────────────────────────────────────────────────
+.briefing_date
+.last_wake_date
+
+# ─── Python cache ────────────────────────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyo
+
+# ─── Virtual environments (all naming conventions) ───────────────────────────
+venv/
+env/
+.venv/
+voice/clone_env/
+voice/kokoro_env/
+voice/onnx_community/
+*_env/
+
+# ─── AI model files (too large for GitHub) ───────────────────────────────────
+*.onnx
+*.gguf
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.dylib
+*.so
+*.a
+
+# ─── Generated outputs (not source) ─────────────────────────────────────────
+graphify-out/
+jarvis_charts/
+jarvis_reports/
+
+# ─── WhatsApp session (personal login data) ──────────────────────────────────
+whatsapp/.wwebjs_auth/
+whatsapp/.wwebjs_cache/
+
+# ─── macOS ───────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+
+# ─── IDEs ────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
