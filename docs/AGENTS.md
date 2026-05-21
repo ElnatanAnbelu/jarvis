@@ -8,7 +8,8 @@ The four agents that make up the JARVIS system. Each has a distinct personality,
 
 > *"The original. The foundation."*
 
-**Model:** Claude Haiku (scores 1–3) → Sonnet (score 4) → Opus (score 5)  
+**Model:** Claude Haiku (scores 1–3) → Sonnet (score 4) → Opus (score 5)
+*Three models, one agent. JARVIS scales up or down based on what you actually need — Haiku for quick chat, Sonnet for tools and code, Opus for deep strategy.*  
 **Voice:** Paul Bettany clone (Chatterbox)  
 **Color:** Cyan
 

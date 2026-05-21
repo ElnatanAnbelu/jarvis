@@ -13,7 +13,7 @@
 **v3.0 — Personal AI Operating System**
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
-![Claude](https://img.shields.io/badge/Claude-Sonnet%204.6-D97706?style=flat-square&logo=anthropic&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Haiku%20%7C%20Sonnet%20%7C%20Opus-D97706?style=flat-square&logo=anthropic&logoColor=white)
 ![Gemini](https://img.shields.io/badge/Gemini-2.0%20Flash-4285F4?style=flat-square&logo=google&logoColor=white)
 ![Groq](https://img.shields.io/badge/Groq-Llama%2070B-F55036?style=flat-square)
 ![Mistral](https://img.shields.io/badge/Mistral-Medium-FF6B35?style=flat-square)
@@ -37,7 +37,7 @@ Tony Stark didn't have a better AI.
 
 | Agent | Personality | Model | Best For |
 |-------|------------|-------|----------|
-| **JARVIS** | Formal, composed, dry humor. Calls you "sir." | Claude Sonnet / Opus | Tools, code, strategy, everything |
+| **JARVIS** | Formal, composed, dry humor. Calls you "sir." | Claude Haiku / Sonnet / Opus | Tools, code, strategy, everything |
 | **FRIDAY** | Direct, warm, slightly sarcastic. | Gemini 2.0 Flash | Quick answers, casual chat |
 | **VERONICA** | Clinical, tactical, no-nonsense. | Groq Llama 3.3 70B | Risk analysis, breakdowns |
 | **KAREN** | Warm, patient, mentoring energy. | Mistral Medium | Decisions, personal guidance |
@@ -51,12 +51,12 @@ All four agents share full conversation history. Call any agent by name at any p
 Every message is scored 1–5 instantly with zero API calls. Pure local logic determines which agent and model handles it.
 
 ```
-Score 1  →  Greeting / small talk         →  JARVIS   (Haiku)       ~200ms
-Score 2  →  Quick answer / direct Q       →  FRIDAY   (Gemini Flash) ~300ms
-Score 3a →  Risk / analysis / breakdown   →  VERONICA (Groq 70B)    ~400ms
-Score 3b →  Decision / personal / advice  →  KAREN    (Mistral)     ~400ms
-Score 4  →  Tools / coding / research     →  JARVIS   (Sonnet)      ~800ms
-Score 5  →  Deep strategy / empire        →  JARVIS   (Opus)        ~2s
+Score 1-3  →  Casual / quick / analytical    →  JARVIS   (Haiku)        ~200ms
+Score 2    →  Quick answer / direct Q        →  FRIDAY   (Gemini Flash)  ~300ms
+Score 3a   →  Risk / analysis / breakdown    →  VERONICA (Groq 70B)     ~400ms
+Score 3b   →  Decision / personal / advice   →  KAREN    (Mistral)      ~400ms
+Score 4    →  Tools / coding / research      →  JARVIS   (Sonnet)       ~800ms
+Score 5    →  Deep strategy / empire         →  JARVIS   (Opus)         ~2s
 ```
 
 Any message containing a tool keyword (`send`, `email`, `search`, `build`, `run`, `screenshot`, …) is forced to Score 4 → JARVIS automatically.
