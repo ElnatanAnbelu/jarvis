@@ -52,7 +52,7 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | 10 | File tools | ✅ Done | Move read/write/delete/move file operations |
 | 11 | Code & dev tools | ✅ Done | Move shell runner, git commands, code execution |
 | 12 | Data tools | ✅ Done | Move charts, reports, data analysis |
-| 13 | Memory tools | ⬜ Not started | Move remember, goals, habits |
+| 13 | Memory tools | ✅ Done | Move remember, goals, habits |
 | 14 | Business tools | ⬜ Not started | Move Nexel CRM, financials, marketing |
 | 15 | Personal tools | ⬜ Not started | Move health, books, relationships, learning |
 | 16 | Strategy tools | ⬜ Not started | Move decisions, proactive scan, strategy |
