@@ -49,7 +49,7 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | 7 | System tools | ✅ Done | Move app launching, volume, screenshot, focus mode |
 | 8 | Web tools | ✅ Done | Move search, news, weather, browser |
 | 9 | Calendar tools | ✅ Done | Move tasks, events, reminders, briefing |
-| 10 | File tools | ⬜ Not started | Move read/write/delete/move file operations |
+| 10 | File tools | ✅ Done | Move read/write/delete/move file operations |
 | 11 | Code & dev tools | ⬜ Not started | Move shell runner, git commands, code execution |
 | 12 | Data tools | ⬜ Not started | Move charts, reports, data analysis |
 | 13 | Memory tools | ⬜ Not started | Move remember, goals, habits |
