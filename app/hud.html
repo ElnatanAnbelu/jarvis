@@ -1813,6 +1813,10 @@ let mediaRec=null,audioChunks=[],isListening=false,micStream=null;
 
 async function toggleMic(){
   if(isListening){stopMic();return;}
+  // Interrupt JARVIS immediately — stop audio, cancel any in-flight request
+  stopTTS();
+  if(evtSrc){evtSrc.close();evtSrc=null;}
+  if(_chatAbortCtrl){_chatAbortCtrl.abort();_chatAbortCtrl=null;}
   try{
     micStream=await navigator.mediaDevices.getUserMedia({audio:true});
     startAudioReactivity(micStream);
