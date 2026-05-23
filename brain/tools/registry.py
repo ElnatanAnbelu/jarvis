@@ -48,6 +48,18 @@ def execute_tool(name: str, args: dict) -> str:
     if name not in TOOL_REGISTRY:
         return f"Unknown tool: '{name}'. Available: {', '.join(TOOL_REGISTRY.keys())}"
     try:
-        return str(TOOL_REGISTRY[name]["fn"](**args))
+        result = str(TOOL_REGISTRY[name]["fn"](**args))
+        try:
+            from memory.memory import log_action
+            log_action(name, args, result, success=True)
+        except Exception:
+            pass
+        return result
     except Exception as e:
-        return f"Tool '{name}' failed: {e}"
+        err = f"Tool '{name}' failed: {e}"
+        try:
+            from memory.memory import log_action
+            log_action(name, args, err, success=False)
+        except Exception:
+            pass
+        return err

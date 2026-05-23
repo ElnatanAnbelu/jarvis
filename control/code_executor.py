@@ -179,9 +179,78 @@ def run_shell(command: str, cwd: str = None, timeout: int = 30) -> dict:
         return {"stdout": "", "stderr": "", "exit_code": -1, "success": False, "error": str(e)}
 
 
+def _self_heal(language: str, code: str, error: str, attempt: int) -> str | None:
+    """Ask Groq Llama (free/fast) to fix failing code. Returns fixed code or None."""
+    import os
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if not groq_key:
+        return None
+    try:
+        from groq import Groq
+        client = Groq(api_key=groq_key)
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=1024,
+            temperature=0,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Fix this {language} code. Return ONLY the corrected code, "
+                    f"no explanation, no markdown fences.\n\n"
+                    f"ERROR (attempt {attempt}):\n{error}\n\n"
+                    f"CODE:\n{code}"
+                ),
+            }],
+        )
+        fixed = (resp.choices[0].message.content or "").strip()
+        # Strip accidental markdown fences
+        if fixed.startswith("```"):
+            lines = fixed.splitlines()
+            fixed = "\n".join(lines[1:-1] if lines and lines[-1].strip() == "```" else lines[1:])
+        return fixed if fixed else None
+    except Exception:
+        return None
+
+
+def execute_code_with_healing(language: str, code: str, timeout: int = 30, cwd: str = None) -> dict:
+    """
+    Run code and auto-fix via Groq on failure. Max 3 attempts total.
+    Returns same dict as execute_code() plus 'attempts' and 'healed' keys.
+    """
+    MAX_ATTEMPTS = 3
+    current_code = code
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        result = execute_code(language, current_code, timeout=timeout, cwd=cwd)
+        result["attempts"] = attempt
+
+        if result["success"]:
+            if attempt > 1:
+                result["healed"] = True
+                result["final_code"] = current_code
+            return result
+
+        if attempt == MAX_ATTEMPTS:
+            result["healed"] = False
+            return result
+
+        error_text = result.get("stderr") or result.get("error") or "Unknown error"
+        fixed = _self_heal(language, current_code, error_text, attempt)
+        if not fixed:
+            result["healed"] = False
+            return result
+
+        current_code = fixed
+
+    return result
+
+
 def format_execution_result(result: dict, language: str = "") -> str:
     """Format execution result into a clean string for JARVIS to return."""
-    if result.get("error"):
+    heal_note = ""
+    if result.get("healed"):
+        heal_note = f" (self-healed after {result['attempts']} attempts)"
+    if result.get("error") and not result.get("healed"):
         return f"Error: {result['error']}"
     parts = []
     if result["stdout"]:
@@ -191,5 +260,6 @@ def format_execution_result(result: dict, language: str = "") -> str:
         parts.append(f"{label}:\n{result['stderr']}")
     if not parts:
         exit_code = result.get("exit_code", 0)
-        return "Code ran successfully. No output." if exit_code == 0 else f"Exited with code {exit_code}."
-    return "\n".join(parts)
+        msg = "Code ran successfully. No output." if exit_code == 0 else f"Exited with code {exit_code}."
+        return msg + heal_note
+    return "\n".join(parts) + heal_note

@@ -1,7 +1,7 @@
 """
-Work Together mode — all four agents tackle a task independently.
-FRIDAY → VERONICA → KAREN → JARVIS in sequence.
-Each reports in their own voice. JARVIS closes with final strategy.
+Work Together mode — all four agents tackle a task with a shared blackboard.
+FRIDAY → VERONICA → KAREN each write to the blackboard.
+JARVIS reads all three before synthesizing the final strategy.
 """
 
 import os
@@ -38,7 +38,6 @@ def is_work_together(text: str) -> bool:
 
 
 def _strip_trigger(text: str) -> str:
-    """Remove the 'work together on' prefix to get the actual task."""
     lower = text.lower()
     for t in sorted(_WORK_TOGETHER_TRIGGERS, key=len, reverse=True):
         if t in lower:
@@ -51,10 +50,10 @@ def _strip_trigger(text: str) -> str:
 def _jarvis_assign(task: str) -> dict:
     """Ask JARVIS Haiku to split the task into agent-specific sub-tasks."""
     try:
-        import os as _os, anthropic
+        import anthropic
         api_key = (
-            _os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-            _os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+            os.environ.get("ANTHROPIC_API_KEY", "").strip() or
+            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
         )
         if not api_key:
             return {}
@@ -92,8 +91,12 @@ JARVIS: [their specific task]"""
 
 def work_together(task: str):
     """
-    Generator. Yields ('agent', name), ('chunk', text), ('done', full) events
-    for each agent in sequence: FRIDAY → VERONICA → KAREN → JARVIS.
+    Generator. Yields ('agent', name), ('chunk', text), ('done_agent', name) events.
+
+    Blackboard protocol:
+      FRIDAY, VERONICA, KAREN each run first and write to shared_context.
+      JARVIS receives the full blackboard and synthesizes a final strategy.
+      No agent is blind to what the others said.
     """
     from brain.free_agents import think_veronica_agent, think_karen_agent
     from brain.gemini import think_friday
@@ -105,30 +108,39 @@ def work_together(task: str):
 
     assignments = _jarvis_assign(actual_task)
 
-    agents = [
-        ("FRIDAY",   assignments.get("FRIDAY",   f"Give quick data, timing, and efficiency facts about: {actual_task}")),
-        ("VERONICA", assignments.get("VERONICA", f"Assess the risks and structural weaknesses of: {actual_task}")),
-        ("KAREN",    assignments.get("KAREN",    f"Cover the human angle, readiness, and personal considerations for: {actual_task}")),
-        ("JARVIS",   assignments.get("JARVIS",   f"Give the final strategy, decision, and execution plan for: {actual_task}")),
+    # ── Phase 1: FRIDAY, VERONICA, KAREN write to blackboard ──────────────────
+    blackboard: dict[str, str] = {}
+
+    supporting_agents = [
+        ("FRIDAY",   assignments.get("FRIDAY",   f"Give quick data, timing, and efficiency facts about: {actual_task}"), think_friday),
+        ("VERONICA", assignments.get("VERONICA", f"Assess the risks and structural weaknesses of: {actual_task}"), think_veronica_agent),
+        ("KAREN",    assignments.get("KAREN",    f"Cover the human angle, readiness, and personal considerations for: {actual_task}"), think_karen_agent),
     ]
 
-    for agent_name, sub_task in agents:
+    for agent_name, sub_task, fn in supporting_agents:
         yield ("agent", agent_name)
-
-        if agent_name == "FRIDAY":
-            response = think_friday(sub_task) or ""
-        elif agent_name == "VERONICA":
-            response = think_veronica_agent(sub_task) or ""
-        elif agent_name == "KAREN":
-            response = think_karen_agent(sub_task) or ""
-        else:  # JARVIS
-            response = think_jarvis(sub_task, model="claude-sonnet-4-6") or ""
-
-        if not response:
-            response = f"No response from {agent_name}."
-
+        response = fn(sub_task) or f"No response from {agent_name}."
+        blackboard[agent_name] = response
         save_message(agent_name.lower(), response)
         yield ("chunk", response)
         yield ("done_agent", agent_name)
 
+    # ── Phase 2: JARVIS reads full blackboard then synthesizes ─────────────────
+    yield ("agent", "JARVIS")
+
+    blackboard_text = "\n\n".join(
+        f"[{name}]\n{content}" for name, content in blackboard.items()
+    )
+
+    jarvis_prompt = (
+        f"{assignments.get('JARVIS', f'Final strategy and execution plan for: {actual_task}')}\n\n"
+        f"Your team has already weighed in. Read their inputs and synthesize — "
+        f"don't repeat what they said, build on it and deliver the final call.\n\n"
+        f"TEAM BLACKBOARD:\n{blackboard_text}"
+    )
+
+    jarvis_response = think_jarvis(jarvis_prompt, model="claude-sonnet-4-6") or "No response."
+    save_message("jarvis", jarvis_response)
+    yield ("chunk", jarvis_response)
+    yield ("done_agent", "JARVIS")
     yield ("all_done", "")

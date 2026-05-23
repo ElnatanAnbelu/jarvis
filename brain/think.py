@@ -379,7 +379,7 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     if wiki:
         ctx += wiki
     if include_history:
-        history = format_history_for_prompt(limit=15)
+        history = format_history_for_prompt(limit=30)
         if history:
             ctx += f"\nRECENT CONVERSATION:\n{history}\n"
     return ctx
@@ -405,8 +405,22 @@ def _build_anthropic_tools() -> list:
         })
     return result
 
+def _build_cached_system(user_input: str) -> list:
+    """
+    Build a two-block cached system prompt.
+    Block 1 = static JARVIS_SYSTEM → cache_control ephemeral (5-min TTL, ~3KB saved every call)
+    Block 2 = dynamic context (facts + wiki) → cache_control ephemeral (invalidates when facts change)
+    Cuts Claude bill ~30-50% on repeated prompts.
+    """
+    ctx = _build_context(user_input, include_history=False)
+    return [
+        {"type": "text", "text": JARVIS_SYSTEM, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": ctx or " ",    "cache_control": {"type": "ephemeral"}},
+    ]
+
+
 def _think_sdk(user_input: str, model: str) -> str:
-    """Claude via Anthropic SDK — full tool use with multi-round loop."""
+    """Claude via Anthropic SDK — full tool use with multi-round loop + prompt caching."""
     import anthropic
     from brain.tools import execute_tool
     from memory.memory import build_messages_for_prompt
@@ -415,12 +429,10 @@ def _think_sdk(user_input: str, model: str) -> str:
     if not auth_key:
         raise ValueError("No auth key available")
 
-    ctx = _build_context(user_input, include_history=False)
-    system = JARVIS_SYSTEM + ctx
+    system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
-
     client = anthropic.Anthropic(api_key=auth_key)
-    messages = build_messages_for_prompt(user_input, limit=15)
+    messages = build_messages_for_prompt(user_input, limit=30)
 
     max_rounds = 8
 
@@ -428,17 +440,16 @@ def _think_sdk(user_input: str, model: str) -> str:
         resp = client.messages.create(
             model=model,
             max_tokens=4096,
-            system=system,
+            system=system_blocks,
             tools=tools,
             messages=messages,
+            extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
         )
 
-        # Final round — no more tool calls, return the text response
         if resp.stop_reason != "tool_use":
             parts = [b.text.strip() for b in resp.content if hasattr(b, "text") and b.text.strip()]
             return "\n".join(parts) if parts else "Done."
 
-        # Execute every tool requested
         messages.append({"role": "assistant", "content": resp.content})
         tool_results = []
         for block in resp.content:
@@ -451,9 +462,9 @@ def _think_sdk(user_input: str, model: str) -> str:
                 })
         messages.append({"role": "user", "content": tool_results})
 
-    # Exhausted rounds — get final answer
     final = client.messages.create(
-        model=model, max_tokens=2048, system=system, tools=tools, messages=messages,
+        model=model, max_tokens=2048, system=system_blocks, tools=tools, messages=messages,
+        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
     )
     for block in final.content:
         if hasattr(block, "text") and block.text.strip():
@@ -526,7 +537,7 @@ def _think_groq_with_tools(user_input: str) -> str:
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
     client = Groq(api_key=groq_key)
-    messages = build_messages_for_prompt(user_input, limit=15)
+    messages = build_messages_for_prompt(user_input, limit=30)
 
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -572,7 +583,7 @@ def _think_grok(user_input: str, model: str = "grok-3") -> str:
         return ""
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
-    history_msgs = build_messages_for_prompt(user_input, limit=15)
+    history_msgs = build_messages_for_prompt(user_input, limit=30)
     try:
         r = _req.post(
             "https://api.x.ai/v1/chat/completions",
@@ -603,7 +614,7 @@ def _think_groq_text_only(user_input: str) -> str:
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
     client = Groq(api_key=groq_key)
-    history_msgs = build_messages_for_prompt(user_input, limit=15)
+    history_msgs = build_messages_for_prompt(user_input, limit=30)
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         max_tokens=512,
@@ -704,7 +715,7 @@ def think(user_input: str, model: str = None) -> str:
             from mistralai import Mistral
             client = Mistral(api_key=mistral_key)
             _ctx = _build_context(user_input)
-            _history = build_messages_for_prompt(user_input, limit=15)
+            _history = build_messages_for_prompt(user_input, limit=30)
             resp = client.chat.complete(
                 model="mistral-medium-latest",
                 max_tokens=1024,
@@ -724,7 +735,7 @@ def think(user_input: str, model: str = None) -> str:
         try:
             from groq import Groq
             ctx = _build_context(user_input)
-            _history = build_messages_for_prompt(user_input, limit=15)
+            _history = build_messages_for_prompt(user_input, limit=30)
             client = Groq(api_key=groq_key)
             resp = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -779,19 +790,20 @@ def think_stream(user_input: str, model: str = None):
         return
 
     from memory.memory import build_messages_for_prompt
-    ctx = _build_context(user_input, include_history=False)
-    system = JARVIS_SYSTEM + ctx
+    system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
     client = anthropic.Anthropic(api_key=auth_key)
-    messages = build_messages_for_prompt(user_input, limit=15)
+    messages = build_messages_for_prompt(user_input, limit=30)
+    cache_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
 
     try:
         with client.messages.stream(
             model=chosen_model,
             max_tokens=1024,
-            system=system,
+            system=system_blocks,
             tools=tools,
             messages=messages,
+            extra_headers=cache_headers,
         ) as stream:
             for text in stream.text_stream:
                 yield text
@@ -800,7 +812,6 @@ def think_stream(user_input: str, model: str = None):
         if final_msg.stop_reason != "tool_use":
             return
 
-        # Tool use — execute tools then stream the confirmation reply
         messages.append({"role": "assistant", "content": final_msg.content})
         tool_results = []
         for block in final_msg.content:
@@ -816,15 +827,15 @@ def think_stream(user_input: str, model: str = None):
         with client.messages.stream(
             model=chosen_model,
             max_tokens=512,
-            system=system,
+            system=system_blocks,
             tools=tools,
             messages=messages,
+            extra_headers=cache_headers,
         ) as stream:
             for text in stream.text_stream:
                 yield text
 
     except Exception as _e:
-        # If auth error, refresh token and retry once
         if "401" in str(_e) or "authentication" in str(_e).lower():
             _refresh_token()
             new_key = _get_auth_key()
@@ -835,16 +846,16 @@ def think_stream(user_input: str, model: str = None):
                     with _client2.messages.stream(
                         model=chosen_model,
                         max_tokens=1024,
-                        system=system,
+                        system=system_blocks,
                         tools=tools,
                         messages=messages,
+                        extra_headers=cache_headers,
                     ) as _s2:
                         for _t in _s2.text_stream:
                             yield _t
                     return
                 except Exception:
                     pass
-        # Fall back to blocking think()
         yield think(user_input, model=chosen_model)
 
 

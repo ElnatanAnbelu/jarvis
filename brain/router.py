@@ -17,13 +17,10 @@ AGENT_PATTERNS = [
     (r'^(hey\s+)?karen[,!?\s]*',    "KAREN"),
 ]
 
-# Agent names mentioned anywhere in the message (e.g. "finish it jarvis")
-_AGENT_ANYWHERE = [
-    (r'\bjarvis\b',   "JARVIS"),
-    (r'\bfriday\b',   "FRIDAY"),
-    (r'\bveronica\b', "VERONICA"),
-    (r'\bkaren\b',    "KAREN"),
-]
+# REMOVED: Agent names should NOT be matched anywhere in the message.
+# This was causing unintended agent routing when agents recommended other agents.
+# Use explicit agent prefix patterns only (AGENT_PATTERNS at start of message).
+_AGENT_ANYWHERE = []
 
 TOOL_WORDS = [
     "send", "text", "email", "open", "search", "find", "check",

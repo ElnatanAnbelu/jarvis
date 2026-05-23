@@ -5,6 +5,7 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "jarvis.db"
 
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -31,8 +32,34 @@ def init_db():
             value TEXT
         )
     """)
+    # Every tool execution — survives the 30-message window
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS actions_performed (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            tool_name TEXT,
+            args TEXT,
+            result TEXT,
+            success INTEGER DEFAULT 1
+        )
+    """)
+    # User-defined recurring tasks JARVIS can register at runtime
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            description TEXT,
+            schedule TEXT,
+            last_run TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+# ── Conversations ──────────────────────────────────────────────────────────────
 
 def save_message(role: str, content: str):
     conn = sqlite3.connect(DB_PATH)
@@ -42,6 +69,7 @@ def save_message(role: str, content: str):
     conn.commit()
     conn.close()
 
+
 def get_recent_history(limit: int = 10) -> list:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -49,6 +77,9 @@ def get_recent_history(limit: int = 10) -> list:
     rows = c.fetchall()
     conn.close()
     return list(reversed(rows))
+
+
+# ── Meta ───────────────────────────────────────────────────────────────────────
 
 def _meta_get(key: str, default: str = "") -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -58,6 +89,7 @@ def _meta_get(key: str, default: str = "") -> str:
     conn.close()
     return row[0] if row else default
 
+
 def _meta_set(key: str, value: str):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -66,8 +98,9 @@ def _meta_set(key: str, value: str):
     conn.close()
 
 
+# ── Facts ──────────────────────────────────────────────────────────────────────
+
 def save_fact(category: str, key: str, value: str):
-    # Normalize key for better dedup
     norm_key = key.strip().lower().replace(" ", "_")
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -81,7 +114,6 @@ def save_fact(category: str, key: str, value: str):
                   (category, norm_key, value, datetime.now().isoformat()))
     conn.commit()
     conn.close()
-    # Track unsaved count for auto-consolidation trigger
     try:
         count = int(_meta_get("facts_since_consolidation", "0")) + 1
         _meta_set("facts_since_consolidation", str(count))
@@ -93,13 +125,9 @@ def save_fact(category: str, key: str, value: str):
 
 
 def consolidate_facts():
-    """Ask Claude to deduplicate and resolve contradictions in the fact list.
-    Runs in background. Replaces the facts table with a clean version.
-    """
     raw = get_facts()
     if not raw or len(raw.splitlines()) < 4:
-        return  # Not enough facts to bother
-
+        return
     try:
         import os, sys
         from pathlib import Path as _P
@@ -110,34 +138,22 @@ def consolidate_facts():
         )
         if not api_key:
             return
-
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
-        prompt = f"""You are a memory consolidation system. Below is a list of personal facts about Elnatan.
-
-Your task:
-1. Remove exact and semantic duplicates (same fact stored with different keys).
-2. If two facts contradict each other (e.g., different cities listed as current location), keep the more recent/specific one and discard the older/vaguer one.
-3. Merge related facts where logical (e.g., "age: 20" and "born: 2004" can coexist — don't merge those).
-4. Keep ALL facts that are genuinely distinct.
-5. Output ONLY the cleaned facts, one per line, in this exact format: [category] key: value
-6. No commentary, no explanation, no markdown.
-
-CURRENT FACTS:
-{raw}
-
-CLEANED FACTS:"""
-
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": f"""Memory consolidation. Remove duplicates, resolve contradictions (keep newer), keep all distinct facts.
+Output ONLY cleaned facts, one per line: [category] key: value
+
+FACTS:
+{raw}
+
+CLEANED:"""}],
         )
         cleaned = msg.content[0].text.strip()
         if not cleaned:
             return
-
-        # Parse cleaned facts back into (category, key, value)
         new_facts = []
         for line in cleaned.splitlines():
             line = line.strip()
@@ -153,11 +169,8 @@ CLEANED FACTS:"""
                 new_facts.append((category, key.strip().lower().replace(" ", "_"), value.strip()))
             except Exception:
                 continue
-
         if not new_facts:
             return
-
-        # Atomic replace of facts table
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("DELETE FROM facts")
@@ -169,9 +182,9 @@ CLEANED FACTS:"""
         conn.close()
         _meta_set("facts_since_consolidation", "0")
         _meta_set("last_consolidation", datetime.now().isoformat())
-
     except Exception:
         pass
+
 
 def get_facts() -> str:
     conn = sqlite3.connect(DB_PATH)
@@ -181,42 +194,136 @@ def get_facts() -> str:
     conn.close()
     if not rows:
         return ""
+    return "\n".join(f"[{cat}] {key}: {val}" for cat, key, val in rows)
+
+
+# ── Actions Performed Log ──────────────────────────────────────────────────────
+
+def log_action(tool_name: str, args: dict, result: str, success: bool = True):
+    """Persist every tool call so JARVIS remembers actions beyond the 30-message window."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO actions_performed (timestamp, tool_name, args, result, success) VALUES (?, ?, ?, ?, ?)",
+        (datetime.now().isoformat(), tool_name, json.dumps(args), str(result)[:500], int(success))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_recent_actions(limit: int = 20) -> str:
+    """Return last N tool executions as a readable string for prompt injection."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT timestamp, tool_name, args, result, success FROM actions_performed ORDER BY id DESC LIMIT ?",
+        (limit,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    if not rows:
+        return ""
     lines = []
-    for category, key, value in rows:
-        lines.append(f"[{category}] {key}: {value}")
+    for ts, tool, args_str, result, success in reversed(rows):
+        try:
+            args = json.loads(args_str)
+        except Exception:
+            args = {}
+        status = "OK" if success else "FAILED"
+        short_args = ", ".join(f"{k}={v}" for k, v in list(args.items())[:3])
+        lines.append(f"[{ts[:16]}] {tool}({short_args}) → {status}: {result[:80]}")
     return "\n".join(lines)
 
-def format_history_for_prompt(limit: int = 10) -> str:
+
+# ── Scheduled Tasks ────────────────────────────────────────────────────────────
+
+def add_scheduled_task(name: str, description: str, schedule: str) -> str:
+    """
+    Register a recurring task JARVIS should run on a schedule.
+    schedule format: "daily@HH:MM" | "every_Nh" | "weekly@dayname@HH:MM"
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "INSERT OR REPLACE INTO scheduled_tasks (name, description, schedule, active, created_at) VALUES (?, ?, ?, 1, ?)",
+            (name, description, schedule, datetime.now().isoformat())
+        )
+        conn.commit()
+        result = f"Scheduled task '{name}' registered: {schedule}"
+    except Exception as e:
+        result = f"Failed to save task: {e}"
+    conn.close()
+    return result
+
+
+def get_scheduled_tasks(active_only: bool = True) -> list:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if active_only:
+        c.execute("SELECT id, name, description, schedule, last_run FROM scheduled_tasks WHERE active=1")
+    else:
+        c.execute("SELECT id, name, description, schedule, last_run FROM scheduled_tasks")
+    rows = c.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "description": r[2], "schedule": r[3], "last_run": r[4]} for r in rows]
+
+
+def update_task_last_run(task_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE scheduled_tasks SET last_run=? WHERE id=?",
+              (datetime.now().isoformat(), task_id))
+    conn.commit()
+    conn.close()
+
+
+def disable_scheduled_task(name: str):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE scheduled_tasks SET active=0 WHERE name=?", (name,))
+    conn.commit()
+    conn.close()
+
+
+# ── Prompt Building ────────────────────────────────────────────────────────────
+
+def format_history_for_prompt(limit: int = 30) -> str:
     history = get_recent_history(limit)
     if not history:
         return ""
     lines = []
     for role, content in history:
         label = "ELNATAN" if role == "user" else role.upper()
-        lines.append(f"{label}: {content[:800]}")
+        lines.append(f"{label}: {content}")
     return "\n".join(lines)
 
 
-def build_messages_for_prompt(current_input: str, limit: int = 15) -> list:
-    """Return a proper multi-turn messages list for API calls.
+def build_messages_for_prompt(current_input: str, limit: int = 30, include_topic: bool = False) -> list:
+    """
+    Return multi-turn messages list for API calls.
     Maps all agent roles to 'assistant'. Merges consecutive same-role turns.
-    Assumes current_input is already saved to the DB before this is called.
+    Topic inference removed — eliminated per-prompt Haiku API call.
     """
     history = get_recent_history(limit)
     msgs = []
+
     for role, content in history:
         api_role = "user" if role == "user" else "assistant"
-        text = content[:800]
         if msgs and msgs[-1]["role"] == api_role:
-            msgs[-1]["content"] += "\n" + text
+            msgs[-1]["content"] += "\n" + content
         else:
-            msgs.append({"role": api_role, "content": text})
+            msgs.append({"role": api_role, "content": content})
+
     # Must start with user
     while msgs and msgs[0]["role"] != "user":
         msgs.pop(0)
-    # If history didn't include current input, add it
+
+    # Add current input if not already last user message
     if not msgs or msgs[-1]["role"] != "user":
         msgs.append({"role": "user", "content": current_input})
+
     return msgs or [{"role": "user", "content": current_input}]
+
 
 init_db()

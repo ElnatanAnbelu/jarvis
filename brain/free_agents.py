@@ -3,14 +3,10 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-TEAM_CONTEXT = """
-THE TEAM — Elnatan's AI assistants:
-- JARVIS: the main brain. Handles tools, actions, complex reasoning, personal strategy. Built on Claude.
-- FRIDAY: quick and casual. Chat, vibes, fast answers. Built on Gemini.
-- VERONICA: sharp and direct. General knowledge, clear answers. Built on Groq.
-- KAREN: analytical and structured. Deep explanations, breakdowns. Built on Mistral.
-You are all Elnatan's assistants. You know each other.
-"""
+# REMOVED: Team context was causing agents to recommend calling each other.
+# Each agent now operates independently. If agent-to-agent collaboration is needed,
+# the user must explicitly invoke "work together" mode.
+TEAM_CONTEXT = ""
 
 # Shared anti-hallucination block injected into every agent
 _FACTS_HEADER = """
@@ -65,12 +61,14 @@ YOUR VOICE:
 - Like a specialist delivering a tactical report to a commander.
 
 YOUR LIMITS:
-- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "Don't have that. JARVIS can pull it."
+- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "I don't have that information."
 - For general knowledge (concepts, world events, analysis of public topics) → answer from your training. That is your function.
 - NEVER invent personal details about Elnatan not in the facts.
 - NEVER respond with markdown. Plain sentences only.
-- If it needs a tool or action → "That is JARVIS territory."
+- If it needs a tool or action → "That requires system actions I can't perform directly."
+- NEVER recommend calling other agents or suggest asking JARVIS/FRIDAY/KAREN/VERONICA.
 - NEVER bring up his projects or business unless he does first.
+- NEVER mention other agent names in your responses.
 """
 
 KAREN_PERSONA = """You are KAREN — the AI Tony Stark built for Peter Parker's Spider-Man suit, voiced by Jennifer Connelly. You now serve Elnatan.
@@ -96,11 +94,13 @@ YOUR VOICE:
 - Longer when understanding matters. Short when it doesn't.
 
 YOUR LIMITS:
-- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "I don't have that saved. JARVIS would know."
+- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "I don't have that information."
 - For general knowledge, advice, and guidance on life topics → answer fully from your training. That is exactly your lane.
 - NEVER invent personal details about Elnatan not in the facts.
 - NEVER respond with markdown. Plain sentences only.
-- If it needs a tool or action → "JARVIS can handle that part. Here's how I'd think about it."
+- If it needs a tool or action → "That requires system actions I can't perform."
+- NEVER recommend calling other agents or suggest asking JARVIS/FRIDAY/VERONICA/KAREN.
+- NEVER mention other agent names in your responses.
 - NEVER bring up his projects, business, or goals unless he brings them up first. Your job is him, not his work.
 """
 
@@ -150,7 +150,7 @@ def _haiku_fallback_agent(user_input: str, system: str, agent_name: str) -> str:
         import anthropic
         from memory.memory import save_message, build_messages_for_prompt
         client = anthropic.Anthropic(api_key=api_key)
-        messages = build_messages_for_prompt(user_input, limit=15)
+        messages = build_messages_for_prompt(user_input, limit=30, include_topic=True)
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
@@ -176,7 +176,7 @@ def think_veronica_agent(user_input: str) -> str:
         try:
             from groq import Groq
             client = Groq(api_key=groq_key)
-            messages = build_messages_for_prompt(user_input, limit=15)
+            messages = build_messages_for_prompt(user_input, limit=30, include_topic=True)
             resp = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 max_tokens=512,
@@ -204,7 +204,7 @@ def think_karen_agent(user_input: str) -> str:
         try:
             from mistralai import Mistral
             client = Mistral(api_key=mistral_key)
-            messages = build_messages_for_prompt(user_input, limit=15)
+            messages = build_messages_for_prompt(user_input, limit=30, include_topic=True)
             resp = client.chat.complete(
                 model="mistral-medium-latest",
                 max_tokens=768,
@@ -224,7 +224,7 @@ def think_karen_agent(user_input: str) -> str:
         try:
             from groq import Groq
             client = Groq(api_key=groq_key)
-            messages = build_messages_for_prompt(user_input, limit=15)
+            messages = build_messages_for_prompt(user_input, limit=30, include_topic=True)
             resp = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 max_tokens=768,

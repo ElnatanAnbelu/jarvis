@@ -77,14 +77,26 @@ def _build_memory_block(query: str) -> str:
         return _FACTS_HEADER.format(facts="No facts available.")
 
 
-def _build_gemini_contents(current_input: str, limit: int = 15) -> list:
-    """Build Gemini-format multi-turn contents from conversation history."""
-    from memory.memory import get_recent_history
+def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
+    """Build Gemini-format multi-turn contents from conversation history with topic context."""
+    from memory.memory import get_recent_history, get_topic
     history = get_recent_history(limit)
     contents = []
+    
+    # Inject topic context into first message
+    topic = get_topic()
+    topic_prefix = f"[Current topic: {topic}] " if topic else ""
+    first_msg = True
+    
     for role, content in history:
         g_role = "user" if role == "user" else "model"
-        text = content[:800]
+        text = content  # NO TRUNCATION
+        
+        # Add topic to first user message
+        if first_msg and g_role == "user" and topic_prefix:
+            text = topic_prefix + text
+            first_msg = False
+        
         if contents and contents[-1]["role"] == g_role:
             contents[-1]["parts"][0]["text"] += "\n" + text
         else:
@@ -92,7 +104,8 @@ def _build_gemini_contents(current_input: str, limit: int = 15) -> list:
     while contents and contents[0]["role"] != "user":
         contents.pop(0)
     if not contents or contents[-1]["role"] != "user":
-        contents.append({"role": "user", "parts": [{"text": current_input}]})
+        msg_text = topic_prefix + current_input if topic_prefix else current_input
+        contents.append({"role": "user", "parts": [{"text": msg_text}]})
     return contents or [{"role": "user", "parts": [{"text": current_input}]}]
 
 
@@ -109,7 +122,7 @@ def think_friday(user_input: str) -> str:
             headers = {"Content-Type": "application/json", "X-goog-api-key": api_key}
             payload = {
                 "systemInstruction": {"parts": [{"text": system_instruction}]},
-                "contents": _build_gemini_contents(user_input, limit=15),
+                "contents": _build_gemini_contents(user_input, limit=30),
                 "generationConfig": {"maxOutputTokens": 300, "temperature": 0.65}
             }
             r = requests.post(url, json=payload, headers=headers, timeout=15)

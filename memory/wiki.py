@@ -1,3 +1,10 @@
+"""
+Semantic long-term memory backed by FAISS + sentence-transformers.
+Replaces the old keyword count() search with vector similarity.
+The index is built lazily from Obsidian markdown notes and rebuilt
+when notes change on disk.
+"""
+
 import os
 import re
 import threading
@@ -5,28 +12,174 @@ from pathlib import Path
 from datetime import datetime
 
 WIKI_PATH = Path("/Users/elnatananbelu/Desktop/graphify-out/obsidian/_Memory")
+_INDEX_CACHE_PATH = WIKI_PATH / ".faiss_cache"
+
+# ── Env ────────────────────────────────────────────────────────────────────────
 
 def _load_env():
     env = Path(__file__).parent.parent / ".env"
-    for line in env.read_text().splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            if v.strip() and k.strip() not in os.environ:
-                os.environ[k.strip()] = v.strip()
+    try:
+        for line in env.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                if v.strip() and k.strip() not in os.environ:
+                    os.environ[k.strip()] = v.strip()
+    except Exception:
+        pass
 
 _load_env()
 
+# ── FAISS index state ──────────────────────────────────────────────────────────
 
-def search_relevant(query: str, max_notes: int = 3) -> str:
-    """Return content of notes most relevant to the query. Keyword match — no full scan."""
+_index = None          # faiss.IndexFlatIP
+_chunks: list[str] = []   # raw text chunks (parallel to index vectors)
+_titles: list[str] = []   # note titles (parallel to index vectors)
+_model = None          # SentenceTransformer instance
+_index_lock = threading.Lock()
+_last_build: float = 0.0
+_REBUILD_INTERVAL = 300  # rebuild if notes changed and >5 min since last build
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        # all-MiniLM-L6-v2: 80MB, fast, good quality — perfect for local use
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _model
+
+
+def _notes_mtime() -> float:
+    """Return the most recent modification time across all notes."""
+    WIKI_PATH.mkdir(parents=True, exist_ok=True)
+    try:
+        return max((p.stat().st_mtime for p in WIKI_PATH.glob("*.md")), default=0.0)
+    except Exception:
+        return 0.0
+
+
+def _build_index():
+    """Build FAISS index from all Obsidian notes. Called when stale."""
+    global _index, _chunks, _titles, _last_build
+    import numpy as np
+    import faiss
+
+    WIKI_PATH.mkdir(parents=True, exist_ok=True)
+    notes = sorted(WIKI_PATH.glob("*.md"))
+    if not notes:
+        return
+
+    model = _get_model()
+    new_chunks, new_titles = [], []
+
+    for note in notes:
+        try:
+            raw = note.read_text(encoding="utf-8")
+            # Strip YAML frontmatter
+            body = re.sub(r'^---.*?---\s*', '', raw, flags=re.DOTALL).strip()
+            if not body:
+                continue
+            # Chunk into ~400-char segments so long notes get multiple vectors
+            words = body.split()
+            chunk_size = 80  # ~400 chars
+            for i in range(0, len(words), chunk_size):
+                chunk = " ".join(words[i:i + chunk_size])
+                new_chunks.append(chunk)
+                new_titles.append(note.stem)
+        except Exception:
+            continue
+
+    if not new_chunks:
+        return
+
+    embeddings = model.encode(new_chunks, normalize_embeddings=True, show_progress_bar=False)
+    embeddings = np.array(embeddings, dtype="float32")
+
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatIP(dim)  # inner product on normalized vectors = cosine similarity
+    index.add(embeddings)
+
+    with _index_lock:
+        _index = index
+        _chunks = new_chunks
+        _titles = new_titles
+        _last_build = datetime.now().timestamp()
+
+
+def _ensure_index():
+    """Rebuild index if stale or missing."""
+    global _last_build
+    with _index_lock:
+        already_built = _index is not None
+        mtime = _notes_mtime()
+        needs_rebuild = not already_built or (mtime > _last_build and
+                        (datetime.now().timestamp() - _last_build) > _REBUILD_INTERVAL)
+
+    if needs_rebuild:
+        try:
+            _build_index()
+        except Exception:
+            pass
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
+
+def search_relevant(query: str, max_results: int = 3, threshold: float = 0.25) -> str:
+    """
+    Semantic search: return the most relevant note chunks for a query.
+    Falls back to keyword search if FAISS/sentence-transformers unavailable.
+    """
+    _ensure_index()
+
+    with _index_lock:
+        if _index is None or not _chunks:
+            return _keyword_fallback(query, max_results)
+
+    try:
+        import numpy as np
+        model = _get_model()
+        q_vec = model.encode([query], normalize_embeddings=True, show_progress_bar=False)
+        q_vec = np.array(q_vec, dtype="float32")
+
+        k = min(max_results * 3, len(_chunks))  # fetch extras then dedupe by title
+        with _index_lock:
+            scores, indices = _index.search(q_vec, k)
+
+        seen_titles: set[str] = set()
+        results: list[tuple[str, str, float]] = []
+
+        for score, idx in zip(scores[0], indices[0]):
+            if idx < 0 or score < threshold:
+                continue
+            title = _titles[idx]
+            chunk = _chunks[idx]
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+            results.append((title, chunk, float(score)))
+            if len(results) >= max_results:
+                break
+
+        if not results:
+            return ""
+
+        parts = [f"### {title}\n{chunk}" for title, chunk, _ in results]
+        return "\n\n".join(parts)
+
+    except Exception:
+        return _keyword_fallback(query, max_results)
+
+
+def _keyword_fallback(query: str, max_notes: int = 3) -> str:
+    """Original keyword count search — used when FAISS is unavailable."""
     WIKI_PATH.mkdir(parents=True, exist_ok=True)
     notes = list(WIKI_PATH.glob("*.md"))
     if not notes:
         return ""
 
-    query_words = set(re.findall(r'\w+', query.lower())) - {
-        "the", "a", "an", "is", "it", "to", "of", "and", "or", "in", "on", "for", "what", "how", "can", "do", "my", "me", "i"
-    }
+    stop = {"the","a","an","is","it","to","of","and","or","in","on","for",
+            "what","how","can","do","my","me","i"}
+    query_words = set(re.findall(r'\w+', query.lower())) - stop
     if not query_words:
         return ""
 
@@ -34,28 +187,17 @@ def search_relevant(query: str, max_notes: int = 3) -> str:
     for note in notes:
         try:
             text = note.read_text(encoding="utf-8")
-            text_lower = text.lower()
-            name_lower = note.stem.lower()
-            score = sum(
-                (3 if w in name_lower else 0) + text_lower.count(w)
-                for w in query_words
-            )
+            tl = text.lower()
+            nl = note.stem.lower()
+            score = sum((3 if w in nl else 0) + tl.count(w) for w in query_words)
             if score > 0:
-                scored.append((score, note.stem, text))
+                body = re.sub(r'^---.*?---\s*', '', text, flags=re.DOTALL).strip()
+                scored.append((score, note.stem, body))
         except Exception:
             continue
 
     scored.sort(reverse=True)
-    top = scored[:max_notes]
-    if not top:
-        return ""
-
-    parts = []
-    for _, title, content in top:
-        # Strip YAML frontmatter, keep body only
-        body = re.sub(r'^---.*?---\s*', '', content, flags=re.DOTALL).strip()
-        parts.append(f"### {title}\n{body[:600]}")
-
+    parts = [f"### {title}\n{body[:600]}" for _, title, body in scored[:max_notes]]
     return "\n\n".join(parts)
 
 
@@ -68,13 +210,16 @@ def update_note(title: str, new_facts: str):
 
     if path.exists():
         content = path.read_text(encoding="utf-8")
-        # Update the `updated:` date in frontmatter
         content = re.sub(r'(updated:\s*)[\d-]+', f'\\g<1>{now}', content)
         content = content.rstrip() + f"\n\n{new_facts}\n"
     else:
         content = f"---\ntags: [auto]\nupdated: {now}\n---\n\n# {safe_title}\n\n{new_facts}\n"
 
     path.write_text(content, encoding="utf-8")
+    # Invalidate index so next query triggers a rebuild
+    global _last_build
+    with _index_lock:
+        _last_build = 0.0
 
 
 def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
@@ -125,7 +270,7 @@ def learn(user_msg: str, jarvis_msg: str):
     threading.Thread(
         target=_extract_and_update_bg,
         args=(user_msg, jarvis_msg),
-        daemon=True
+        daemon=True,
     ).start()
 
 

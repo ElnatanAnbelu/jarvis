@@ -188,17 +188,61 @@ def _competitor_scan():
         pass
 
 
+def _run_dynamic_task(task_id: int, description: str):
+    """Execute a user-registered scheduled task via JARVIS and push result to HUD."""
+    try:
+        from brain.think import think as think_jarvis
+        from memory.memory import update_task_last_run
+        result = think_jarvis(description, model="claude-haiku-4-5-20251001")
+        if result:
+            _send(f"Scheduled task complete:\n{result[:400]}")
+        update_task_last_run(task_id)
+    except Exception:
+        pass
+
+
+def _register_dynamic_tasks():
+    """Load user-defined tasks from SQLite and wire them into the schedule library."""
+    try:
+        from memory.memory import get_scheduled_tasks
+        tasks = get_scheduled_tasks(active_only=True)
+        for task in tasks:
+            tid, name, description, sched = task["id"], task["name"], task["description"], task["schedule"]
+            fn = lambda t=tid, d=description: _run_dynamic_task(t, d)
+            if sched.startswith("daily@"):
+                time_str = sched.split("@", 1)[1]  # "HH:MM"
+                schedule.every().day.at(time_str).do(fn).tag(f"dynamic:{name}")
+            elif sched.startswith("every_") and sched.endswith("h"):
+                hours = int(sched[6:-1])
+                schedule.every(hours).hours.do(fn).tag(f"dynamic:{name}")
+            elif sched.startswith("weekly@"):
+                parts = sched.split("@")  # ["weekly", "friday", "17:00"]
+                if len(parts) == 3:
+                    day_name, time_str = parts[1].lower(), parts[2]
+                    day_scheduler = getattr(schedule.every(), day_name, None)
+                    if day_scheduler:
+                        day_scheduler.at(time_str).do(fn).tag(f"dynamic:{name}")
+    except Exception:
+        pass
+
+
 def start_proactive_scheduler(hud_queue=None):
     """Start all proactive reminders. Call once on bot startup."""
     global _hud_queue
     _hud_queue = hud_queue
 
+    # Hardcoded system tasks
     schedule.every(30).minutes.do(_check_upcoming_events)
     schedule.every().day.at("09:00").do(_surface_news)
     schedule.every().day.at("12:00").do(_midday_check)
     schedule.every().day.at("19:00").do(_evening_check)
     schedule.every(3).hours.do(_focus_nudge)
-    schedule.every(8).hours.do(_competitor_scan)  # 3x/day competitor monitoring
+    schedule.every(8).hours.do(_competitor_scan)
+
+    # User-registered dynamic tasks from SQLite
+    _register_dynamic_tasks()
+    # Re-sync dynamic tasks every hour in case new ones were added at runtime
+    schedule.every().hour.do(_register_dynamic_tasks)
 
     def run():
         while True:

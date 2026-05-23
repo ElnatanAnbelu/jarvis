@@ -12,8 +12,8 @@ from brain.tools.registry import tool
     }
 )
 def execute_code(language: str, code: str, timeout: int = 30, cwd: str = None) -> str:
-    from control.code_executor import execute_code as _exec, format_execution_result
-    result = _exec(language=language, code=code, timeout=int(timeout), cwd=cwd)
+    from control.code_executor import execute_code_with_healing, format_execution_result
+    result = execute_code_with_healing(language=language, code=code, timeout=int(timeout), cwd=cwd)
     return format_execution_result(result, language)
 
 
