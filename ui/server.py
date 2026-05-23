@@ -27,6 +27,16 @@ import base64
 app = Flask(__name__)
 CORS(app)
 
+
+@app.before_request
+def _localhost_only():
+    """Reject any request that didn't originate from localhost."""
+    from flask import request, abort
+    remote = request.remote_addr
+    if remote not in ("127.0.0.1", "::1"):
+        abort(403)
+
+
 # ── LOCATION DETECTION ──────────────────────────────────────
 _location = {"city": "", "country": "", "timezone": "UTC", "loc": ""}
 
@@ -822,4 +832,4 @@ if __name__ == "__main__":
     # Start Kokoro TTS daemon (fallback preset voices, fast)
     threading.Thread(target=_start_kokoro_daemon, daemon=True).start()
     print("JARVIS API running on port 8080")
-    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False, threaded=True)
+    app.run(host="127.0.0.1", port=8080, debug=False, use_reloader=False, threaded=True)

@@ -169,7 +169,7 @@ def think_veronica_agent(user_input: str) -> str:
     """Groq Llama-3.3-70b — VERONICA persona. Falls back to Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
     memory = _build_memory_block(user_input)
-    system = memory + _NO_CODE_RULE + VERONICA_PERSONA + TEAM_CONTEXT
+    system = VERONICA_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
 
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if groq_key:
@@ -197,7 +197,7 @@ def think_karen_agent(user_input: str) -> str:
     """Mistral medium — KAREN persona. Falls back to Groq, then Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
     memory = _build_memory_block(user_input)
-    system = memory + _NO_CODE_RULE + KAREN_PERSONA + TEAM_CONTEXT
+    system = KAREN_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
 
     mistral_key = os.environ.get("MISTRAL_API_KEY", "").strip()
     if mistral_key:
@@ -247,7 +247,7 @@ def think_veronica_stream(user_input: str):
     """Streaming generator for VERONICA. Groq stream → Haiku stream fallback."""
     from memory.memory import save_message, build_messages_for_prompt
     memory = _build_memory_block(user_input)
-    system = memory + _NO_CODE_RULE + VERONICA_PERSONA + TEAM_CONTEXT
+    system = VERONICA_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Groq streaming ──────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ def think_karen_stream(user_input: str):
     import requests as _req
     from memory.memory import save_message, build_messages_for_prompt
     memory = _build_memory_block(user_input)
-    system = memory + _NO_CODE_RULE + KAREN_PERSONA + TEAM_CONTEXT
+    system = KAREN_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Mistral streaming (raw HTTP — SDK version-agnostic) ────────────────

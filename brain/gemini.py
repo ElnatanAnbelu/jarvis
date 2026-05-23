@@ -98,8 +98,7 @@ def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
 def think_friday(user_input: str) -> str:
     api_key = load_key()
     memory_block = _build_memory_block(user_input)
-    # Memory block FIRST in system instruction so model reads facts before rules
-    system_instruction = memory_block + _NO_CODE_RULE + FRIDAY_PERSONA + TEAM_CONTEXT
+    system_instruction = FRIDAY_PERSONA + _NO_CODE_RULE + memory_block + TEAM_CONTEXT
     user_turn = f"ELNATAN: {user_input}\n\nFRIDAY:"
 
     if api_key:
@@ -136,7 +135,7 @@ def _groq_fallback(user_input: str, memory_block: str = "") -> str:
             max_tokens=300,
             temperature=0.65,
             messages=[
-                {"role": "system", "content": memory_block + _NO_CODE_RULE + FRIDAY_PERSONA},
+                {"role": "system", "content": FRIDAY_PERSONA + _NO_CODE_RULE + memory_block},
                 {"role": "user", "content": user_input},
             ],
         )
@@ -161,7 +160,7 @@ def _haiku_fallback(user_input: str, memory_block: str = "") -> str:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
-            system=memory_block + _NO_CODE_RULE + FRIDAY_PERSONA,
+            system=FRIDAY_PERSONA + _NO_CODE_RULE + memory_block,
             messages=[{"role": "user", "content": user_input}],
         )
         response = msg.content[0].text.strip()
@@ -177,7 +176,7 @@ def think_friday_stream(user_input: str):
     import json as _json
     api_key = load_key()
     memory_block = _build_memory_block(user_input)
-    system_instruction = memory_block + _NO_CODE_RULE + FRIDAY_PERSONA + TEAM_CONTEXT
+    system_instruction = FRIDAY_PERSONA + _NO_CODE_RULE + memory_block + TEAM_CONTEXT
 
     # ── 1. Gemini streaming ────────────────────────────────────────────────────
     if api_key:

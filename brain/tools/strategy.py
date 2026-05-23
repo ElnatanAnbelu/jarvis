@@ -101,3 +101,14 @@ def action_history() -> str:
     from memory.memory import get_recent_actions
     result = get_recent_actions(limit=20)
     return result if result else "No actions logged yet."
+
+
+@tool(
+    description="Generate the Empire Status Report — a full executive audit of the last N days across the entire Nexel empire: actions performed, scheduled tasks, business overview, strategic patterns, and JARVIS recommendations. Saves to ~/Documents/JARVIS Reports/. Use when asked 'what's the status of my empire', 'run a business audit', 'empire report', 'how have things been going', or any variant.",
+    parameters={
+        "days": {"type": "integer", "description": "Audit window in days (default: 7)"},
+    }
+)
+def business_audit(days: int = 7) -> str:
+    from brain.audit import run_business_audit
+    return run_business_audit(days)

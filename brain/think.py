@@ -1,11 +1,13 @@
 import sys
 import os
+import re
 import subprocess
 import json
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from memory.memory import format_history_for_prompt, get_facts, save_message, build_messages_for_prompt
+from memory.memory import (format_history_for_prompt, get_facts, save_message,
+                           build_messages_for_prompt, build_messages_compressed)
 from memory.wiki import get_context, learn
 
 def _load_env():
@@ -350,21 +352,131 @@ CLAUDE_MODELS = {
     "opus":   "claude-opus-4-7",
 }
 
-HAIKU_KEYWORDS = ["time", "date", "remind", "timer", "thanks", "hello", "hi", "joke", "fact", "define", "translate"]
-OPUS_KEYWORDS  = ["business strategy", "empire", "addis market", "invest", "financial", "life decision", "analyze deeply"]
+# ── Model routing — weighted scoring ─────────────────────────────────────────
+#
+# Three tiers:
+#   Haiku  — instant: greetings, acks, time/date, simple single-step actions
+#   Sonnet — default: code, research, reports, memory lookups, most tasks
+#   Opus   — strategic depth: genuine multi-factor decisions, deep analysis
+#
+# Haiku fast-path: regex patterns compiled once at import time.
+# Opus scoring:    each matched phrase adds weight; threshold ≥ 3 → Opus.
+#                  Single context words (empire, market) never reach threshold
+#                  alone — they require explicit strategic intent alongside them.
+
+_HAIKU_PATTERNS = [re.compile(r, re.I) for r in [
+    r"^(hey|hi|hello|sup|yo|what'?s up|howdy)[,!?\s]*$",
+    r"^(thanks?|thank you|thx|ok|okay|alright|got it|cool|nice|perfect|sounds good|great)[,!?\s]*$",
+    r"^(you online|you there|systems? check|you up|you awake)[?!.\s]*$",
+    r"^jarvis[,!?\s]+(you online|you there|you up|systems? check)[?!.\s]*$",
+    r"what'?s? the (time|date|day)\b",
+    r"^what (time|day|date) is it",
+    r"^(open|play|pause|stop|skip|mute|unmute)\s+\S",
+    r"^(set (a )?reminder|remind me)\b",
+    r"^(send (a )?(message|text|email|whatsapp)|text|email)\s+(to\s+)?\S",
+    r"^(call|dial)\s+\S",
+    r"^(joke|tell (me )?a joke)[?!.\s]*$",
+    r"^(translate|define)\s+\S",
+]]
+
+# Phrases and their strategic weight toward Opus threshold (≥ 3).
+_OPUS_WEIGHTS = {
+    # ── 3-point: Opus on their own ───────────────────────────────────────────
+    "life decision":        3,
+    "career decision":      3,
+    "should i drop out":    3,
+    "should i quit":        3,
+    "should i leave":       3,
+    "should i expand":      3,
+    "should i pivot":       3,
+    "should i raise":       3,
+    "should i partner":     3,
+    "should i hire":        3,
+    "should i fire":        3,
+    "help me decide":       3,
+    "your honest opinion":  3,
+    "what would you do":    3,
+    "business strategy":    3,
+    "growth strategy":      3,
+    "expansion strategy":   3,
+    "investment strategy":  3,
+    "market strategy":      3,
+    "analyze my strategy":  3,
+    "strategic review":     3,
+    "analyze deeply":       3,
+    "deep analysis":        3,
+    "full analysis":        3,
+    "comprehensive":        3,
+    "thorough analysis":    3,
+    # ── 2-point: one more signal needed ──────────────────────────────────────
+    "pros and cons":        2,
+    "invest":               2,
+    "investment":           2,
+    "funding":              2,
+    "valuation":            2,
+    "acquisition":          2,
+    "pivot":                2,
+    # ── 1-point: context words — accumulate toward threshold ─────────────────
+    "should i":             1,
+    "should we":            1,
+    "strategy":             1,
+    "strategic":            1,
+    "empire":               1,
+    "nexel":                1,
+    "addis market":         1,
+    "financial":            1,
+    "expand":               1,
+    "expansion":            1,
+    "risk":                 1,
+    "decision":             1,
+    "tradeoff":             1,
+    "trade-off":            1,
+    "revenue":              1,
+    "profit":               1,
+    "market":               1,
+    "investor":             1,
+    "partnership":          1,
+    "competitor":           1,
+    "grow":                 1,
+    "growth":               1,
+}
+
+_OPUS_THRESHOLD = 3
+
+# Strategic words that block the short-message Haiku fast-path
+_STRATEGIC_WORDS = frozenset([
+    "strategy", "invest", "decision", "empire", "nexel",
+    "addis", "financial", "risk", "pivot", "expand",
+    "business", "audit", "analysis", "market", "revenue",
+])
+
 
 def select_model(user_input: str) -> str:
-    lower = user_input.lower()
-    for kw in OPUS_KEYWORDS:
-        if kw in lower:
-            return CLAUDE_MODELS["opus"]
-    for kw in HAIKU_KEYWORDS:
-        if kw in lower:
+    lower = user_input.lower().strip()
+
+    # 1. Definite Haiku — unambiguous simple patterns (fastest path)
+    for pat in _HAIKU_PATTERNS:
+        if pat.search(lower):
             return CLAUDE_MODELS["haiku"]
+
+    # 2. Short message with no strategic weight → Haiku
+    words = lower.split()
+    if len(words) <= 4 and not _STRATEGIC_WORDS.intersection(words):
+        return CLAUDE_MODELS["haiku"]
+
+    # 3. Score for strategic depth — early-exit as soon as threshold is hit
+    score = 0
+    for phrase, weight in _OPUS_WEIGHTS.items():
+        if phrase in lower:
+            score += weight
+            if score >= _OPUS_THRESHOLD:
+                return CLAUDE_MODELS["opus"]
+
+    # 4. Default: Sonnet handles everything else
     return CLAUDE_MODELS["sonnet"]
 
 def _build_context(user_input: str = "", include_history: bool = True) -> str:
-    from memory.memory import get_last_session_summary
+    from memory.memory import get_last_session_summary, get_history_summary
     facts = get_facts()
     wiki = get_context(user_input) if user_input else ""
     ctx = ""
@@ -386,7 +498,14 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     if wiki:
         ctx += wiki
     if include_history:
-        history = format_history_for_prompt(limit=30)
+        # When a rolling summary exists, inject it then only show the last 10 verbatim.
+        # When no summary yet (early conversation), show the full 30-message window.
+        hist_summary = get_history_summary()
+        if hist_summary:
+            ctx += f"\nEARLIER IN THIS CONVERSATION:\n{hist_summary}\n"
+            history = format_history_for_prompt(limit=10)
+        else:
+            history = format_history_for_prompt(limit=30)
         if history:
             ctx += f"\nRECENT CONVERSATION:\n{history}\n"
     return ctx
@@ -439,7 +558,7 @@ def _think_sdk(user_input: str, model: str) -> str:
     system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
     client = anthropic.Anthropic(api_key=auth_key)
-    messages = build_messages_for_prompt(user_input, limit=30)
+    messages = build_messages_compressed(user_input)
 
     max_rounds = 8
 
@@ -544,7 +663,7 @@ def _think_groq_with_tools(user_input: str) -> str:
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
     client = Groq(api_key=groq_key)
-    messages = build_messages_for_prompt(user_input, limit=30)
+    messages = build_messages_compressed(user_input)
 
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -590,7 +709,7 @@ def _think_grok(user_input: str, model: str = "grok-3") -> str:
         return ""
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
-    history_msgs = build_messages_for_prompt(user_input, limit=30)
+    history_msgs = build_messages_compressed(user_input)
     try:
         r = _req.post(
             "https://api.x.ai/v1/chat/completions",
@@ -621,7 +740,7 @@ def _think_groq_text_only(user_input: str) -> str:
     ctx = _build_context(user_input)
     system = JARVIS_SYSTEM + ctx
     client = Groq(api_key=groq_key)
-    history_msgs = build_messages_for_prompt(user_input, limit=30)
+    history_msgs = build_messages_compressed(user_input)
     resp = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         max_tokens=512,
@@ -699,7 +818,7 @@ def _think_ollama(user_input: str) -> str:
         import requests as _req
         model = _pick_ollama_model(user_input)
         ctx = _build_context(user_input)
-        history = build_messages_for_prompt(user_input, limit=20)
+        history = build_messages_compressed(user_input)
         messages = [{"role": "system", "content": JARVIS_SYSTEM + ctx}] + history
         r = _req.post(
             _OLLAMA_BASE + "/api/chat",
@@ -722,7 +841,7 @@ def _think_ollama_stream(user_input: str):
         import requests as _req, json as _json
         model = _pick_ollama_model(user_input)
         ctx = _build_context(user_input)
-        history = build_messages_for_prompt(user_input, limit=20)
+        history = build_messages_compressed(user_input)
         messages = [{"role": "system", "content": JARVIS_SYSTEM + ctx}] + history
         r = _req.post(
             _OLLAMA_BASE + "/api/chat",
@@ -835,7 +954,7 @@ def think(user_input: str, model: str = None) -> str:
             from mistralai import Mistral
             client = Mistral(api_key=mistral_key)
             _ctx = _build_context(user_input)
-            _history = build_messages_for_prompt(user_input, limit=30)
+            _history = build_messages_compressed(user_input)
             resp = client.chat.complete(
                 model="mistral-medium-latest",
                 max_tokens=1024,
@@ -855,7 +974,7 @@ def think(user_input: str, model: str = None) -> str:
         try:
             from groq import Groq
             ctx = _build_context(user_input)
-            _history = build_messages_for_prompt(user_input, limit=30)
+            _history = build_messages_compressed(user_input)
             client = Groq(api_key=groq_key)
             resp = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
@@ -922,7 +1041,7 @@ def think_stream(user_input: str, model: str = None):
     system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
     client = anthropic.Anthropic(api_key=auth_key)
-    messages = build_messages_for_prompt(user_input, limit=30)
+    messages = build_messages_compressed(user_input)
     cache_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
 
     try:
