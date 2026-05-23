@@ -78,34 +78,20 @@ def _build_memory_block(query: str) -> str:
 
 
 def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
-    """Build Gemini-format multi-turn contents from conversation history with topic context."""
-    from memory.memory import get_recent_history, get_topic
+    """Build Gemini-format multi-turn contents from conversation history."""
+    from memory.memory import get_recent_history
     history = get_recent_history(limit)
     contents = []
-    
-    # Inject topic context into first message
-    topic = get_topic()
-    topic_prefix = f"[Current topic: {topic}] " if topic else ""
-    first_msg = True
-    
     for role, content in history:
         g_role = "user" if role == "user" else "model"
-        text = content  # NO TRUNCATION
-        
-        # Add topic to first user message
-        if first_msg and g_role == "user" and topic_prefix:
-            text = topic_prefix + text
-            first_msg = False
-        
         if contents and contents[-1]["role"] == g_role:
-            contents[-1]["parts"][0]["text"] += "\n" + text
+            contents[-1]["parts"][0]["text"] += "\n" + content
         else:
-            contents.append({"role": g_role, "parts": [{"text": text}]})
+            contents.append({"role": g_role, "parts": [{"text": content}]})
     while contents and contents[0]["role"] != "user":
         contents.pop(0)
     if not contents or contents[-1]["role"] != "user":
-        msg_text = topic_prefix + current_input if topic_prefix else current_input
-        contents.append({"role": "user", "parts": [{"text": msg_text}]})
+        contents.append({"role": "user", "parts": [{"text": current_input}]})
     return contents or [{"role": "user", "parts": [{"text": current_input}]}]
 
 
@@ -184,6 +170,99 @@ def _haiku_fallback(user_input: str, memory_block: str = "") -> str:
         return response or None
     except Exception:
         return None
+
+
+def think_friday_stream(user_input: str):
+    """Streaming generator for FRIDAY. Gemini SSE → Groq stream → Haiku stream."""
+    import json as _json
+    api_key = load_key()
+    memory_block = _build_memory_block(user_input)
+    system_instruction = memory_block + _NO_CODE_RULE + FRIDAY_PERSONA + TEAM_CONTEXT
+
+    # ── 1. Gemini streaming ────────────────────────────────────────────────────
+    if api_key:
+        try:
+            url = ("https://generativelanguage.googleapis.com/v1beta/models/"
+                   "gemini-2.0-flash:streamGenerateContent")
+            headers = {"Content-Type": "application/json", "X-goog-api-key": api_key}
+            payload = {
+                "systemInstruction": {"parts": [{"text": system_instruction}]},
+                "contents": _build_gemini_contents(user_input, limit=30),
+                "generationConfig": {"maxOutputTokens": 300, "temperature": 0.65},
+            }
+            r = requests.post(url, json=payload, headers=headers, stream=True, timeout=20)
+            if r.status_code == 200:
+                full = []
+                for raw_line in r.iter_lines(decode_unicode=True):
+                    line = raw_line.strip().lstrip(",").lstrip("[").rstrip("]").strip()
+                    if not line or line in ("[", "]", ","):
+                        continue
+                    try:
+                        data = _json.loads(line)
+                        text = data["candidates"][0]["content"]["parts"][0]["text"]
+                        if text:
+                            full.append(text)
+                            yield text
+                    except Exception:
+                        continue
+                if full:
+                    save_message("friday", "".join(full))
+                return
+        except Exception:
+            pass
+
+    # ── 2. Groq streaming fallback ─────────────────────────────────────────────
+    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if groq_key:
+        try:
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            stream = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=300,
+                temperature=0.65,
+                stream=True,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user",   "content": user_input},
+                ],
+            )
+            full = []
+            for chunk in stream:
+                text = (chunk.choices[0].delta.content or "")
+                if text:
+                    full.append(text)
+                    yield text
+            if full:
+                save_message("friday", "".join(full))
+            return
+        except Exception:
+            pass
+
+    # ── 3. Haiku streaming fallback ────────────────────────────────────────────
+    claude_key = (
+        os.environ.get("ANTHROPIC_API_KEY", "").strip() or
+        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+    )
+    if claude_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=claude_key)
+            full = []
+            with client.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                system=system_instruction,
+                messages=[{"role": "user", "content": user_input}],
+            ) as stream:
+                for text in stream.text_stream:
+                    if text:
+                        full.append(text)
+                        yield text
+            if full:
+                save_message("friday", "".join(full))
+        except Exception:
+            pass
 
 
 def classify(user_input: str) -> int:

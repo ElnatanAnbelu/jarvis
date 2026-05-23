@@ -204,16 +204,24 @@ def chat():
         threading.Thread(target=lambda: _speak(greeting, "JARVIS"), daemon=True).start()
         return jsonify({"response": greeting, "agent": "JARVIS"})
 
-    # Work together — run all four agents and return each response
+    # Work together — accumulate each agent's streamed chunks, return complete responses
     from brain.team import is_work_together, work_together
     if is_work_together(user_input):
         responses = []
         current_agent = None
+        agent_chunks = []
         for event_type, value in work_together(user_input):
             if event_type == "agent":
                 current_agent = value
+                agent_chunks = []
             elif event_type == "chunk" and current_agent:
-                responses.append({"agent": current_agent, "response": _strip_markdown(value)})
+                agent_chunks.append(value)
+            elif event_type == "done_agent":
+                if current_agent and agent_chunks:
+                    full = _strip_markdown("".join(agent_chunks).strip())
+                    responses.append({"agent": current_agent, "response": full})
+                current_agent = None
+                agent_chunks = []
         return jsonify({"responses": responses})
 
     response, agent = _route(user_input)

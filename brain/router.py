@@ -52,6 +52,20 @@ def _call_agent(name: str, user_input: str) -> str:
     return ""
 
 
+def _stream_agent(name: str, user_input: str):
+    """Streaming generator for non-JARVIS agents. Mirrors their fallback chains."""
+    if name == "FRIDAY":
+        from brain.gemini import think_friday_stream
+        return think_friday_stream(user_input)
+    if name == "VERONICA":
+        from brain.free_agents import think_veronica_stream
+        return think_veronica_stream(user_input)
+    if name == "KAREN":
+        from brain.free_agents import think_karen_stream
+        return think_karen_stream(user_input)
+    return iter([])
+
+
 def _pick_agent_by_score(score: int, user_input: str) -> str:
     """Returns the agent name for a given score."""
     if score >= 4:
@@ -201,17 +215,21 @@ def route_stream(user_input: str, active_agent: str = None):
     # Work Together mode — all four agents
     from brain.team import is_work_together, work_together
     if is_work_together(user_input):
-        full_parts = {}
+        full_parts = {}   # agent_name → list[str] of chunks
+        current_agent = None
         for event_type, value in work_together(user_input):
             if event_type == "agent":
                 current_agent = value
+                full_parts[current_agent] = []
                 yield ("agent", value)
                 yield ("persist", None)
             elif event_type == "chunk":
                 yield ("chunk", value)
-                full_parts[current_agent] = value
+                if current_agent:
+                    full_parts[current_agent].append(value)
             elif event_type == "done_agent":
-                yield ("done", full_parts.get(value, ""))
+                full = "".join(full_parts.get(value, [])).strip()
+                yield ("done", full)
             # all_done is the terminal event, nothing to yield
         return
 
@@ -331,21 +349,29 @@ def route_stream(user_input: str, active_agent: str = None):
         agent = _pick_agent_by_score(score, actual)
         persist = agent if agent != "JARVIS" else None
 
-    # Non-JARVIS agents respond directly
+    # Non-JARVIS agents stream directly
     if agent != "JARVIS":
         yield ("agent", agent)
         yield ("persist", persist)
-        r = _call_agent(agent, actual)
-        if r:
-            yield ("chunk", r)
-            yield ("done", r)
+        chunks = []
+        try:
+            for chunk in _stream_agent(agent, actual):
+                chunks.append(chunk)
+                yield ("chunk", chunk)
+        except Exception:
+            pass
+        full = "".join(chunks).strip()
+        if full:
+            yield ("done", full)
             return
-        # Agent failed — fall back to JARVIS Haiku
+        # Agent yielded nothing — fall back to JARVIS Haiku streaming
         yield ("agent", "JARVIS")
         yield ("persist", None)
-        r = think_jarvis(actual, model=MODELS[1])
-        yield ("chunk", r)
-        yield ("done", r)
+        chunks = []
+        for chunk in think_stream(actual, model=MODELS[1]):
+            chunks.append(chunk)
+            yield ("chunk", chunk)
+        yield ("done", "".join(chunks).strip())
         return
 
     # JARVIS with Haiku (score 1, no active agent)

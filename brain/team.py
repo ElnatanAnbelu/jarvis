@@ -98,8 +98,8 @@ def work_together(task: str):
       JARVIS receives the full blackboard and synthesizes a final strategy.
       No agent is blind to what the others said.
     """
-    from brain.free_agents import think_veronica_agent, think_karen_agent
-    from brain.gemini import think_friday
+    from brain.gemini import think_friday_stream
+    from brain.free_agents import think_veronica_stream, think_karen_stream
     from brain.think import think as think_jarvis
     from memory.memory import save_message
 
@@ -108,21 +108,27 @@ def work_together(task: str):
 
     assignments = _jarvis_assign(actual_task)
 
-    # ── Phase 1: FRIDAY, VERONICA, KAREN write to blackboard ──────────────────
-    blackboard: dict[str, str] = {}
+    # ── Phase 1: FRIDAY, VERONICA, KAREN stream to blackboard ─────────────────
+    blackboard = {}
 
     supporting_agents = [
-        ("FRIDAY",   assignments.get("FRIDAY",   f"Give quick data, timing, and efficiency facts about: {actual_task}"), think_friday),
-        ("VERONICA", assignments.get("VERONICA", f"Assess the risks and structural weaknesses of: {actual_task}"), think_veronica_agent),
-        ("KAREN",    assignments.get("KAREN",    f"Cover the human angle, readiness, and personal considerations for: {actual_task}"), think_karen_agent),
+        ("FRIDAY",   assignments.get("FRIDAY",   "Give quick data, timing, and efficiency facts about: " + actual_task), think_friday_stream),
+        ("VERONICA", assignments.get("VERONICA", "Assess the risks and structural weaknesses of: " + actual_task), think_veronica_stream),
+        ("KAREN",    assignments.get("KAREN",    "Cover the human angle, readiness, and personal considerations for: " + actual_task), think_karen_stream),
     ]
 
-    for agent_name, sub_task, fn in supporting_agents:
+    for agent_name, sub_task, stream_fn in supporting_agents:
         yield ("agent", agent_name)
-        response = fn(sub_task) or f"No response from {agent_name}."
+        chunks = []
+        try:
+            for chunk in stream_fn(sub_task):
+                chunks.append(chunk)
+                yield ("chunk", chunk)
+        except Exception:
+            pass
+        response = "".join(chunks).strip() or ("No response from " + agent_name + ".")
         blackboard[agent_name] = response
         save_message(agent_name.lower(), response)
-        yield ("chunk", response)
         yield ("done_agent", agent_name)
 
     # ── Phase 2: JARVIS reads full blackboard then synthesizes ─────────────────
