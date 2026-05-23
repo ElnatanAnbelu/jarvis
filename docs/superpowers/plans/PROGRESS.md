@@ -51,7 +51,7 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | 9 | Calendar tools | ✅ Done | Move tasks, events, reminders, briefing |
 | 10 | File tools | ✅ Done | Move read/write/delete/move file operations |
 | 11 | Code & dev tools | ✅ Done | Move shell runner, git commands, code execution |
-| 12 | Data tools | ⬜ Not started | Move charts, reports, data analysis |
+| 12 | Data tools | ✅ Done | Move charts, reports, data analysis |
 | 13 | Memory tools | ⬜ Not started | Move remember, goals, habits |
 | 14 | Business tools | ⬜ Not started | Move Nexel CRM, financials, marketing |
 | 15 | Personal tools | ⬜ Not started | Move health, books, relationships, learning |
