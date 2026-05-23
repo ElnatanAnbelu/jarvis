@@ -46,7 +46,7 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | 4 | Build the tool registry | ✅ Done | New system for defining tools — cleaner, testable |
 | 5 | Create the package entry point | ✅ Done | Wire everything together so nothing else needs to change |
 | 6 | Messaging tools | ✅ Done | Move email, iMessage, WhatsApp to their own file |
-| 7 | System tools | ⬜ Not started | Move app launching, volume, screenshot, focus mode |
+| 7 | System tools | ✅ Done | Move app launching, volume, screenshot, focus mode |
 | 8 | Web tools | ⬜ Not started | Move search, news, weather, browser |
 | 9 | Calendar tools | ⬜ Not started | Move tasks, events, reminders, briefing |
 | 10 | File tools | ⬜ Not started | Move read/write/delete/move file operations |
