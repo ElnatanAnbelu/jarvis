@@ -400,6 +400,8 @@ body{display:flex;flex-direction:column;}
 /* Proactive message */
 .msg.proactive .lbl::before{content:'▶  ';color:var(--amber);}
 .msg.proactive .bubble{border-color:rgba(255,191,0,0.28)!important;}
+.msg.observer .lbl::before{content:'◈  ';color:var(--cyan);}
+.msg.observer .bubble{border-color:rgba(0,255,255,0.35)!important;background:rgba(0,255,255,0.03)!important;}
 
 /* Thinking dots */
 .thinking .bubble{color:rgba(0,255,255,0.38);}
@@ -591,9 +593,12 @@ body{display:flex;flex-direction:column;}
     <div class="name">J.A.R.V.I.S</div>
     <div class="sub">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
   </div>
-  <div class="hdr-r">
-    <div id="clock"></div>
-    <div id="ondot">● ONLINE</div>
+  <div class="hdr-r" style="display:flex;align-items:center;gap:10px;">
+    <button id="obs-quiet-btn" onclick="toggleObserverQuiet()" title="Toggle Observer (background pattern watcher)" style="-webkit-app-region:no-drag;background:none;border:1px solid rgba(0,255,255,0.18);color:rgba(0,255,255,0.45);padding:2px 6px;border-radius:3px;cursor:pointer;font-size:7px;letter-spacing:1.5px;font-family:'Courier New',monospace;transition:all 0.2s;">◈ OBS</button>
+    <div style="text-align:right;">
+      <div id="clock"></div>
+      <div id="ondot">● ONLINE</div>
+    </div>
   </div>
 </div>
 
@@ -2288,20 +2293,59 @@ async function _pollProactive(){
   try{
     const r=await fetch('/api/proactive');
     const d=await r.json();
-    for(const msg of (d.messages||[])){
+    for(let msg of (d.messages||[])){
+      const isObs=msg.startsWith('[OBS] ');
+      if(isObs)msg=msg.slice(6);
       emptyEl.classList.add('hidden');
       const msgEl=document.createElement('div');
-      msgEl.className='msg agent proactive';
-      msgEl.innerHTML=`<div class="lbl">JARVIS</div><div class="bubble">${esc(msg)}</div>`;
+      msgEl.className='msg agent '+(isObs?'observer':'proactive');
+      msgEl.innerHTML=`<div class="lbl">${isObs?'OBSERVER':'JARVIS'}</div><div class="bubble">${esc(msg)}</div>`;
       msgsEl.appendChild(msgEl);
       msgsEl.scrollTop=msgsEl.scrollHeight;
-      showProactiveAlert(msg);
-      playTTS(msg,'JARVIS');
+      if(!isObs){showProactiveAlert(msg);playTTS(msg,'JARVIS');}
+      else{
+        // Subtle cyan pulse on the ring for observer insights
+        ringCanvas.style.filter='brightness(1.25)';
+        setTimeout(()=>{ringCanvas.style.filter='';},600);
+      }
     }
   }catch(_){}
   setTimeout(_pollProactive,30000);
 }
 setTimeout(_pollProactive,8000);
+
+// ── OBSERVER QUIET TOGGLE ──────────────────────────────────
+let _obsQuiet=false;
+async function _initObserverBtn(){
+  try{
+    const r=await fetch('/api/observer/quiet');
+    const d=await r.json();
+    _obsQuiet=d.quiet||false;
+    _updateObsBtn();
+  }catch(_){}
+}
+function _updateObsBtn(){
+  const btn=document.getElementById('obs-quiet-btn');
+  if(!btn)return;
+  if(_obsQuiet){
+    btn.style.color='rgba(0,255,255,0.2)';
+    btn.style.borderColor='rgba(0,255,255,0.08)';
+    btn.title='Observer is quiet — click to re-enable';
+  }else{
+    btn.style.color='rgba(0,255,255,0.55)';
+    btn.style.borderColor='rgba(0,255,255,0.28)';
+    btn.title='Observer active — click to silence';
+  }
+}
+async function toggleObserverQuiet(){
+  try{
+    const r=await fetch('/api/observer/quiet',{method:'POST'});
+    const d=await r.json();
+    _obsQuiet=d.quiet||false;
+    _updateObsBtn();
+  }catch(_){}
+}
+setTimeout(_initObserverBtn,3000);
 
 // ── GEO PANEL AUTO-UPDATE ─────────────────────────────────
 fetch('/api/status').then(r=>r.json()).then(d=>{

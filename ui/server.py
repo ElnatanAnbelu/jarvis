@@ -776,6 +776,15 @@ def music_control():
     return jsonify({"ok": True})
 
 
+@app.route("/api/observer/quiet", methods=["GET", "POST"])
+def observer_quiet():
+    from brain.observer import is_quiet, toggle_quiet
+    if request.method == "POST":
+        now_quiet = toggle_quiet()
+        return jsonify({"quiet": now_quiet})
+    return jsonify({"quiet": is_quiet()})
+
+
 @app.route("/api/status", methods=["GET"])
 def status():
     return jsonify({"status": "online", "version": "3.0", "location": _location})
@@ -796,6 +805,11 @@ if __name__ == "__main__":
     try:
         from brain.proactive import start_proactive_scheduler
         start_proactive_scheduler(_proactive_q)
+    except Exception:
+        pass
+    try:
+        from brain.observer import start_observer
+        start_observer(_proactive_q)
     except Exception:
         pass
     try:
