@@ -55,8 +55,8 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | 13 | Memory tools | ✅ Done | Move remember, goals, habits |
 | 14 | Business tools | ✅ Done | Move Nexel CRM, financials, marketing |
 | 15 | Personal tools | ✅ Done | Move health, books, relationships, learning |
-| 16 | Strategy tools | ⬜ Not started | Move decisions, proactive scan, strategy |
-| 17 | Final wiring & cleanup | ⬜ Not started | Verify everything works, delete old file |
+| 16 | Strategy tools | ✅ Done | Move decisions, proactive scan, strategy |
+| 17 | Final wiring & cleanup | ✅ Done | Verify everything works, delete old file |
 
 ---
 
@@ -73,8 +73,14 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 
 ## Summary
 
-> *This section will be filled in when all tasks are complete.*
+> All 17 tasks complete. Here's what changed and why it matters:
+>
+> **Security (Tasks 1–3):** JARVIS can no longer be tricked into running chained shell commands — `ls /tmp; rm -rf ~/Documents` now fails safely because we use `shlex.split()` instead of raw shell execution. Computer control is now locked to an approved list of 10 action types, so a malicious webpage can't make JARVIS do something unexpected. And before JARVIS presses any key combo that could quit an app or delete something, it asks you first.
+>
+> **Code cleanup (Tasks 4–17):** The old `brain/tools.py` was 92KB and 2,232 lines — one massive file that was painful to edit. We replaced it with 11 focused files, one per category, plus a clean registry system that makes adding new tools simple. All 108 tools are registered and working. All 13 tests pass. The old file is gone.
+>
+> JARVIS works exactly the same as before — same tools, same results. It's just safer and much easier to grow.
 
 ---
 
-*Last updated: 2026-05-23*
+*Last updated: 2026-05-23 — all tasks complete*
