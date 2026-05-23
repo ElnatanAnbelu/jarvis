@@ -149,11 +149,17 @@ def execute_code(language: str, code: str, timeout: int = 30, cwd: str = None) -
 
 
 def run_shell(command: str, cwd: str = None, timeout: int = 30) -> dict:
-    """Run a shell command and return output."""
+    """Run a shell command and return output.
+
+    Uses shell=False so semicolons, pipes, and && in `command` are treated as
+    literal characters rather than shell operators, preventing command injection.
+    """
+    import shlex
     try:
         work_dir = cwd or os.path.expanduser("~")
+        args = shlex.split(command)
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True,
+            args, shell=False, capture_output=True, text=True,
             timeout=timeout, cwd=work_dir, env=os.environ.copy()
         )
         return {
@@ -166,6 +172,9 @@ def run_shell(command: str, cwd: str = None, timeout: int = 30) -> dict:
     except subprocess.TimeoutExpired:
         return {"stdout": "", "stderr": "", "exit_code": -1, "success": False,
                 "error": f"Command timed out after {timeout}s."}
+    except FileNotFoundError:
+        return {"stdout": "", "stderr": "", "exit_code": -1, "success": False,
+                "error": f"Command not found: {shlex.split(command)[0]}"}
     except Exception as e:
         return {"stdout": "", "stderr": "", "exit_code": -1, "success": False, "error": str(e)}
 
