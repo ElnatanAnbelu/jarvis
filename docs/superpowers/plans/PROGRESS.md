@@ -36,8 +36,8 @@ When JARVIS controls your screen (takes a screenshot, figures out what to click)
 | # | Task | Status | What it does |
 |---|------|--------|-------------|
 | 1 | Fix shell command runner | ✅ Done | Stop `;` and `&&` from chaining unintended commands |
-| 2 | Add computer action allowlist | ⬜ Not started | Only approved mouse/keyboard actions allowed |
-| 3 | Add confirmation for dangerous keys | ⬜ Not started | Ask before pressing cmd+Q, cmd+delete, etc. |
+| 2 | Add computer action allowlist | ✅ Done | Only approved mouse/keyboard actions allowed |
+| 3 | Add confirmation for dangerous keys | ✅ Done | Ask before pressing cmd+Q, cmd+delete, etc. |
 
 ### Phase 2 — Tools Cleanup
 

@@ -17,6 +17,16 @@ pyautogui.FAILSAFE = True
 
 SCREEN_W, SCREEN_H = pyautogui.size()
 
+ALLOWED_ACTIONS = {
+    "click", "double_click", "right_click", "move",
+    "type", "key", "scroll", "drag", "wait", "done",
+}
+
+DESTRUCTIVE_KEYS = {
+    "cmd+q", "cmd+w", "cmd+delete", "cmd+shift+delete",
+    "ctrl+c", "ctrl+z",
+}
+
 SYSTEM_PROMPT = f"""You are JARVIS, an AI controlling a macOS computer screen ({SCREEN_W}x{SCREEN_H}).
 You receive screenshots and a task. You output a JSON array of actions to perform.
 
@@ -65,6 +75,10 @@ def _save_screenshot(label: str = "") -> str:
 
 def _execute_action(action: dict) -> str:
     t = action.get("action", "")
+    if not t:
+        return "No action specified."
+    if t not in ALLOWED_ACTIONS:
+        return f"Action '{t}' is not allowed."
     if t == "click":
         pyautogui.click(action["x"], action["y"])
     elif t == "double_click":
@@ -77,6 +91,10 @@ def _execute_action(action: dict) -> str:
         pyautogui.write(str(action["text"]), interval=0.05)
     elif t == "key":
         key = action["key"]
+        if key.lower() in DESTRUCTIVE_KEYS:
+            confirm = input(f"\n[JARVIS] About to press '{key}'. This may be irreversible. Confirm? (yes/no): ").strip().lower()
+            if confirm != "yes":
+                return f"Action '{key}' cancelled by user."
         if "+" in key:
             parts = key.lower().split("+")
             pyautogui.hotkey(*parts[:-1], parts[-1])
