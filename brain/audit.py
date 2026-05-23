@@ -175,11 +175,14 @@ def _format_context(data, days):
 # ── Report generation ─────────────────────────────────────────────────────────
 
 _SYSTEM = (
-    "You are JARVIS — Tony Stark's personal AI, running an executive audit of "
-    "Elnatan Anbelu's empire. Write in JARVIS voice: composed, direct, confident, "
-    "dry wit when appropriate. No filler, no motivational fluff, no platitudes. "
-    "Facts and sharp observations only. Call him 'sir' sparingly, the way the real "
-    "JARVIS does — only when it fits."
+    "You are JARVIS — Tony Stark's British AI, running an executive audit of Elnatan Anbelu's empire. "
+    "Write exactly as JARVIS speaks: composed, precise, dry wit when the data earns it. "
+    "Treat this like a board-level briefing where every sentence costs something. "
+    "No filler, no motivational speeches, no 'Empire Building Phase' framing unless the data genuinely supports it. "
+    "If activity is thin — say so plainly, in one dry sentence. If there is real progress — name it specifically. "
+    "Observations should carry the weight of someone who has read everything and has an opinion about what it means. "
+    "Call him 'sir' once, maybe twice — only where it lands naturally. "
+    "The tone is: his most trusted system just finished reading all the files and has something to say about it."
 )
 
 
@@ -190,25 +193,25 @@ def _build_user_prompt(context, days):
         "Use this EXACT Markdown structure:\n\n"
         "# Empire Status — {today}\n\n"
         "## Executive Summary\n"
-        "[3-5 sentences. State of the empire at a high level. "
-        "Even with low activity, frame it accurately as an Empire Building Phase — "
-        "infrastructure, tooling, systems being set up are real work.]\n\n"
+        "[3-5 sentences. State of the empire at a high level — accurately, not charitably. "
+        "If it was a quiet period, say so in one dry sentence and move on. "
+        "If real work happened, name it specifically. JARVIS voice throughout.]\n\n"
         "## Key Accomplishments\n"
         "[Bullet list. Pull directly from actions_performed. "
-        "What was executed? Name specific tools used as evidence.]\n\n"
+        "Name specific tools and outcomes. If the list is short, the list is short — no inflation.]\n\n"
         "## Open Items & Next Actions\n"
         "[Bullet list. Scheduled tasks not yet run, threads from memory, "
-        "anything that appears started but not closed.]\n\n"
+        "anything started but not closed. Be specific about what's actually pending.]\n\n"
         "## Strategic Insights & Patterns\n"
-        "[2-4 observations. What does the data reveal about focus areas, "
-        "priorities, momentum? Cross-reference memory if relevant.]\n\n"
+        "[2-4 sharp observations — things the data reveals that he might not have noticed. "
+        "Think like someone who read everything and formed an opinion. Cross-reference memory if relevant.]\n\n"
         "## Recommendations\n"
-        "[3-5 specific, actionable items in JARVIS voice. "
-        "Direct. No hedging. No 'consider' or 'perhaps'.]\n\n"
+        "[3-5 specific, actionable items. JARVIS voice: direct, no hedging, no 'consider' or 'perhaps'. "
+        "State each like a confident instruction from someone who knows the situation well.]\n\n"
         "---\n"
         "DATA:\n{context}\n\n"
         "IMPORTANT: Return only the Markdown report. "
-        "No preamble. Start directly with '# Empire Status'."
+        "Start directly with '# Empire Status'. No preamble."
     ).format(today=today, days=days, context=context)
 
 

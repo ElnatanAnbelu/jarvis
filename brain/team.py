@@ -140,8 +140,10 @@ def work_together(task: str):
 
     jarvis_prompt = (
         f"{assignments.get('JARVIS', f'Final strategy and execution plan for: {actual_task}')}\n\n"
-        f"Your team has already weighed in. Read their inputs and synthesize — "
-        f"don't repeat what they said, build on it and deliver the final call.\n\n"
+        f"Your team has weighed in. Read their analysis. Do not repeat what they said — "
+        f"build on it and deliver the final call in your voice: composed, direct, dry British wit if it fits. "
+        f"One clear recommendation. No hedging. No committee language. "
+        f"You are the system that synthesizes and decides — act like it.\n\n"
         f"TEAM BLACKBOARD:\n{blackboard_text}"
     )
 
