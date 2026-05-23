@@ -636,6 +636,119 @@ def _is_rate_limit(e: Exception) -> bool:
     return any(k in s for k in ["429", "rate limit", "rate_limit", "overloaded", "529", "quota"])
 
 
+# ── Ollama local fallback ──────────────────────────────────────────────────────
+
+_OLLAMA_BASE = "http://localhost:11434"
+_ollama_checked_at = 0.0
+_ollama_available = False
+_ollama_models = []   # installed model names, refreshed with availability check
+
+_CODING_SIGNALS = frozenset([
+    "code", "script", "function", "class", "debug", "fix the", "python",
+    "javascript", "typescript", "react", "flask", "sql", "bash", "shell",
+    "algorithm", "implement", "refactor", "error", "exception", "compile",
+    "write a", "run this", "run the code",
+])
+
+
+def _check_ollama() -> bool:
+    """Return True if Ollama is reachable. Result cached 60 s to avoid per-call overhead."""
+    global _ollama_checked_at, _ollama_available, _ollama_models
+    import time, requests as _req
+    now = time.time()
+    if now - _ollama_checked_at < 60:
+        return _ollama_available
+    _ollama_checked_at = now
+    try:
+        r = _req.get(_OLLAMA_BASE + "/api/tags", timeout=1)
+        if r.status_code == 200:
+            _ollama_models = [m["name"] for m in r.json().get("models", [])]
+            _ollama_available = bool(_ollama_models)
+        else:
+            _ollama_available = False
+            _ollama_models = []
+    except Exception:
+        _ollama_available = False
+        _ollama_models = []
+    return _ollama_available
+
+
+def _pick_ollama_model(user_input: str) -> str:
+    """Choose the best available installed model for the request type."""
+    lower = user_input.lower()
+    is_coding = any(w in lower for w in _CODING_SIGNALS)
+
+    # Preferred order for coding tasks
+    coding_prefs = ("qwen2.5-coder", "codellama", "deepseek-coder", "starcoder2")
+    # Preferred order for general tasks
+    general_prefs = ("llama3.1", "llama3.2", "llama3", "mistral", "gemma2", "phi3", "phi4")
+
+    candidates = coding_prefs + general_prefs if is_coding else general_prefs + coding_prefs
+    for prefix in candidates:
+        for m in _ollama_models:
+            if m.startswith(prefix):
+                return m
+    return _ollama_models[0] if _ollama_models else "llama3.1:8b"
+
+
+def _think_ollama(user_input: str) -> str:
+    """Blocking Ollama call — JARVIS persona, full context. Returns '' if unavailable."""
+    if not _check_ollama():
+        return ""
+    try:
+        import requests as _req
+        model = _pick_ollama_model(user_input)
+        ctx = _build_context(user_input)
+        history = build_messages_for_prompt(user_input, limit=20)
+        messages = [{"role": "system", "content": JARVIS_SYSTEM + ctx}] + history
+        r = _req.post(
+            _OLLAMA_BASE + "/api/chat",
+            json={"model": model, "messages": messages, "stream": False,
+                  "options": {"num_predict": 512, "temperature": 0.7}},
+            timeout=60,
+        )
+        if r.status_code == 200:
+            return r.json().get("message", {}).get("content", "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _think_ollama_stream(user_input: str):
+    """Streaming Ollama generator — JARVIS persona, full context. Yields '' silently if unavailable."""
+    if not _check_ollama():
+        return
+    try:
+        import requests as _req, json as _json
+        model = _pick_ollama_model(user_input)
+        ctx = _build_context(user_input)
+        history = build_messages_for_prompt(user_input, limit=20)
+        messages = [{"role": "system", "content": JARVIS_SYSTEM + ctx}] + history
+        r = _req.post(
+            _OLLAMA_BASE + "/api/chat",
+            json={"model": model, "messages": messages, "stream": True,
+                  "options": {"num_predict": 512, "temperature": 0.7}},
+            stream=True,
+            timeout=60,
+        )
+        if r.status_code != 200:
+            return
+        for raw_line in r.iter_lines(decode_unicode=True):
+            if not raw_line:
+                continue
+            try:
+                data = _json.loads(raw_line)
+                text = data.get("message", {}).get("content", "")
+                if text:
+                    yield text
+                if data.get("done"):
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
 def think(user_input: str, model: str = None) -> str:
     chosen_model = model or select_model(user_input)
     rate_limited = False
@@ -782,6 +895,15 @@ def think(user_input: str, model: str = None) -> str:
     except Exception:
         pass
 
+    # Ollama — zero-cost local fallback (auto-detected, no config needed)
+    try:
+        r = _think_ollama(user_input)
+        if r:
+            save_message("jarvis", r)
+            return r
+    except Exception:
+        pass
+
     return "I'm having trouble reaching my systems right now. Try again in a moment."
 
 def think_stream(user_input: str, model: str = None):
@@ -863,6 +985,15 @@ def think_stream(user_input: str, model: str = None):
                     return
                 except Exception:
                     pass
+        # Ollama streaming — real tokens if running locally, silent if not
+        _ollama_chunks = []
+        for _chunk in _think_ollama_stream(user_input):
+            _ollama_chunks.append(_chunk)
+            yield _chunk
+        if _ollama_chunks:
+            save_message("jarvis", "".join(_ollama_chunks))
+            return
+        # Hard fallback — full blocking chain (Grok/Groq/Mistral/Haiku/Ollama blocking)
         yield think(user_input, model=chosen_model)
 
 
