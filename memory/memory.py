@@ -197,6 +197,30 @@ def get_facts() -> str:
     return "\n".join(f"[{cat}] {key}: {val}" for cat, key, val in rows)
 
 
+# ── Session Summary ────────────────────────────────────────────────────────────
+
+def save_session_summary(summary: str):
+    """Overwrite the session summary. Only the most recent session matters."""
+    _meta_set("session_summary", summary)
+    _meta_set("session_summary_at", datetime.now().isoformat())
+
+
+def get_last_session_summary() -> str:
+    """Return the last session summary if saved within 14 days, else empty."""
+    summary = _meta_get("session_summary", "")
+    if not summary:
+        return ""
+    saved_at = _meta_get("session_summary_at", "")
+    if saved_at:
+        try:
+            saved_dt = datetime.fromisoformat(saved_at)
+            if (datetime.now() - saved_dt).days > 14:
+                return ""
+        except Exception:
+            pass
+    return summary
+
+
 # ── Actions Performed Log ──────────────────────────────────────────────────────
 
 def log_action(tool_name: str, args: dict, result: str, success: bool = True):

@@ -364,9 +364,16 @@ def select_model(user_input: str) -> str:
     return CLAUDE_MODELS["sonnet"]
 
 def _build_context(user_input: str = "", include_history: bool = True) -> str:
+    from memory.memory import get_last_session_summary
     facts = get_facts()
     wiki = get_context(user_input) if user_input else ""
     ctx = ""
+
+    # Last session briefing — injected first so JARVIS picks up exactly where we left off
+    summary = get_last_session_summary()
+    if summary:
+        ctx += f"\nLAST SESSION BRIEFING:\n{summary}\n"
+
     location = os.environ.get("JARVIS_LOCATION", "").strip()
     timezone = os.environ.get("JARVIS_TIMEZONE", "").strip()
     if location:
