@@ -442,35 +442,94 @@ body{display:flex;flex-direction:column;}
 .thinking .bubble span:nth-child(3){animation-delay:0.44s;}
 
 /* ═══════════════════════════════════════════════════════════
-   AGENT SIDE PANELS (placeholder — Phase 4 will style fully)
+   AGENT SIDE PANELS — full cinematic treatment
 ═══════════════════════════════════════════════════════════ */
 .agent-panel{
   flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:12px 8px;border-bottom:1px solid rgba(0,255,255,0.06);
-  position:relative;overflow:hidden;transition:all 0.4s ease-out;
-  opacity:0.28;
+  padding:16px 8px 14px;border-bottom:1px solid rgba(255,255,255,0.04);
+  position:relative;overflow:hidden;
+  transition:opacity 0.5s ease-out, box-shadow 0.5s ease-out, background 0.5s ease-out;
+  opacity:0.22;cursor:default;
 }
 .agent-panel:last-child{border-bottom:none;}
+
+/* Scan-line texture overlay per panel */
+.agent-panel::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);
+}
+
+/* Left-edge color bar */
 .ap-color-strip{
   position:absolute;top:0;bottom:0;left:0;width:2px;
-  opacity:0.4;transition:opacity 0.4s;
+  opacity:0.35;transition:opacity 0.5s, box-shadow 0.5s;
 }
+
+/* Agent avatar circle */
+.ap-avatar{
+  width:42px;height:42px;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,0.1);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:bold;letter-spacing:1px;
+  color:rgba(255,255,255,0.3);
+  transition:all 0.5s ease-out;
+  position:relative;z-index:1;
+}
+
 .ap-name{
-  font-size:9px;letter-spacing:4px;font-weight:bold;
-  color:rgba(255,255,255,0.5);margin-top:6px;transition:all 0.4s;
+  font-size:8px;letter-spacing:4px;font-weight:bold;
+  color:rgba(255,255,255,0.3);margin-top:8px;
+  transition:all 0.5s;position:relative;z-index:1;
+  text-align:center;
 }
-.ap-role{font-size:6px;letter-spacing:2px;color:rgba(255,255,255,0.2);margin-top:3px;}
-.ap-status{font-size:6px;letter-spacing:2px;color:rgba(0,255,255,0.25);margin-top:2px;transition:all 0.4s;}
+.ap-role{
+  font-size:5px;letter-spacing:1.8px;color:rgba(255,255,255,0.14);
+  margin-top:3px;text-align:center;line-height:1.5;
+  position:relative;z-index:1;
+}
+.ap-status{
+  font-size:5.5px;letter-spacing:2px;color:rgba(255,255,255,0.18);
+  margin-top:6px;transition:all 0.5s;position:relative;z-index:1;
+}
 .ap-pulse{
-  width:5px;height:5px;border-radius:50%;margin-top:8px;
-  opacity:0;transition:opacity 0.3s;
+  width:6px;height:6px;border-radius:50%;margin-top:10px;
+  opacity:0;transition:opacity 0.4s;position:relative;z-index:1;
 }
-/* Active agent panel */
-.agent-panel.speaking{opacity:1;}
+
+/* ── ACTIVE STATE ── */
+.agent-panel.speaking{
+  opacity:1;
+}
 .agent-panel.speaking .ap-color-strip{opacity:1;}
-.agent-panel.speaking .ap-name{color:#fff;}
-.agent-panel.speaking .ap-pulse{opacity:1;animation:apPulse 0.8s ease-in-out infinite alternate;}
-@keyframes apPulse{from{transform:scale(1);opacity:0.7;}to{transform:scale(1.8);opacity:1;}}
+.agent-panel.speaking .ap-name{color:#fff;letter-spacing:5px;}
+.agent-panel.speaking .ap-status{color:rgba(255,255,255,0.7);}
+.agent-panel.speaking .ap-pulse{opacity:1;animation:apPulse 0.75s ease-in-out infinite alternate;}
+
+@keyframes apPulse{
+  from{transform:scale(1);opacity:0.6;}
+  to{transform:scale(2.2);opacity:1;}
+}
+
+/* Holographic flicker animation for panels */
+@keyframes holoFlicker{
+  0%,100%{opacity:1;}
+  92%{opacity:1;}
+  93%{opacity:0.85;}
+  94%{opacity:1;}
+  97%{opacity:0.9;}
+  98%{opacity:1;}
+}
+#agents-left .agent-panel:first-child{animation:holoFlicker 8s ease-in-out 1.2s infinite;}
+#agents-left .agent-panel:last-child{animation:holoFlicker 11s ease-in-out 3.5s infinite;}
+#agents-right .agent-panel:first-child{animation:holoFlicker 9s ease-in-out 5s infinite;}
+#agents-right .agent-panel:last-child{animation:holoFlicker 7s ease-in-out 0.5s infinite;}
+
+/* Interface color wash — full-screen tint when agent speaks */
+#accent-wash{
+  position:fixed;inset:0;pointer-events:none;z-index:5;
+  opacity:0;transition:opacity 0.6s ease-out;
+}
+#accent-wash.active{opacity:1;}
 
 /* ═══════════════════════════════════════════════════════════
    INPUT — z:70
@@ -704,6 +763,7 @@ body{display:flex;flex-direction:column;}
   <div id="agents-left">
     <div class="agent-panel" id="ap-FRIDAY" data-agent="FRIDAY">
       <div class="ap-color-strip" style="background:var(--friday);"></div>
+      <div class="ap-avatar" style="border-color:rgba(255,85,0,0.25);color:rgba(255,85,0,0.4);">FRI</div>
       <div class="ap-name">FRIDAY</div>
       <div class="ap-role">RECON · DATA · SPEED</div>
       <div class="ap-status">STANDBY</div>
@@ -711,6 +771,7 @@ body{display:flex;flex-direction:column;}
     </div>
     <div class="agent-panel" id="ap-VERONICA" data-agent="VERONICA">
       <div class="ap-color-strip" style="background:var(--veronica);"></div>
+      <div class="ap-avatar" style="border-color:rgba(176,64,255,0.25);color:rgba(176,64,255,0.4);">VER</div>
       <div class="ap-name">VERONICA</div>
       <div class="ap-role">RISK · STRATEGY</div>
       <div class="ap-status">STANDBY</div>
@@ -763,6 +824,7 @@ body{display:flex;flex-direction:column;}
   <div id="agents-right">
     <div class="agent-panel" id="ap-KAREN" data-agent="KAREN">
       <div class="ap-color-strip" style="background:var(--karen);"></div>
+      <div class="ap-avatar" style="border-color:rgba(0,204,102,0.25);color:rgba(0,204,102,0.4);">KAR</div>
       <div class="ap-name">KAREN</div>
       <div class="ap-role">GUIDANCE · PEOPLE</div>
       <div class="ap-status">STANDBY</div>
@@ -770,6 +832,7 @@ body{display:flex;flex-direction:column;}
     </div>
     <div class="agent-panel" id="ap-JARVIS" data-agent="JARVIS">
       <div class="ap-color-strip" style="background:var(--cyan);"></div>
+      <div class="ap-avatar" style="border-color:rgba(0,255,255,0.25);color:rgba(0,255,255,0.4);">JAR</div>
       <div class="ap-name">JARVIS</div>
       <div class="ap-role">COMMAND · SYNTHESIS</div>
       <div class="ap-status">ONLINE</div>
@@ -1364,6 +1427,18 @@ function setAgent(name){
     panel.classList.add('speaking');
     panel.querySelector('.ap-status').textContent='SPEAKING';
     panel.style.boxShadow=`0 0 28px ${c}28`;
+    // Brighten avatar on active panel
+    const av=panel.querySelector('.ap-avatar');
+    if(av){av.style.borderColor=c+'66';av.style.color=c;av.style.boxShadow=`0 0 12px ${c}55`;}
+  }
+  // Interface color wash
+  const wash=document.getElementById('accent-wash');
+  if(wash){
+    const [r,g,b]=accentRGB;
+    wash.style.background=`rgba(${r},${g},${b},0.04)`;
+    wash.classList.add('active');
+    clearTimeout(wash._t);
+    wash._t=setTimeout(()=>wash.classList.remove('active'),1200);
   }
 }
 
@@ -1378,6 +1453,8 @@ function setIdle(){
     p.style.boxShadow='';
     const st=p.querySelector('.ap-status');
     if(st) st.textContent=p.dataset.agent==='JARVIS'?'ONLINE':'STANDBY';
+    const av=p.querySelector('.ap-avatar');
+    if(av){av.style.borderColor='';av.style.color='';av.style.boxShadow='';}
   });
 }
 
@@ -2857,5 +2934,7 @@ function sendFile(file) {
     .catch(e => { if (e.name !== 'AbortError') console.error('upload error', e); });
 }
 </script>
+  <!-- Interface color wash overlay — activated on agent change -->
+  <div id="accent-wash"></div>
 </body>
 </html>
