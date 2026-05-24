@@ -150,9 +150,25 @@ body{display:flex;flex-direction:column;}
    RING ZONE — z:20
 ═══════════════════════════════════════════════════════════ */
 #ring-zone{
-  flex-shrink:0;height:330px;
+  flex-shrink:0;height:410px;
   display:flex;align-items:center;justify-content:center;
   position:relative;z-index:20;
+  background:radial-gradient(ellipse at 50% 55%, rgba(0,255,255,0.035) 0%, transparent 68%);
+}
+/* Arc reactor energy pulse — expands outward from ring and fades */
+#arc-pulse{
+  position:absolute;width:340px;height:340px;border-radius:50%;
+  border:1px solid rgba(0,255,255,0.22);pointer-events:none;
+  animation:arcPulse 5s ease-out infinite;
+}
+#arc-pulse-2{
+  position:absolute;width:340px;height:340px;border-radius:50%;
+  border:1px solid rgba(0,255,255,0.10);pointer-events:none;
+  animation:arcPulse 5s ease-out 2.5s infinite;
+}
+@keyframes arcPulse{
+  0%{transform:scale(0.85);opacity:0.7;}
+  100%{transform:scale(1.55);opacity:0;}
 }
 #ring-zone::before{content:'';position:absolute;top:10px;left:12px;width:20px;height:20px;border-top:1.5px solid rgba(0,255,255,0.3);border-left:1.5px solid rgba(0,255,255,0.3);transition:border-color 0.4s;}
 #ring-zone::after{content:'';position:absolute;top:10px;right:12px;width:20px;height:20px;border-top:1.5px solid rgba(0,255,255,0.3);border-right:1.5px solid rgba(0,255,255,0.3);transition:border-color 0.4s;}
@@ -167,7 +183,7 @@ body{display:flex;flex-direction:column;}
 #ring-hint.listening{color:rgba(0,255,159,0.9)!important;animation:hintBlink 0.5s ease-in-out infinite alternate;}
 @keyframes hintBlink{from{opacity:0.7;}to{opacity:1;}}
 
-#ring-canvas{width:300px;height:300px;display:block;}
+#ring-canvas{width:360px;height:360px;display:block;}
 #ring-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;}
 #agentName{display:block;font-family:'Courier New',monospace;font-size:12px;font-weight:bold;letter-spacing:5px;color:#00FFFF;text-shadow:0 0 14px rgba(0,255,255,1),0 0 30px rgba(0,255,255,0.5);}
 #agentStat{display:block;font-family:'Courier New',monospace;font-size:6.5px;letter-spacing:3px;color:rgba(0,255,255,0.45);margin-top:4px;}
@@ -708,6 +724,8 @@ body{display:flex;flex-direction:column;}
     <div id="ring-zone">
       <div class="rz-bl"></div>
       <div class="rz-br"></div>
+      <div id="arc-pulse"></div>
+      <div id="arc-pulse-2"></div>
       <div id="ring-wrap">
         <canvas id="ring-canvas" width="300" height="300"></canvas>
         <div id="ring-overlay">
@@ -1045,6 +1063,53 @@ function drawSphere(dotScale=1, glowAmt=0.3, ringOpacity=0.5, rotSpeed=0.006){
   rctx.restore();
 }
 
+// ── WAVEFORM VISUALIZER — drawn inside the ring on every frame ──────────────
+function drawWaveform(){
+  const BARS=32, INNER=48, MAX_H=28;
+  const [ar,ag,ab]=accentRGB;
+  rctx.save();
+  rctx.lineCap='round';
+  for(let i=0;i<BARS;i++){
+    const angle=(i/BARS)*Math.PI*2-Math.PI/2;
+    let amp=0;
+    if(ringState==='listening'&&freqData){
+      const idx=Math.floor((i/BARS)*(freqData.length/2));
+      amp=freqData[idx]/255;
+    }else if(ringState==='speaking'){
+      amp=speakIntensity*(0.35+0.65*Math.abs(Math.sin(Date.now()/85+i*0.45)));
+    }else if(ringState==='thinking'){
+      amp=0.08+0.08*Math.abs(Math.sin(breathT*3+i*0.4));
+    }else{
+      // idle: gentle breathing waveform
+      amp=0.04+0.04*Math.sin(breathT*1.6+i*0.22);
+    }
+    const barH=Math.max(2, amp*MAX_H);
+    const x1=CX+Math.cos(angle)*INNER;
+    const y1=CY+Math.sin(angle)*INNER;
+    const x2=CX+Math.cos(angle)*(INNER+barH);
+    const y2=CY+Math.sin(angle)*(INNER+barH);
+    rctx.beginPath();
+    rctx.moveTo(x1,y1);
+    rctx.lineTo(x2,y2);
+    rctx.strokeStyle=`rgba(${ar},${ag},${ab},${(0.25+amp*0.75).toFixed(3)})`;
+    rctx.lineWidth=2.2;
+    rctx.shadowBlur=amp>0.3?8:0;
+    rctx.shadowColor=`rgb(${ar},${ag},${ab})`;
+    rctx.stroke();
+  }
+  rctx.restore();
+}
+
+// Update arc-pulse ring color to match active agent
+function _updateArcPulseColor(){
+  const [ar,ag,ab]=accentRGB;
+  const col=`rgba(${ar},${ag},${ab},0.22)`;
+  const p1=document.getElementById('arc-pulse');
+  const p2=document.getElementById('arc-pulse-2');
+  if(p1)p1.style.borderColor=col;
+  if(p2)p2.style.borderColor=`rgba(${ar},${ag},${ab},0.10)`;
+}
+
 function setRingState(state){
   ringState=state;
   agentStatEl.textContent=
@@ -1059,6 +1124,7 @@ function rafLoop(now){
   const dt=prevRAF?(now-prevRAF)/1000:0.016;
   prevRAF=now;
 
+  _updateArcPulseColor();
   switch(ringState){
     case 'idle':{
       breathT+=dt;
@@ -1066,6 +1132,7 @@ function rafLoop(now){
       const glow=0.25+0.15*((b+1)/2);
       const sc=1+b*0.004;
       drawSphere(1,glow,0.5+b*0.1,0.004);
+      drawWaveform();
       sScale.target=sc; sScale.tick(dt);
       ringWrap.style.transform=`scale(${sc.toFixed(4)})`;
       break;
@@ -1074,6 +1141,7 @@ function rafLoop(now){
       breathT+=dt;
       const lp=0.92+0.08*Math.abs(Math.sin(breathT*Math.PI/0.55));
       drawSphere(lp,0.55,0.72,0.016);
+      drawWaveform();
       // ringWrap.style.transform driven by audioRaf during listening
       break;
     }
@@ -1081,6 +1149,7 @@ function rafLoop(now){
       breathT+=dt;
       const pulse=0.3+0.2*Math.abs(Math.sin(breathT*Math.PI/0.6));
       drawSphere(0.85,0.55,0.7,0.025);
+      drawWaveform();
       // Scan flash overlay — uses current accent color
       rctx.save();
       rctx.beginPath();
@@ -1101,6 +1170,7 @@ function rafLoop(now){
       sScale.target=target; const sc=sScale.tick(dt);
       const hue=Math.round(12*speakIntensity);
       drawSphere(1+speakIntensity*0.3, 0.5+speakIntensity*0.5, 0.6+speakIntensity*0.3, 0.008+speakIntensity*0.02);
+      drawWaveform();
       ringWrap.style.transform=`scale(${sc.toFixed(4)})`;
       ringCanvas.style.filter=hue?`hue-rotate(${hue}deg)`:'';
       speakIntensity=Math.max(0,speakIntensity-dt*1.2);
@@ -1283,6 +1353,7 @@ function setAgent(name){
   if(centerCol) centerCol.style.boxShadow=`inset 0 0 60px ${c}08`;
   // Ring zone corner brackets adopt agent color
   document.querySelectorAll('#ring-zone::before,#ring-zone::after').forEach(el=>el&&(el.style.borderColor=c));
+  _updateArcPulseColor();
   // Activate agent side panel
   document.querySelectorAll('.agent-panel').forEach(p=>{
     p.classList.remove('speaking');
