@@ -60,15 +60,16 @@ body{display:flex;flex-direction:column;}
 
 #main{flex:1;display:flex;overflow:hidden;position:relative;z-index:20;}
 
-/* LEFT column */
-#left{
-  width:360px;min-width:360px;display:flex;flex-direction:column;
-  border-right:1px solid rgba(0,255,255,0.14);flex-shrink:0;position:relative;z-index:20;
-  box-shadow:2px 0 32px rgba(0,255,255,0.04);
+/* AGENT SIDE COLUMNS */
+#agents-left,#agents-right{
+  width:180px;min-width:180px;flex-shrink:0;display:flex;flex-direction:column;
+  background:rgba(2,6,23,0.98);position:relative;z-index:20;
 }
+#agents-left{border-right:1px solid rgba(0,255,255,0.10);box-shadow:2px 0 24px rgba(0,255,255,0.03);}
+#agents-right{border-left:1px solid rgba(0,255,255,0.10);box-shadow:-2px 0 24px rgba(0,255,255,0.03);}
 
-/* RIGHT column */
-#right{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden;z-index:30;}
+/* CENTER column */
+#center{flex:1;display:flex;flex-direction:column;position:relative;z-index:20;overflow:hidden;}
 
 /* ═══════════════════════════════════════════════════════════
    PROACTIVE ALERT BAR — z:60
@@ -425,6 +426,37 @@ body{display:flex;flex-direction:column;}
 .thinking .bubble span:nth-child(3){animation-delay:0.44s;}
 
 /* ═══════════════════════════════════════════════════════════
+   AGENT SIDE PANELS (placeholder — Phase 4 will style fully)
+═══════════════════════════════════════════════════════════ */
+.agent-panel{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:12px 8px;border-bottom:1px solid rgba(0,255,255,0.06);
+  position:relative;overflow:hidden;transition:all 0.4s ease-out;
+  opacity:0.28;
+}
+.agent-panel:last-child{border-bottom:none;}
+.ap-color-strip{
+  position:absolute;top:0;bottom:0;left:0;width:2px;
+  opacity:0.4;transition:opacity 0.4s;
+}
+.ap-name{
+  font-size:9px;letter-spacing:4px;font-weight:bold;
+  color:rgba(255,255,255,0.5);margin-top:6px;transition:all 0.4s;
+}
+.ap-role{font-size:6px;letter-spacing:2px;color:rgba(255,255,255,0.2);margin-top:3px;}
+.ap-status{font-size:6px;letter-spacing:2px;color:rgba(0,255,255,0.25);margin-top:2px;transition:all 0.4s;}
+.ap-pulse{
+  width:5px;height:5px;border-radius:50%;margin-top:8px;
+  opacity:0;transition:opacity 0.3s;
+}
+/* Active agent panel */
+.agent-panel.speaking{opacity:1;}
+.agent-panel.speaking .ap-color-strip{opacity:1;}
+.agent-panel.speaking .ap-name{color:#fff;}
+.agent-panel.speaking .ap-pulse{opacity:1;animation:apPulse 0.8s ease-in-out infinite alternate;}
+@keyframes apPulse{from{transform:scale(1);opacity:0.7;}to{transform:scale(1.8);opacity:1;}}
+
+/* ═══════════════════════════════════════════════════════════
    INPUT — z:70
 ═══════════════════════════════════════════════════════════ */
 #inp-area{
@@ -652,8 +684,26 @@ body{display:flex;flex-direction:column;}
 <!-- MAIN LAYOUT -->
 <div id="main">
 
-  <!-- LEFT: Ring + Chat -->
-  <div id="left">
+  <!-- LEFT AGENT COLUMN: FRIDAY + VERONICA -->
+  <div id="agents-left">
+    <div class="agent-panel" id="ap-FRIDAY" data-agent="FRIDAY">
+      <div class="ap-color-strip" style="background:var(--friday);"></div>
+      <div class="ap-name">FRIDAY</div>
+      <div class="ap-role">RECON · DATA · SPEED</div>
+      <div class="ap-status">STANDBY</div>
+      <div class="ap-pulse" style="background:var(--friday);"></div>
+    </div>
+    <div class="agent-panel" id="ap-VERONICA" data-agent="VERONICA">
+      <div class="ap-color-strip" style="background:var(--veronica);"></div>
+      <div class="ap-name">VERONICA</div>
+      <div class="ap-role">RISK · STRATEGY</div>
+      <div class="ap-status">STANDBY</div>
+      <div class="ap-pulse" style="background:var(--veronica);"></div>
+    </div>
+  </div><!-- /agents-left -->
+
+  <!-- CENTER: Ring + Chat + Input -->
+  <div id="center">
 
     <div id="ring-zone">
       <div class="rz-bl"></div>
@@ -677,7 +727,7 @@ body{display:flex;flex-direction:column;}
     <!-- Messages -->
     <div id="msgs"></div>
 
-    <!-- Floating cards (inside left column) -->
+    <!-- Floating cards (inside center column) -->
     <div id="float-cards"></div>
 
     <!-- Input -->
@@ -689,109 +739,112 @@ body{display:flex;flex-direction:column;}
       <button id="send" onclick="doSend()">↑</button>
     </div>
 
-  </div><!-- /left -->
+  </div><!-- /center -->
 
-  <!-- RIGHT: Geo + Floor + Panels -->
-  <div id="right">
-
-    <!-- Geospatial panel -->
-    <div id="geo-panel">
-      <div class="geo-row">
-        <span class="geo-sym">◈</span>
-        <span>ADDIS ABABA, ETH &nbsp;—&nbsp; 9.0248° N &nbsp;—&nbsp; 38.7451° E</span>
-      </div>
-      <div class="geo-row">
-        <span class="geo-sym" style="animation-delay:1s">◈</span>
-        <span>LOCAL <span id="geoTime">--:--</span> EAT</span>
-      </div>
-      <div class="geo-row">
-        <span class="geo-sym" style="animation-delay:2s">◈</span>
-        <span>CONTEXT: <span id="geoContext">HOME OFFICE · PRIORITY FEED ACTIVE</span></span>
-      </div>
+  <!-- RIGHT AGENT COLUMN: KAREN + JARVIS -->
+  <div id="agents-right">
+    <div class="agent-panel" id="ap-KAREN" data-agent="KAREN">
+      <div class="ap-color-strip" style="background:var(--karen);"></div>
+      <div class="ap-name">KAREN</div>
+      <div class="ap-role">GUIDANCE · PEOPLE</div>
+      <div class="ap-status">STANDBY</div>
+      <div class="ap-pulse" style="background:var(--karen);"></div>
+    </div>
+    <div class="agent-panel" id="ap-JARVIS" data-agent="JARVIS">
+      <div class="ap-color-strip" style="background:var(--cyan);"></div>
+      <div class="ap-name">JARVIS</div>
+      <div class="ap-role">COMMAND · SYNTHESIS</div>
+      <div class="ap-status">ONLINE</div>
+      <div class="ap-pulse" style="background:var(--cyan);"></div>
     </div>
 
-    <!-- Systems Panel: circular gauges + Apple Music -->
-    <div id="bio-panel">
-      <div class="gauges-grid">
-        <!-- Heart Rate (webcam rPPG) -->
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 80 80">
-            <circle class="gauge-track" cx="40" cy="40" r="34"/>
-            <circle class="gauge-arc" id="g-hr-arc" cx="40" cy="40" r="34"/>
-            <text class="gauge-val" id="g-hr-val" x="40" y="37">--</text>
-            <text class="gauge-unit" x="40" y="51">BPM</text>
-          </svg>
-          <div class="gauge-label">HEART RATE</div>
+    <!-- Data sidebar: panels + gauges + timeline (hidden until redesigned in later phases) -->
+    <div id="data-sidebar" style="display:none;">
+      <!-- Geospatial -->
+      <div id="geo-panel">
+        <div class="geo-row">
+          <span class="geo-sym">◈</span>
+          <span>ADDIS ABABA, ETH &nbsp;—&nbsp; 9.0248° N &nbsp;—&nbsp; 38.7451° E</span>
         </div>
-        <!-- Battery -->
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 80 80">
-            <circle class="gauge-track" cx="40" cy="40" r="34"/>
-            <circle class="gauge-arc" id="g-bat-arc" cx="40" cy="40" r="34"/>
-            <text class="gauge-val" id="g-bat-val" x="40" y="37">--</text>
-            <text class="gauge-unit" x="40" y="51">BATT</text>
-          </svg>
-          <div class="gauge-label">POWER</div>
+        <div class="geo-row">
+          <span class="geo-sym" style="animation-delay:1s">◈</span>
+          <span>LOCAL <span id="geoTime">--:--</span> EAT</span>
         </div>
-        <!-- CPU -->
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 80 80">
-            <circle class="gauge-track" cx="40" cy="40" r="34"/>
-            <circle class="gauge-arc" id="g-cpu-arc" cx="40" cy="40" r="34"/>
-            <text class="gauge-val" id="g-cpu-val" x="40" y="37">--</text>
-            <text class="gauge-unit" x="40" y="51">CPU</text>
-          </svg>
-          <div class="gauge-label">PROCESSOR</div>
-        </div>
-        <!-- Music progress -->
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 80 80">
-            <circle class="gauge-track" cx="40" cy="40" r="34"/>
-            <circle class="gauge-arc" id="g-mus-arc" cx="40" cy="40" r="34" style="stroke:rgba(255,191,0,0.7);"/>
-            <text class="gauge-icon" id="g-mus-icon" x="40" y="40">♪</text>
-          </svg>
-          <div class="gauge-label" id="g-mus-label">MUSIC</div>
+        <div class="geo-row">
+          <span class="geo-sym" style="animation-delay:2s">◈</span>
+          <span>CONTEXT: <span id="geoContext">HOME OFFICE · PRIORITY FEED ACTIVE</span></span>
         </div>
       </div>
-      <!-- Music info -->
-      <div id="music-strip">
-        <div id="music-track">NO TRACK PLAYING</div>
-        <div id="music-artist"></div>
-        <div id="music-btns">
-          <button onclick="musicCmd('prev')" title="Previous">⏮</button>
-          <button id="music-play-btn" onclick="musicCmd('toggle')" title="Play/Pause">⏯</button>
-          <button onclick="musicCmd('next')" title="Next">⏭</button>
+      <!-- Systems Panel -->
+      <div id="bio-panel">
+        <div class="gauges-grid">
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 80 80">
+              <circle class="gauge-track" cx="40" cy="40" r="34"/>
+              <circle class="gauge-arc" id="g-hr-arc" cx="40" cy="40" r="34"/>
+              <text class="gauge-val" id="g-hr-val" x="40" y="37">--</text>
+              <text class="gauge-unit" x="40" y="51">BPM</text>
+            </svg>
+            <div class="gauge-label">HEART RATE</div>
+          </div>
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 80 80">
+              <circle class="gauge-track" cx="40" cy="40" r="34"/>
+              <circle class="gauge-arc" id="g-bat-arc" cx="40" cy="40" r="34"/>
+              <text class="gauge-val" id="g-bat-val" x="40" y="37">--</text>
+              <text class="gauge-unit" x="40" y="51">BATT</text>
+            </svg>
+            <div class="gauge-label">POWER</div>
+          </div>
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 80 80">
+              <circle class="gauge-track" cx="40" cy="40" r="34"/>
+              <circle class="gauge-arc" id="g-cpu-arc" cx="40" cy="40" r="34"/>
+              <text class="gauge-val" id="g-cpu-val" x="40" y="37">--</text>
+              <text class="gauge-unit" x="40" y="51">CPU</text>
+            </svg>
+            <div class="gauge-label">PROCESSOR</div>
+          </div>
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 80 80">
+              <circle class="gauge-track" cx="40" cy="40" r="34"/>
+              <circle class="gauge-arc" id="g-mus-arc" cx="40" cy="40" r="34" style="stroke:rgba(255,191,0,0.7);"/>
+              <text class="gauge-icon" id="g-mus-icon" x="40" y="40">♪</text>
+            </svg>
+            <div class="gauge-label" id="g-mus-label">MUSIC</div>
+          </div>
+        </div>
+        <div id="music-strip">
+          <div id="music-track">NO TRACK PLAYING</div>
+          <div id="music-artist"></div>
+          <div id="music-btns">
+            <button onclick="musicCmd('prev')" title="Previous">⏮</button>
+            <button id="music-play-btn" onclick="musicCmd('toggle')" title="Play/Pause">⏯</button>
+            <button onclick="musicCmd('next')" title="Next">⏭</button>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- Floor plan removed — no real sensor input -->
-
-    <!-- Parallax wrapper: panels move at 0.5x, iris stays fixed -->
-    <div id="parallax-wrap">
-
-      <!-- Data panels -->
-      <div id="panels-wrap">
-        <div id="right-empty">
-          <div class="empty-ring"><div class="empty-inner">J</div></div>
-          <div class="empty-lbl">AWAITING INPUT</div>
+      <!-- Parallax wrapper -->
+      <div id="parallax-wrap">
+        <div id="panels-wrap">
+          <div id="right-empty">
+            <div class="empty-ring"><div class="empty-inner">J</div></div>
+            <div class="empty-lbl">AWAITING INPUT</div>
+          </div>
         </div>
-      </div>
-
-      <!-- Predictive Timeline — amber = JARVIS autonomous only -->
-      <div id="pred-timeline">
-        <div id="pred-label">
-          <span id="pred-label-sym">◈</span>
-          <span id="pred-label-txt">JARVIS AUTONOMOUS</span>
+        <div id="pred-timeline">
+          <div id="pred-label">
+            <span id="pred-label-sym">◈</span>
+            <span id="pred-label-txt">JARVIS AUTONOMOUS</span>
+          </div>
+          <div id="pred-ticker-wrap">
+            <div id="pred-ticker"></div>
+          </div>
         </div>
-        <div id="pred-ticker-wrap">
-          <div id="pred-ticker"></div>
-        </div>
-      </div>
+      </div><!-- /parallax-wrap -->
+    </div><!-- /data-sidebar -->
 
-    </div><!-- /parallax-wrap -->
-
-  </div><!-- /right -->
+  </div><!-- /agents-right -->
 
 </div><!-- /main -->
 
@@ -1225,18 +1278,36 @@ function setAgent(name){
   document.getElementById('agent-status-label').textContent=`${name} · SPEAKING`;
   document.getElementById('agent-status-label').style.color=c;
   document.querySelectorAll('.rz-bl,.rz-br').forEach(el=>el.style.borderColor=c);
-  // Per-agent glow on the left column border
-  const leftCol=document.getElementById('left');
-  if(leftCol) leftCol.style.boxShadow=`2px 0 32px ${c}18`;
+  // Center column ambient glow
+  const centerCol=document.getElementById('center');
+  if(centerCol) centerCol.style.boxShadow=`inset 0 0 60px ${c}08`;
   // Ring zone corner brackets adopt agent color
   document.querySelectorAll('#ring-zone::before,#ring-zone::after').forEach(el=>el&&(el.style.borderColor=c));
+  // Activate agent side panel
+  document.querySelectorAll('.agent-panel').forEach(p=>{
+    p.classList.remove('speaking');
+    p.querySelector('.ap-status').textContent='STANDBY';
+  });
+  const panel=document.getElementById('ap-'+name);
+  if(panel){
+    panel.classList.add('speaking');
+    panel.querySelector('.ap-status').textContent='SPEAKING';
+    panel.style.boxShadow=`0 0 28px ${c}28`;
+  }
 }
 
 function setIdle(){
   agentStatEl.textContent='ONLINE';
   document.getElementById('agent-status-label').textContent=`${curAgent} · READY`;
-  const leftCol=document.getElementById('left');
-  if(leftCol) leftCol.style.boxShadow='2px 0 32px rgba(0,255,255,0.04)';
+  const centerCol=document.getElementById('center');
+  if(centerCol) centerCol.style.boxShadow='';
+  // Deactivate all agent panels
+  document.querySelectorAll('.agent-panel').forEach(p=>{
+    p.classList.remove('speaking');
+    p.style.boxShadow='';
+    const st=p.querySelector('.ap-status');
+    if(st) st.textContent=p.dataset.agent==='JARVIS'?'ONLINE':'STANDBY';
+  });
 }
 
 // ════════════════════════════════════════════════════════
@@ -2649,7 +2720,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }, 600);
 
   // Drag-and-drop file onto chat
-  const left = document.getElementById('left');
+  const left = document.getElementById('center');
   if (left) {
     left.addEventListener('dragover', e => { e.preventDefault(); left.style.outline = '1px solid rgba(0,255,255,0.4)'; });
     left.addEventListener('dragleave', () => { left.style.outline = ''; });
