@@ -347,7 +347,7 @@ html, body {
 /* ── INPUT STRIP ── */
 #input-strip {
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-  width: 620px; height: 64px;
+  width: min(620px, calc(100% - 40px)); height: 64px;
   display: flex; align-items: center; gap: 16px;
   z-index: 20; padding: 0 16px;
   background: rgba(0,2,10,0.6);
@@ -530,14 +530,57 @@ html, body {
 }
 
 /* ── RESPONSIVE ── */
-@media (max-width: 1100px) {
-  .agent-panel { width: 170px; }
-  #chat-panel { max-width: 400px; }
-  #input-strip { width: 500px; }
+
+/* Input strip always fits the window */
+#input-strip {
+  width: min(620px, calc(100% - 40px));
 }
-@media (max-width: 800px) {
-  .agent-panel { width: 140px; height: 200px; }
+
+/* Agent panels scale fluidly with viewport */
+.agent-panel {
+  width: clamp(110px, 14vw, 210px);
+}
+
+/* Ring canvas scales with viewport height */
+#ring-canvas, #wave-canvas {
+  max-width: 100%;
+  max-height: 50vh;
+}
+
+@media (max-width: 1200px) {
+  #chat-panel { max-width: 480px; }
+}
+
+@media (max-width: 1000px) {
+  #chat-panel { max-width: 360px; }
+  #lower-section { padding: 0 12px; gap: 0; }
+  .agent-panel { height: 210px; }
+  #lower-section { height: 220px; }
+}
+
+@media (max-width: 780px) {
+  /* Hide outer panels, keep inner two + chat */
+  #ap-FRIDAY, #ap-JARVIS { display: none; }
+  .agent-panel { width: clamp(100px, 18vw, 180px); height: 200px; }
   #lower-section { height: 210px; }
+  #chat-panel { max-width: none; }
+}
+
+@media (max-width: 560px) {
+  /* Chat only — hide all agent panels */
+  .agent-panel { display: none; }
+  #chat-panel { max-width: none; margin: 0 8px; }
+  #lower-section { height: 200px; padding: 0 8px; }
+}
+
+/* Short windows — shrink ring */
+@media (max-height: 700px) {
+  #lower-section { height: 200px; }
+  .agent-panel { height: 185px; }
+}
+@media (max-height: 560px) {
+  #ring-zone { display: none; }
+  #lower-section { height: 100%; flex: 1; }
 }
 
 /* ── IMAGE POPUP PANELS ── */
@@ -1068,7 +1111,22 @@ function positionBottomOrb() {
   zone.style.top  = (rect.top - 56) + 'px';
 }
 
+function resizeRingCanvas() {
+  const zone = document.getElementById('ring-zone');
+  const lowerH = 260;
+  const availH = Math.max(zone.clientHeight - 20, 100);
+  const availW = Math.min(zone.clientWidth * 0.85, window.innerWidth * 0.6);
+  const size = Math.round(Math.min(availH, availW, 520));
+  if (ringCanvas.width !== size) {
+    ringCanvas.width  = size;
+    ringCanvas.height = size;
+    waveCanvas.width  = Math.round(size * 0.615);
+    waveCanvas.height = Math.round(size * 0.154);
+  }
+}
+
 function layoutOverlays() {
+  resizeRingCanvas();
   positionWaveCanvas();
   positionOrb();
   positionBottomOrb();
@@ -1080,8 +1138,11 @@ setTimeout(layoutOverlays, 100);
 let ringTime = 0;
 
 function drawRing() {
-  rctx.clearRect(0, 0, 520, 520);
-  const cx = 260, cy = 260;
+  const SIZE = ringCanvas.width || 520;
+  const sc = SIZE / 520;
+  rctx.clearRect(0, 0, SIZE, SIZE);
+  const cx = SIZE / 2, cy = SIZE / 2;
+  const S = v => v * sc;  // scale helper
 
   // Speed based on state
   let spd = 0.004;
@@ -1095,12 +1156,12 @@ function drawRing() {
   const [r, g, b] = ac.rgb.split(',').map(Number);
 
   // ── OUTER GLOW HALO ──
-  const halo = rctx.createRadialGradient(cx, cy, 200, cx, cy, 260);
+  const halo = rctx.createRadialGradient(cx, cy, S(200), cx, cy, S(260));
   halo.addColorStop(0, `rgba(${r},${g},${b},0.12)`);
   halo.addColorStop(0.5, `rgba(${r},${g},${b},0.06)`);
   halo.addColorStop(1, 'transparent');
   rctx.fillStyle = halo;
-  rctx.beginPath(); rctx.arc(cx, cy, 260, 0, Math.PI * 2); rctx.fill();
+  rctx.beginPath(); rctx.arc(cx, cy, S(260), 0, Math.PI * 2); rctx.fill();
 
   // ── MECHANICAL TEETH OUTER ──
   rctx.save();
@@ -1108,8 +1169,8 @@ function drawRing() {
   for (let i = 0; i < teeth; i++) {
     const angle = (i / teeth) * Math.PI * 2 + ringRot;
     const even  = i % 2 === 0;
-    const inner = even ? 228 : 224;
-    const outer = even ? 240 : 234;
+    const inner = S(even ? 228 : 224);
+    const outer = S(even ? 240 : 234);
     const alpha = even ? 0.55 : 0.25;
     rctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
     rctx.lineWidth = even ? 1.5 : 0.8;
@@ -1124,9 +1185,9 @@ function drawRing() {
   rctx.save();
   rctx.strokeStyle = `rgba(${r},${g},${b},0.7)`;
   rctx.lineWidth = 2.5;
-  rctx.shadowBlur = 20;
+  rctx.shadowBlur = S(20);
   rctx.shadowColor = `rgba(${r},${g},${b},0.8)`;
-  rctx.beginPath(); rctx.arc(cx, cy, 222, 0, Math.PI * 2); rctx.stroke();
+  rctx.beginPath(); rctx.arc(cx, cy, S(222), 0, Math.PI * 2); rctx.stroke();
   rctx.restore();
 
   // ── INNER TEETH ──
@@ -1137,8 +1198,8 @@ function drawRing() {
     rctx.strokeStyle = `rgba(${r},${g},${b},0.2)`;
     rctx.lineWidth = 1;
     rctx.beginPath();
-    rctx.moveTo(cx + Math.cos(angle) * 196, cy + Math.sin(angle) * 196);
-    rctx.lineTo(cx + Math.cos(angle) * 204, cy + Math.sin(angle) * 204);
+    rctx.moveTo(cx + Math.cos(angle) * S(196), cy + Math.sin(angle) * S(196));
+    rctx.lineTo(cx + Math.cos(angle) * S(204), cy + Math.sin(angle) * S(204));
     rctx.stroke();
   }
   rctx.restore();
@@ -1155,9 +1216,9 @@ function drawRing() {
     rctx.save();
     rctx.strokeStyle = `rgba(${r},${g},${b},${rl.alpha})`;
     rctx.lineWidth = rl.lw;
-    rctx.setLineDash(rl.dash);
+    rctx.setLineDash(rl.dash.map(S));
     rctx.lineDashOffset = -rl.speed * 100;
-    rctx.beginPath(); rctx.arc(cx, cy, rl.radius, 0, Math.PI * 2); rctx.stroke();
+    rctx.beginPath(); rctx.arc(cx, cy, S(rl.radius), 0, Math.PI * 2); rctx.stroke();
     rctx.restore();
   });
 
@@ -1170,7 +1231,7 @@ function drawRing() {
     rctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
     rctx.lineWidth = 2;
     rctx.setLineDash([]);
-    rctx.beginPath(); rctx.arc(cx, cy, 208, a1, a2); rctx.stroke();
+    rctx.beginPath(); rctx.arc(cx, cy, S(208), a1, a2); rctx.stroke();
   }
   rctx.restore();
 
@@ -1179,52 +1240,51 @@ function drawRing() {
   const radLines = 24;
   for (let i = 0; i < radLines; i++) {
     const angle = (i / radLines) * Math.PI * 2 + ringRot * 0.2;
-    const len   = 15 + (i % 3 === 0 ? 20 : 0);
+    const len   = S(15 + (i % 3 === 0 ? 20 : 0));
     rctx.strokeStyle = `rgba(${r},${g},${b},${i % 3 === 0 ? 0.4 : 0.15})`;
     rctx.lineWidth = i % 3 === 0 ? 1.5 : 0.8;
     rctx.beginPath();
-    rctx.moveTo(cx + Math.cos(angle) * 100, cy + Math.sin(angle) * 100);
-    rctx.lineTo(cx + Math.cos(angle) * (100 + len), cy + Math.sin(angle) * (100 + len));
+    rctx.moveTo(cx + Math.cos(angle) * S(100), cy + Math.sin(angle) * S(100));
+    rctx.lineTo(cx + Math.cos(angle) * (S(100) + len), cy + Math.sin(angle) * (S(100) + len));
     rctx.stroke();
   }
   rctx.restore();
 
   // ── ORBITING ENERGY NODES ──
   const nodes = [
-    { a: ringRot * 2.5,    r: 215, size: 35, bright: 0.9 },
-    { a: ringRot * 2.5 + Math.PI, r: 215, size: 22, bright: 0.6 },
-    { a: -ringRot * 1.8 + Math.PI * 0.5, r: 215, size: 18, bright: 0.5 },
+    { a: ringRot * 2.5,                    r: 215, size: 35, bright: 0.9 },
+    { a: ringRot * 2.5 + Math.PI,          r: 215, size: 22, bright: 0.6 },
+    { a: -ringRot * 1.8 + Math.PI * 0.5,  r: 215, size: 18, bright: 0.5 },
   ];
   nodes.forEach(n => {
-    const nx = cx + Math.cos(n.a) * n.r;
-    const ny = cy + Math.sin(n.a) * n.r;
-    const ng = rctx.createRadialGradient(nx, ny, 0, nx, ny, n.size);
+    const nx = cx + Math.cos(n.a) * S(n.r);
+    const ny = cy + Math.sin(n.a) * S(n.r);
+    const ns = S(n.size);
+    const ng = rctx.createRadialGradient(nx, ny, 0, nx, ny, ns);
     ng.addColorStop(0, `rgba(${r},${g},${b},${n.bright})`);
     ng.addColorStop(0.4, `rgba(${r},${g},${b},${n.bright * 0.3})`);
     ng.addColorStop(1, 'transparent');
     rctx.fillStyle = ng;
-    rctx.beginPath(); rctx.arc(nx, ny, n.size, 0, Math.PI * 2); rctx.fill();
-
-    // Node dot
+    rctx.beginPath(); rctx.arc(nx, ny, ns, 0, Math.PI * 2); rctx.fill();
     rctx.fillStyle = `rgba(255,255,255,${n.bright * 0.9})`;
-    rctx.beginPath(); rctx.arc(nx, ny, 2.5, 0, Math.PI * 2); rctx.fill();
+    rctx.beginPath(); rctx.arc(nx, ny, S(2.5), 0, Math.PI * 2); rctx.fill();
   });
 
   // ── INNER CORE GLOW ──
-  const coreGlow = rctx.createRadialGradient(cx, cy, 0, cx, cy, 90);
+  const coreGlow = rctx.createRadialGradient(cx, cy, 0, cx, cy, S(90));
   coreGlow.addColorStop(0, `rgba(${r},${g},${b},0.18)`);
   coreGlow.addColorStop(0.5, `rgba(${r},${g},${b},0.06)`);
   coreGlow.addColorStop(1, 'transparent');
   rctx.fillStyle = coreGlow;
-  rctx.beginPath(); rctx.arc(cx, cy, 90, 0, Math.PI * 2); rctx.fill();
+  rctx.beginPath(); rctx.arc(cx, cy, S(90), 0, Math.PI * 2); rctx.fill();
 
   // ── CROSS HAIR LINES ──
   rctx.save();
   rctx.strokeStyle = `rgba(${r},${g},${b},0.12)`;
   rctx.lineWidth = 0.8;
-  rctx.setLineDash([4, 8]);
-  rctx.beginPath(); rctx.moveTo(cx - 240, cy); rctx.lineTo(cx + 240, cy); rctx.stroke();
-  rctx.beginPath(); rctx.moveTo(cx, cy - 240); rctx.lineTo(cx, cy + 240); rctx.stroke();
+  rctx.setLineDash([S(4), S(8)]);
+  rctx.beginPath(); rctx.moveTo(cx - S(240), cy); rctx.lineTo(cx + S(240), cy); rctx.stroke();
+  rctx.beginPath(); rctx.moveTo(cx, cy - S(240)); rctx.lineTo(cx, cy + S(240)); rctx.stroke();
   rctx.restore();
 
   requestAnimationFrame(drawRing);
@@ -1234,8 +1294,9 @@ drawRing();
 /* ── WAVEFORM DRAW ── */
 let wavePhase = 0;
 function drawWave() {
-  wctx.clearRect(0, 0, 320, 80);
-  const cx = 160, cy = 40;
+  const WW = waveCanvas.width || 320, WH = waveCanvas.height || 80;
+  wctx.clearRect(0, 0, WW, WH);
+  const cx = WW / 2, cy = WH / 2;
   const bars = 52;
   const barW = 3;
   const gap  = 2.5;

@@ -856,11 +856,12 @@ def hud():
 
 
 if __name__ == "__main__":
-    try:
-        from brain.proactive import start_proactive_scheduler
-        start_proactive_scheduler(_proactive_q)
-    except Exception:
-        pass
+    # Proactive scheduler disabled — auto greeting only, no scheduled push messages
+    # try:
+    #     from brain.proactive import start_proactive_scheduler
+    #     start_proactive_scheduler(_proactive_q)
+    # except Exception:
+    #     pass
     try:
         from brain.observer import start_observer
         start_observer(_proactive_q)
