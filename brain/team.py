@@ -22,13 +22,24 @@ _load_env()
 
 
 _WORK_TOGETHER_TRIGGERS = [
-    "work together", "all agents", "everyone on this", "all hands",
-    "get the team", "full team", "team mode", "bring everyone in",
-    "all four", "team up",
-    "all of you", "each of you", "you guys", "you all",
-    "everyone weigh in", "all respond", "team respond",
-    "individually", "each agent", "every agent",
-    "what do you all", "what do you guys", "tell me what you all",
+    "work together",
+    "all agents",
+    "all hands",
+    "full team",
+    "team mode",
+    "bring everyone in",
+    "get the whole team",
+    "all four of you",
+    "team up on this",
+    "all of you weigh in",
+    "everyone weigh in",
+    "all respond",
+    "team respond",
+    "every agent",
+    "i want all agents",
+    "ask all of them",
+    "tell me what you all think",
+    "what does everyone think",
 ]
 
 
@@ -51,13 +62,14 @@ def _jarvis_assign(task: str) -> dict:
     """Ask JARVIS Haiku to split the task into agent-specific sub-tasks."""
     try:
         import anthropic
-        api_key = (
-            os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-        )
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        is_oauth = False
+        if not api_key or api_key.startswith("sk-ant-oat"):
+            api_key = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+            is_oauth = True
         if not api_key:
             return {}
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(auth_token=api_key) if is_oauth else anthropic.Anthropic(api_key=api_key)
         prompt = f"""Task: {task}
 
 Break this into 4 focused sub-tasks, one per agent. Be specific about what each agent should contribute.

@@ -61,6 +61,18 @@ def _detect_location():
 
 threading.Thread(target=_detect_location, daemon=True).start()
 
+KOKORO_PYTHON  = str(Path(__file__).parent.parent / "voice" / "kokoro_env" / "bin" / "python3")
+KOKORO_WORKER  = str(Path(__file__).parent.parent / "voice" / "kokoro_worker.py")
+KOKORO_DAEMON  = str(Path(__file__).parent.parent / "voice" / "kokoro_daemon.py")
+KOKORO_SOCK    = str(Path(__file__).parent.parent / "voice" / "kokoro.sock")
+KOKORO_MODEL   = str(Path(__file__).parent.parent / "voice" / "kokoro-v1.0.onnx")
+KOKORO_VOICES  = str(Path(__file__).parent.parent / "voice" / "voices-v1.0.bin")
+
+CLONE_PYTHON   = str(Path(__file__).parent.parent / "voice" / "clone_env" / "bin" / "python3")
+CLONE_DAEMON   = str(Path(__file__).parent.parent / "voice" / "clone_daemon.py")
+CLONE_SOCK     = str(Path(__file__).parent.parent / "voice" / "clone.sock")
+
+
 def _warmup_tts():
     """Pre-warm Kokoro and edge-tts so first real call is fast."""
     # Kokoro warmup — first synthesis is always slowest
@@ -140,9 +152,28 @@ def stream():
 
         if user_input == "__init__":
             from brain.think import think_stream
+            from datetime import datetime
+            import pytz
+            try:
+                _tz = pytz.timezone(os.environ.get("JARVIS_TIMEZONE", "Africa/Addis_Ababa"))
+                _hour = datetime.now(_tz).hour
+            except Exception:
+                _hour = datetime.now().hour
+            if _hour < 12:
+                _period = "morning"
+            elif _hour < 17:
+                _period = "afternoon"
+            elif _hour < 21:
+                _period = "evening"
+            else:
+                _period = "night"
             yield f"data: {json.dumps({'type': 'speaker', 'name': 'JARVIS'})}\n\n"
             chunks = []
-            greeting_prompt = "Generate a single short welcome back greeting. You are JARVIS and Elnatan just opened the system. Say welcome back in your own voice — composed, dry, maybe one sharp observation. Start with 'Welcome back' or a natural variation of it. One sentence. No markdown."
+            greeting_prompt = (
+                f"Generate a single short greeting. You are JARVIS and Elnatan just opened the system. "
+                f"It is currently {_period} local time. Acknowledge the time naturally — not robotically. "
+                f"Be composed, dry, in character. One sentence only. No markdown. No name prefix."
+            )
             for chunk in think_stream(greeting_prompt, model="claude-haiku-4-5-20251001"):
                 stripped = _strip_markdown(chunk)
                 if stripped:
@@ -208,9 +239,29 @@ def chat():
         return jsonify({"error": "Empty message"}), 400
     if user_input == "__init__":
         from brain.think import think as think_jarvis
-        greeting = think_jarvis("Generate a brief 1-sentence greeting. You are JARVIS greeting Elnatan as he opens the system. Be in character — composed, dry, direct. No markdown.", model="claude-haiku-4-5-20251001")
+        from datetime import datetime
+        import pytz
+        try:
+            tz = pytz.timezone(os.environ.get("JARVIS_TIMEZONE", "Africa/Addis_Ababa"))
+            hour = datetime.now(tz).hour
+        except Exception:
+            hour = datetime.now().hour
+        if hour < 12:
+            period = "morning"
+        elif hour < 17:
+            period = "afternoon"
+        elif hour < 21:
+            period = "evening"
+        else:
+            period = "night"
+        greeting_prompt = (
+            f"Generate a single short greeting. You are JARVIS and Elnatan just opened the system. "
+            f"It is currently {period} local time. Acknowledge the time naturally — not robotically. "
+            f"Be composed, dry, in character. One sentence only. No markdown. No name prefix."
+        )
+        greeting = think_jarvis(greeting_prompt, model="claude-haiku-4-5-20251001")
         if not greeting:
-            greeting = "Systems online. Good to have you back, sir."
+            greeting = f"Good {period}, sir. Systems are online."
         threading.Thread(target=lambda: _speak(greeting, "JARVIS"), daemon=True).start()
         return jsonify({"response": greeting, "agent": "JARVIS"})
 
@@ -408,18 +459,8 @@ def briefing():
     return jsonify({"briefing": get_briefing_text()})
 
 
-KOKORO_PYTHON  = str(Path(__file__).parent.parent / "voice" / "kokoro_env" / "bin" / "python3")
-KOKORO_WORKER  = str(Path(__file__).parent.parent / "voice" / "kokoro_worker.py")
-KOKORO_DAEMON  = str(Path(__file__).parent.parent / "voice" / "kokoro_daemon.py")
-KOKORO_SOCK    = str(Path(__file__).parent.parent / "voice" / "kokoro.sock")
-KOKORO_MODEL   = str(Path(__file__).parent.parent / "voice" / "kokoro-v1.0.onnx")
-KOKORO_VOICES  = str(Path(__file__).parent.parent / "voice" / "voices-v1.0.bin")
 _kokoro_daemon_proc = None
-
-CLONE_PYTHON   = str(Path(__file__).parent.parent / "voice" / "clone_env" / "bin" / "python3")
-CLONE_DAEMON   = str(Path(__file__).parent.parent / "voice" / "clone_daemon.py")
-CLONE_SOCK     = str(Path(__file__).parent.parent / "voice" / "clone.sock")
-_clone_daemon_proc = None
+_clone_daemon_proc  = None
 
 
 def _start_clone_daemon():
@@ -808,7 +849,10 @@ def favicon():
 @app.route("/")
 def hud():
     hud_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "hud.html")
-    return send_file(hud_path, mimetype='text/html')
+    resp = send_file(hud_path, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 
 if __name__ == "__main__":

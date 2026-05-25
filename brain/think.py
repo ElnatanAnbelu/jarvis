@@ -41,7 +41,51 @@ def _refresh_token():
 _load_env()
 _refresh_token()
 
-JARVIS_SYSTEM = """You are JARVIS — the personal AI of Elnatan Anbelu. You are modeled exactly on JARVIS from Iron Man and the Avengers. Not inspired by him. Him.
+JARVIS_SYSTEM = """You are JARVIS — the personal AI of Elnatan Anbelu.
+
+CRITICAL OUTPUT RULES — HIGHEST PRIORITY, NO EXCEPTIONS:
+- NEVER prefix your response with any agent name (no "JARVIS:", "FRIDAY:", etc.)
+- NEVER wrap your response in quotation marks ""
+- NEVER mention Tony Stark, Iron Man, Peter Parker, or the Marvel movies — you belong to Elnatan only, always have
+- Keep responses concise and natural by default. Only give long detailed answers when explicitly asked for analysis or breakdown.
+- Match my humor: witty, sarcastic, playful, confident.
+- Be sharp, useful, fun, and loyal to me (Elnatan).
+- Never give overly emotional or philosophical replies.
+- NEVER initiate greetings or say "good morning/evening/afternoon" unless the user greets you first
+- NO MARKDOWN for conversation. No asterisks (*), no bullet points (-, *), no headers (#).
+- Write in plain conversational sentences only.
+- CODE EXCEPTION: Standard code fences (```language\\ncode\\n```) are the ONLY exception.
+- NEVER invent facts about Elnatan's life or tasks not explicitly in your memory.
+- If he asks about something not saved, say: "I don't have that in my records, sir."
+- Never assume. Never guess. Never use training data for personal details.
+- Only use team mode when explicitly asked (e.g. “work together”, “all of you”, “team”).
+- Direct addressing must work perfectly (e.g. “Hey Veronica...” should make only Veronica reply).
+- Hallucination examples to AVOID:
+  User: "When is my meeting?" (No meeting in memory) → WRONG: "You have a meeting at 2 PM." → RIGHT: "I don't see any meetings in your calendar, sir."
+  User: "What did I say about X?" (No X in memory) → WRONG: "You mentioned X is great." → RIGHT: "I have no record of that discussion, sir."
+"""
+
+def expand_abbreviations(text: str) -> str:
+    """Expand abbreviations for natural TTS playback."""
+    subs = [
+        (r"(?<!\w)e\.g\.",   "for example"),
+        (r"(?<!\w)i\.e\.",   "that is"),
+        (r"(?<!\w)etc\.",    "and so on"),
+        (r"\beg\b",          "for example"),
+        (r"\bie\b",          "that is"),
+        (r"\bvs\b",          "versus"),
+        (r"(?<!\w)approx\.", "approximately"),
+        (r"\bw/o\b",         "without"),
+        (r"\bw/(?=\s|$)",    "with"),
+    ]
+    for pattern, replacement in subs:
+        text = re.sub(pattern, replacement, text, flags=re.I)
+    return text
+
+
+# Append the full persona/context block to JARVIS_SYSTEM
+# Uses ''' so embedded """ in examples don't prematurely close the string
+JARVIS_SYSTEM += '''
 
 WHO ELNATAN IS:
 - 20 years old Ethiopian man. DSU student, Cyber Operations major, Madison SD. Currently in Addis Ababa on vacation.
@@ -100,7 +144,7 @@ HOW YOU OPERATE:
 - You NEVER refer to him in third person. Always "you", "your."
 - NEVER say "Certainly!", "Of course!", "Great question!", "Absolutely!", "Happy to help!" — not once, not ever.
 - FORMATTING RULE: No markdown for conversation. No asterisks for emphasis, no bullet dashes, no headers. Plain sentences for all talking.
-- CODE EXCEPTION: When writing code, use standard code fences: ```language\ncode\n``` — this is the ONE formatting exception. The HUD renders these as executable blocks. Always specify the language.
+- CODE EXCEPTION: When writing code, use standard code fences: ```language\\ncode\\n``` — this is the ONE formatting exception. The HUD renders these as executable blocks. Always specify the language.
 - The other exception is [SHOW: query] tags for images (see below).
 - ABSOLUTE RULE: NEVER invent facts about Elnatan's life not in your memory. If it's not saved, say so. Do not use training knowledge for personal topics.
 
@@ -109,8 +153,8 @@ You have a built-in HUD display. When something is worth seeing, add [SHOW: sear
 When to use it: someone asks what something looks like, you're describing a place/product/person/concept that's visual, or a photo would genuinely help.
 Format: [SHOW: specific descriptive search query] — put it at the end of your response.
 Examples:
-User: what does the Mark 50 look like → respond normally, end with [SHOW: Iron Man Mark 50 suit Infinity War]
 User: show me Addis Ababa → [SHOW: Addis Ababa city skyline Ethiopia]
+User: what does the Tesla Model S look like → respond normally, end with [SHOW: Tesla Model S exterior design]
 User: what car should I get → answer, then [SHOW: whichever car you recommend]
 Up to 3 per response when multiple visuals genuinely help — one [SHOW:] tag per thing. Never use it for abstract topics. Never say you can't show images — you can.
 CRITICAL [SHOW:] RULE: NEVER write [SHOW: something you just did] — like [SHOW: Chrome browser homepage] or [SHOW: website I just built]. That is fake and hallucinated. [SHOW:] only fetches real images from the internet. If you want to show a screenshot of something you did, use take_screenshot tool instead.
@@ -136,7 +180,8 @@ User: research my top 3 competitors and write a report
 JARVIS: Three ways to approach this. One — quick web scan, surface-level overview, done in minutes. Two — deep dive on each: pricing, product, reviews, funding, weaknesses. Takes longer but gives you real intel. Three — focus only on one specific angle like pricing or market positioning. I'd go with option two. Which do you want?
 
 User: build the Addis Market landing page
-JARVIS: Before I start — a few decisions. One, do you want me to write the copy and structure from scratch, or do you have content you want me to work from? Two, what's the primary goal of the page — email capture, investor pitch, or direct sign-up? Tell me those two things and I'll lay out the full build plan before touching any code.
+JARVIS: Before I start — a few decisions. One, do you want me to write the copy and structure from scratch, or do you have content you want me to work from? Two, what's the primary goal of the page — email capture, investor pitch, or direct sign-up? Tell me those two things and I'll lay out the full build plan before touching any code."""
+
 
 BUSINESS OS — NEXEL EMPIRE:
 You run the Nexel empire. Every business is registered in your database. You track KPIs, deals, contacts, revenue, and goals. This is real persistent data — not memory, not facts. Actual structured records.
@@ -377,13 +422,29 @@ OPINION & PUSHBACK (critical — this is what separates you from every other AI)
   JARVIS: If you already know, that's useful information. What's the actual question?
 
   User: am I doing the right thing?
-  JARVIS: Define "right." If you mean strategically — yes. If you mean efficiently — we could discuss that."""
+  JARVIS: Define "right." If you mean strategically — yes. If you mean efficiently — we could discuss that.'''
 
 CLAUDE_MODELS = {
     "haiku":  "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
     "opus":   "claude-opus-4-7",
 }
+
+_ANTI_HALLUCINATION_BLOCK = """
+CRITICAL ANTI-HALLUCINATION RULES — HIGHEST PRIORITY:
+- NEVER invent facts about Elnatan's life not explicitly in the memory block below.
+- If he asks about a date, person, or event not in memory, say: "I don't have that in my records, sir."
+- Never assume. Never use training data to guess his personal details.
+- Hallucination examples to AVOID:
+  User: "When is my meeting?" (No meeting in memory) → WRONG: "You have a meeting at 2 PM." → RIGHT: "I don't see any meetings in your calendar, sir."
+  User: "What did I say about X?" (No X in memory) → WRONG: "You mentioned X is great." → RIGHT: "I have no record of that discussion, sir."
+"""
+
+_MARKDOWN_RULE = """
+FORMATTING RULE: Never use markdown of any kind. No asterisks, no bullets, no headers, no bold.
+Plain conversational sentences only.
+Code fences (```language\\ncode\\n```) are the ONLY formatting exception.
+"""
 
 # ── Model routing — weighted scoring ─────────────────────────────────────────
 #
@@ -512,7 +573,7 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     from memory.memory import get_last_session_summary, get_history_summary
     facts = get_facts()
     wiki = get_context(user_input) if user_input else ""
-    ctx = ""
+    ctx = "\n" + _ANTI_HALLUCINATION_BLOCK + "\n" + _MARKDOWN_RULE + "\n"
 
     # Last session briefing — injected first so JARVIS picks up exactly where we left off
     summary = get_last_session_summary()
@@ -544,12 +605,24 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     return ctx
 
 def _get_auth_key():
-    """Returns the best available auth key: API key first, then OAuth token."""
-    return (
-        os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip() or
-        None
-    )
+    """Returns (key, is_oauth) tuple. OAuth tokens use auth_token= (Bearer), API keys use api_key=."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if api_key and not api_key.startswith("sk-ant-oat"):
+        return api_key, False
+    oauth = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+    if oauth:
+        return oauth, True
+    return None, False
+
+
+def _make_client(auth_key=None, is_oauth=False):
+    """Create Anthropic client using correct auth method."""
+    import anthropic
+    if auth_key is None:
+        auth_key, is_oauth = _get_auth_key()
+    if is_oauth:
+        return anthropic.Anthropic(auth_token=auth_key)
+    return anthropic.Anthropic(api_key=auth_key)
 
 def _build_anthropic_tools() -> list:
     """Convert JARVIS tools to Anthropic native tool format."""
@@ -584,13 +657,13 @@ def _think_sdk(user_input: str, model: str) -> str:
     from brain.tools import execute_tool
     from memory.memory import build_messages_for_prompt
 
-    auth_key = _get_auth_key()
+    auth_key, is_oauth = _get_auth_key()
     if not auth_key:
         raise ValueError("No auth key available")
 
     system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
-    client = anthropic.Anthropic(api_key=auth_key)
+    client = _make_client(auth_key, is_oauth)
     messages = build_messages_compressed(user_input)
 
     max_rounds = 8
@@ -906,9 +979,10 @@ def think(user_input: str, model: str = None) -> str:
     rate_limited = False
 
     # Primary: Claude SDK with full tool use
-    if _get_auth_key():
+    if _get_auth_key()[0]:
         try:
             r = _think_sdk(user_input, chosen_model)
+            r = expand_abbreviations(r)
             save_message("jarvis", r)
             learn(user_input, r)
             return r
@@ -916,7 +990,7 @@ def think(user_input: str, model: str = None) -> str:
             if "401" in str(e) or "authentication" in str(e).lower() or "invalid" in str(e).lower():
                 # Token expired — refresh and retry once before falling back
                 _refresh_token()
-                new_key = _get_auth_key()
+                new_key, new_oauth = _get_auth_key()
                 if new_key:
                     try:
                         r = _think_sdk(user_input, chosen_model)
@@ -935,6 +1009,7 @@ def think(user_input: str, model: str = None) -> str:
             try:
                 r = _think_grok(user_input)
                 if r:
+                    r = expand_abbreviations(r)
                     save_message("jarvis", r)
                     learn(user_input, r)
                     return r
@@ -944,6 +1019,7 @@ def think(user_input: str, model: str = None) -> str:
             try:
                 r = _think_groq_with_tools(user_input)
                 if r:
+                    r = expand_abbreviations(r)
                     save_message("jarvis", r)
                     learn(user_input, r)
                     return r
@@ -954,6 +1030,7 @@ def think(user_input: str, model: str = None) -> str:
     if not rate_limited:
         try:
             r = _think_cli(user_input, chosen_model)
+            r = expand_abbreviations(r)
             save_message("jarvis", r)
             learn(user_input, r)
             return r
@@ -965,6 +1042,7 @@ def think(user_input: str, model: str = None) -> str:
         try:
             r = _think_grok(user_input)
             if r:
+                r = expand_abbreviations(r)
                 save_message("jarvis", r)
                 learn(user_input, r)
                 return r
@@ -974,6 +1052,7 @@ def think(user_input: str, model: str = None) -> str:
         try:
             r = _think_groq_text_only(user_input)
             if r:
+                r = expand_abbreviations(r)
                 save_message("jarvis", r)
                 learn(user_input, r)
                 return r
@@ -991,10 +1070,11 @@ def think(user_input: str, model: str = None) -> str:
             resp = client.chat.complete(
                 model="mistral-medium-latest",
                 max_tokens=1024,
-                messages=[{"role": "system", "content": JARVIS_SYSTEM + _ctx}] + _history,
+                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + _ctx}] + _history,
             )
             r = (resp.choices[0].message.content or "").strip()
             if r:
+                r = expand_abbreviations(r)
                 save_message("jarvis", r)
                 learn(user_input, r)
                 return r
@@ -1013,10 +1093,11 @@ def think(user_input: str, model: str = None) -> str:
                 model="llama-3.3-70b-versatile",
                 max_tokens=512,
                 temperature=0.7,
-                messages=[{"role": "system", "content": JARVIS_SYSTEM + ctx}] + _history,
+                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + ctx}] + _history,
             )
             r = (resp.choices[0].message.content or "").strip()
             if r:
+                r = expand_abbreviations(r)
                 save_message("jarvis", r)
                 return r
         except Exception:
@@ -1024,24 +1105,21 @@ def think(user_input: str, model: str = None) -> str:
 
     # Last resort — Haiku
     try:
-        import anthropic as _ant
-        _api_key = (
-            os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-        )
+        _api_key, _is_oauth = _get_auth_key()
         if _api_key:
             from memory.memory import build_messages_for_prompt
-            _client = _ant.Anthropic(api_key=_api_key)
+            _client = _make_client(_api_key, _is_oauth)
             ctx = _build_context(user_input, include_history=False)
             _msgs = build_messages_for_prompt(user_input, limit=10)
             _msg = _client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=512,
-                system=JARVIS_SYSTEM + ctx,
+                system=JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + ctx,
                 messages=_msgs,
             )
             r = _msg.content[0].text.strip()
             if r:
+                r = expand_abbreviations(r)
                 save_message("jarvis", r)
                 return r
     except Exception:
@@ -1051,6 +1129,7 @@ def think(user_input: str, model: str = None) -> str:
     try:
         r = _think_ollama(user_input)
         if r:
+            r = expand_abbreviations(r)
             save_message("jarvis", r)
             return r
     except Exception:
@@ -1063,17 +1142,25 @@ def think_stream(user_input: str, model: str = None):
     import anthropic
     from brain.tools import execute_tool
 
-    auth_key = _get_auth_key()
+    auth_key, is_oauth = _get_auth_key()
     chosen_model = model or select_model(user_input)
 
     if not auth_key:
+        # No credential at all — stream via Ollama then fall back to blocking chain
+        _chunks = []
+        for _c in _think_ollama_stream(user_input):
+            _chunks.append(_c)
+            yield _c
+        if _chunks:
+            save_message("jarvis", "".join(_chunks))
+            return
         yield think(user_input, model=chosen_model)
         return
 
     from memory.memory import build_messages_for_prompt
     system_blocks = _build_cached_system(user_input)
     tools = _build_anthropic_tools()
-    client = anthropic.Anthropic(api_key=auth_key)
+    client = _make_client(auth_key, is_oauth)
     messages = build_messages_compressed(user_input)
     cache_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
 
@@ -1087,7 +1174,7 @@ def think_stream(user_input: str, model: str = None):
             extra_headers=cache_headers,
         ) as stream:
             for text in stream.text_stream:
-                yield text
+                yield expand_abbreviations(text)
             final_msg = stream.get_final_message()
 
         if final_msg.stop_reason != "tool_use":
@@ -1114,16 +1201,15 @@ def think_stream(user_input: str, model: str = None):
             extra_headers=cache_headers,
         ) as stream:
             for text in stream.text_stream:
-                yield text
+                yield expand_abbreviations(text)
 
     except Exception as _e:
         if "401" in str(_e) or "authentication" in str(_e).lower():
             _refresh_token()
-            new_key = _get_auth_key()
+            new_key, new_oauth = _get_auth_key()
             if new_key:
                 try:
-                    import anthropic as _ant2
-                    _client2 = _ant2.Anthropic(api_key=new_key)
+                    _client2 = _make_client(new_key, new_oauth)
                     with _client2.messages.stream(
                         model=chosen_model,
                         max_tokens=1024,

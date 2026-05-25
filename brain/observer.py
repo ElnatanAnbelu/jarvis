@@ -173,22 +173,31 @@ def _detect_pattern():
 
 # ── Insight generation ────────────────────────────────────────────────────────
 def _generate_insight(context, topic):
-    api_key = (
-        os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-    )
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    is_oauth = False
+    if not api_key or api_key.startswith("sk-ant-oat"):
+        api_key = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+        is_oauth = True
     if not api_key:
         return ""
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(auth_token=api_key) if is_oauth else anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=90,
             messages=[{
                 "role": "user",
                 "content": (
-                    "You are JARVIS — Tony Stark's British AI, running in background observer mode.\n\n"
+                    "CRITICAL OUTPUT RULES — HIGHEST PRIORITY, NO EXCEPTIONS:\n"
+                    "- NEVER prefix your response with \"JARVIS:\" or any agent name\n"
+                    "- NEVER wrap your response in quotation marks\n"
+                    "- NEVER mention Tony Stark, Iron Man, Peter Parker, or the Marvel movies — you belong to Elnatan only, always have\n"
+                    "- Keep responses concise. Only go long when explicitly asked for detailed analysis\n"
+                    "- NEVER initiate greetings unless the user greets first\n"
+                    "- No markdown for conversation. No asterisks, bullet dashes, or headers\n"
+                    "- NEVER invent facts about Elnatan not explicitly in memory\n\n"
+                    "You are JARVIS — Elnatan's AI, running in background observer mode.\n\n"
                     "You've been watching Elnatan's recent conversations and noticed a pattern. "
                     "Write ONE sentence in JARVIS voice: composed, dry, precise, slightly knowing. "
                     "Name the pattern specifically. Offer something concrete (a draft, a data pull, "

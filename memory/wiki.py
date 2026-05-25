@@ -38,6 +38,7 @@ _model = None          # SentenceTransformer instance
 _index_lock = threading.Lock()
 _last_build: float = 0.0
 _REBUILD_INTERVAL = 300  # rebuild if notes changed and >5 min since last build
+_building = False       # guard: prevent concurrent background builds
 
 
 def _get_model():
@@ -107,19 +108,25 @@ def _build_index():
 
 
 def _ensure_index():
-    """Rebuild index if stale or missing."""
-    global _last_build
+    """Kick off a background index build if stale. Never blocks the caller."""
+    global _building
     with _index_lock:
         already_built = _index is not None
         mtime = _notes_mtime()
         needs_rebuild = not already_built or (mtime > _last_build and
                         (datetime.now().timestamp() - _last_build) > _REBUILD_INTERVAL)
 
-    if needs_rebuild:
-        try:
-            _build_index()
-        except Exception:
-            pass
+    if needs_rebuild and not _building:
+        _building = True
+        def _bg():
+            global _building
+            try:
+                _build_index()
+            except Exception:
+                pass
+            finally:
+                _building = False
+        threading.Thread(target=_bg, daemon=True).start()
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────

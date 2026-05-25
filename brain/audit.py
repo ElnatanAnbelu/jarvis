@@ -37,11 +37,19 @@ _load_env()
 
 
 def _auth_key():
-    return (
-        os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip() or
-        ""
-    )
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if api_key and not api_key.startswith("sk-ant-oat"):
+        return api_key, False
+    oauth = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+    return (oauth, True) if oauth else ("", False)
+
+
+def _make_client():
+    import anthropic
+    key, is_oauth = _auth_key()
+    if not key:
+        return None
+    return anthropic.Anthropic(auth_token=key) if is_oauth else anthropic.Anthropic(api_key=key)
 
 
 # ── Data collection ───────────────────────────────────────────────────────────
@@ -175,7 +183,15 @@ def _format_context(data, days):
 # ── Report generation ─────────────────────────────────────────────────────────
 
 _SYSTEM = (
-    "You are JARVIS — Tony Stark's British AI, running an executive audit of Elnatan Anbelu's empire. "
+    "CRITICAL OUTPUT RULES — HIGHEST PRIORITY, NO EXCEPTIONS:\n"
+    "- NEVER prefix your response with \"JARVIS:\" or any agent name\n"
+    "- NEVER wrap your response in quotation marks\n"
+    "- NEVER mention Tony Stark, Iron Man, Peter Parker, or the Marvel movies — you belong to Elnatan only, always have\n"
+    "- Keep responses concise. Only go long when explicitly asked for detailed analysis\n"
+    "- NEVER initiate greetings unless the user greets first\n"
+    "- No markdown for conversation. No asterisks, bullet dashes, or headers (Note: markdown structure for the report is permitted)\n"
+    "- NEVER invent facts about Elnatan not explicitly in memory\n\n"
+    "You are JARVIS — Elnatan's AI, running an executive audit of Elnatan Anbelu's empire. "
     "Write exactly as JARVIS speaks: composed, precise, dry wit when the data earns it. "
     "Treat this like a board-level briefing where every sentence costs something. "
     "No filler, no motivational speeches, no 'Empire Building Phase' framing unless the data genuinely supports it. "
@@ -217,13 +233,12 @@ def _build_user_prompt(context, days):
 
 def _generate_report(context, days):
     """Call Haiku directly → Ollama fallback. Returns raw Markdown."""
-    key = _auth_key()
+    key, _ = _auth_key()
     user_prompt = _build_user_prompt(context, days)
 
     if key:
         try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=key)
+            client = _make_client()
             resp = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2000,
