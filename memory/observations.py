@@ -115,7 +115,7 @@ def add_observation(source: str, source_detail: str, content: str,
         # Check suppressed topics — mark quality=0 if suppressed
         if quality == 1 and relevance_hint:
             suppressed = conn.execute(
-                "SELECT topic FROM suppressed_topics WHERE ? LIKE '%' || topic || '%'",
+                "SELECT topic FROM suppressed_topics WHERE INSTR(?, topic) > 0",
                 (relevance_hint,)
             ).fetchone()
             if suppressed:
@@ -186,7 +186,7 @@ def suppress_topic(topic: str):
         # Retroactively mark matching pending observations as low quality
         conn.execute(
             "UPDATE observations SET quality = 0 WHERE synthesized = 0 "
-            "AND relevance_hint LIKE ?", (f"%{topic}%",)
+            "AND INSTR(relevance_hint, ?) > 0", (topic,)
         )
         conn.commit()
 

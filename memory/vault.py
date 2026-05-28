@@ -267,6 +267,10 @@ class VaultManager:
             p = self.vault_path / area / f"{self._safe_title(title_or_path)}.md"
             if p.exists():
                 return p
+        # Also check _JARVIS folder for special notes like _PersonalModel
+        p = self.vault_path / "_JARVIS" / f"{self._safe_title(title_or_path)}.md"
+        if p.exists():
+            return p
         return None
 
     def _detect_human_edits(self, path: Path) -> bool:
@@ -397,6 +401,13 @@ class VaultManager:
         if action == "create":
             note_path = self.vault_path / area_str / f"{self._safe_title(title_str)}.md"
             note_path.parent.mkdir(parents=True, exist_ok=True)
+            # Stale check for create: if file exists and wasn't created by this proposal
+            if note_path.exists():
+                self._update_proposal_status(p, "stale")
+                return (
+                    f"Proposal {proposal_id} is stale — `{area_str}/{title_str}` already exists. "
+                    f"Review the existing file and re-propose if still needed."
+                )
             fm_new = self._build_frontmatter(
                 title=title_str, area=area_str, source=source,
                 created_by="jarvis"
@@ -408,7 +419,7 @@ class VaultManager:
                 updated = existing_path.read_text(encoding="utf-8").rstrip()
                 updated += f"\n\n{proposed_content}\n"
                 existing_path.write_text(updated, encoding="utf-8")
-                new_hash = self._compute_hash(updated)
+                new_hash = self._compute_hash(self._body_only(updated))
                 self._update_frontmatter_field(existing_path, "jarvis_last_hash", new_hash)
 
         self._update_proposal_status(p, "approved")
@@ -565,8 +576,12 @@ class VaultManager:
             needs_rebuild = (self._index is None or
                 (self._notes_mtime() > self._last_build and
                  (_time.time() - self._last_build) > 60))
-        if needs_rebuild and not self._building:
-            self._building = True
+        should_build = False
+        with self._index_lock:
+            if needs_rebuild and not self._building:
+                self._building = True
+                should_build = True
+        if should_build:
             t = threading.Thread(target=self._build_index_bg, daemon=True)
             t.start()
 
