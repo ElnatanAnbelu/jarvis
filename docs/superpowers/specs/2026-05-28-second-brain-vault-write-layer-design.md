@@ -1,6 +1,18 @@
 # Second Brain — Vault Write Layer (Sub-Project 1)
 **Date:** 2026-05-28
-**Status:** Approved for implementation (v2 — post-review)
+**Status:** Approved for implementation (v2.1 — all review points addressed)
+
+---
+
+## Why This Exists
+
+**The Personal Second Brain exists so JARVIS can develop a deep, accurate, and continuously evolving understanding of Elnatan — his patterns, values, relationships, energy, decision-making style, goals, and context — so that over time he stops being repetitive, generic, and shallow.**
+
+Right now JARVIS resets every session. It re-asks the same questions, forgets what mattered last week, and has no model of who Elnatan actually is. The Second Brain is the mechanism that fixes this.
+
+This is not a note-taking app or a vault for productivity. It is the external memory that makes the "two brains" relationship real. Without it, JARVIS is a powerful but forgetful assistant. With it, JARVIS becomes something closer to a trusted partner that has been paying attention.
+
+Everything in this sub-project — the safe write layer, the proposal flow, the conflict detection, the activity log — exists in service of that goal. The vault is the substrate. The understanding it enables is the point.
 
 ---
 
@@ -24,6 +36,24 @@ JARVIS operates with two distinct knowledge systems:
 - Changes must be transparent, reversible, and logged.
 - Never silently overwrite user-authored content.
 - Latency awareness: vault operations must not block real-time conversation.
+
+---
+
+## What Good Looks Like (Human Experience)
+
+From Elnatan's perspective, success is:
+
+- **Opening Obsidian and finding it useful.** Notes he didn't write but that accurately capture his interests, reading list, or recent observations. Clean, attributed, not overwhelming.
+- **JARVIS referencing the brain in conversation.** "You mentioned last week you were reading Open — how's it going?" Not invented — actually retrieved. Not every conversation — when genuinely relevant.
+- **The Personal Model feeling accurate.** Reading `_JARVIS/_PersonalModel.md` and recognizing himself in it. Being able to correct it and have JARVIS actually update.
+- **Proposals that feel worth approving.** Not spam. Not obvious things he already knows. Ones where JARVIS has made a genuine synthesis call worth reviewing.
+- **The vault growing without becoming a mess.** Notes accumulate in the right areas. Old notes stay accurate or get updated. Nothing important falls through the cracks.
+
+**Anti-patterns that would make this a failure:**
+- JARVIS constantly surfacing Addis Market notes when he's asking about something personal.
+- Proposals he never reads because they're too frequent or too low-value.
+- Notes in the vault that are wrong but look authoritative.
+- The brain growing but JARVIS still behaving like it has no memory.
 
 ---
 
@@ -62,6 +92,53 @@ SecondBrain/
 | Learning | Low | Auto-write with attribution |
 | Daily | Low | Auto-write with attribution |
 | Archive | Low | Auto-write |
+
+### Sensitivity + Area Risk Interaction
+
+**Sensitivity always wins.** If an observation or note carries `sensitivity: high`, it triggers the propose flow regardless of area risk. The matrix:
+
+| Area Risk | Observation Sensitivity | Final Behavior |
+|-----------|------------------------|----------------|
+| Low       | Low                    | Auto-write |
+| Low       | Medium                 | Auto-write (with attribution) |
+| Low       | High                   | **Propose** |
+| Medium    | Low                    | Propose |
+| Medium    | Medium                 | Propose |
+| Medium    | High                   | **Propose** |
+| High      | Any                    | **Propose** |
+
+One sentence rule: **if either dimension is High, the result is always Propose.**
+
+Sensitivity is set by the caller (the tool or observation ingestion path). Default is `low`. Sources that should always default to `medium` or `high`: anything from email between family members, anything involving money or health, anything the user explicitly flagged as private.
+
+---
+
+## Vault Initialization (Bootstrap)
+
+The vault does not exist yet and must be created deterministically on first run.
+
+**Trigger:** `VaultManager.__init__()` calls `_ensure_vault()` which is idempotent — safe to call on every startup.
+
+**`_ensure_vault()` does the following in order:**
+
+1. Creates `~/Documents/SecondBrain/` if it does not exist.
+2. Creates each area folder (`Personal/`, `Business/`, `Learning/`, `Relationships/`, `Goals/`, `Decisions/`, `Daily/`, `Archive/`) if it does not exist.
+3. Creates `_JARVIS/` and `_JARVIS/Proposals/` if they do not exist.
+4. Creates `_JARVIS/_Activity.md` with a header if it does not exist.
+5. Creates `_JARVIS/_Activity.jsonl` (empty) if it does not exist.
+6. Creates `_JARVIS/_PersonalModel.md` with section scaffolding if it does not exist.
+7. Creates a `README.md` in the vault root explaining the structure to Elnatan if it does not exist.
+8. Logs a single activity entry: `vault_init` with timestamp.
+
+**Idempotency:** Every step checks for existence before creating. Running `_ensure_vault()` on an already-initialized vault is a no-op. This means it is safe to call on every JARVIS startup.
+
+**Anchor notes:** The following stub notes are created on initialization if they do not exist. They give Elnatan something to open immediately and orient him:
+
+- `Personal/About Me.md` — empty with frontmatter scaffold, `created_by: jarvis`, note: "This is your space. Add what matters."
+- `Goals/Long-Term Goals.md` — empty scaffold
+- `Daily/README.md` — brief description of how to use Daily/
+
+No content is pre-populated. JARVIS writes content as it learns; it does not invent starter content.
 
 ---
 
@@ -150,6 +227,56 @@ Observations that pass all criteria are marked `quality=1` in a separate column.
 ALTER TABLE observations ADD COLUMN quality INTEGER DEFAULT 0;
 ```
 
+### Quality Filter — Implementation
+
+`score_observation_quality(obs: dict) -> bool` applies all five criteria in order. First failure short-circuits to `False`.
+
+```python
+def score_observation_quality(obs: dict) -> bool:
+    content = obs.get("content", "").strip()
+    source  = obs.get("source", "")
+
+    # 1. Length floor — at least 15 words of substantive content
+    if len(content.split()) < 15:
+        return False
+
+    # 2. Information density — must contain at least one signal word
+    #    (not just filler, pleasantries, or meta-conversation)
+    SIGNAL_WORDS = {
+        "decided", "starting", "reading", "working", "building", "learned",
+        "realized", "want", "goal", "plan", "going", "feels", "noticed",
+        "met", "talked", "interested", "thinking", "worried", "excited",
+        "finished", "launched", "shipped", "hired", "quit", "moved",
+    }
+    words = set(content.lower().split())
+    if not words.intersection(SIGNAL_WORDS):
+        return False
+
+    # 3. Personal relevance — must mention Elnatan-related context
+    #    Reject pure general knowledge ("the capital of Ethiopia is...")
+    PERSONAL_ANCHORS = {
+        "i ", "i'", "my ", "me ", "we ", "our ", "you ", "your ",
+        "elnatan", "jarvis",
+    }
+    lower = content.lower()
+    if not any(anchor in lower for anchor in PERSONAL_ANCHORS):
+        return False
+
+    # 4. Source credibility — weight by source type
+    LOW_CREDIBILITY_SOURCES = {"system", "unknown", "test"}
+    if source.lower() in LOW_CREDIBILITY_SOURCES:
+        return False
+
+    # 5. Non-redundancy — checked against recent observations at call site
+    #    (caller passes already_seen: set[str] of recent content hashes)
+    # Implemented as a separate deduplication step before bulk insert,
+    # not inside this function.
+
+    return True
+```
+
+Note: criterion 5 (non-redundancy) is enforced at the insertion layer in `add_observation()`, not inside `score_observation_quality()`, because it requires database access.
+
 ---
 
 ## Proposal Format
@@ -181,6 +308,31 @@ reason: "Elnatan mentioned starting to read this book"
 Elnatan started reading "Open" by Andre Agassi. Added to reading list.
 Status: reading
 ```
+
+### Proposal ID Generation
+
+IDs are `YYYY-MM-DD-NNN` (NNN zero-padded, scoped to that date):
+
+```python
+def _next_proposal_id() -> str:
+    today = datetime.now().strftime("%Y-%m-%d")
+    existing = list((VAULT_PATH / "_JARVIS" / "Proposals").glob(f"{today}-*.md"))
+    return f"{today}-{len(existing) + 1:03d}"
+```
+
+Collision-safe within a single process. Concurrent writes take a file-lock on `_Activity.jsonl` before generating the ID.
+
+### Approval-Time Conflict Re-Check
+
+`approve_proposal()` **re-runs conflict detection at approval time.** A proposal may be hours old; the target note may have changed since.
+
+Sequence:
+1. Read proposal file → extract `target_note`, `proposed_content`, `jarvis_last_hash` (stored at proposal creation time).
+2. If target note exists: compute its current SHA-256 hash.
+3. **Hashes match** → safe to apply. Write note, update `jarvis_last_hash`, log to activity.
+4. **Hashes differ** → human edited the note since the proposal was created. **Do not apply.** Return: *"The target note has been edited since this proposal was created. Review `[target_note]` manually and re-propose if still relevant."* Set proposal `status: stale`.
+
+This closes the safety hole where a queued proposal silently overwrites a human edit made between proposal creation and approval.
 
 ---
 
@@ -227,6 +379,22 @@ JARVIS should propose a Personal Model update when:
 | Quarterly by default | Even if no major trigger, propose a full model review every ~90 days |
 
 Proposals to `_PersonalModel.md` must always cite the supporting observations or conversations that justify the update. No update without evidence.
+
+### Scope in This Sub-Project
+
+**In this sub-project**, the `update_personal_model` tool exists and can create proposals to `_PersonalModel.md`. However, the triggers above that require cross-session pattern detection (e.g. "topic appears in 3+ separate sessions", "quarterly review") **cannot fire yet** — they depend on the background synthesis worker that is a future sub-project.
+
+What **can** fire in this sub-project:
+- Elnatan explicitly shares something about himself in the current conversation → JARVIS calls `update_personal_model` immediately.
+- A previous model entry is explicitly contradicted in the current conversation.
+- Elnatan directly asks JARVIS to update the model.
+
+What is **deferred** to the background synthesis sub-project:
+- Cross-session pattern detection.
+- Quarterly reviews.
+- Automatic pattern emergence from the observations buffer.
+
+This means `update_personal_model` in v1 is a **manually triggered tool** (by JARVIS during conversation) rather than an automatic background process. That is correct and intentional — it is the safe starting point.
 
 ---
 
@@ -343,6 +511,8 @@ _PROJECT_SIGNALS = {
 5. If both = 0 (no signals matched) → **default to personal brain** (personal context is more often relevant in normal conversation).
 
 **Fallback awareness:** The routing function will log its decision (personal/project/both) at debug level so the behavior can be observed and tuned. If signal sets are clearly wrong, they are easy to update.
+
+**Signal sets are intentionally conservative to start.** The initial sets above cover the most common cases without over-matching. They will grow as real-world routing decisions are logged and reviewed. Adding a signal word is a one-line change — the architecture is designed for this. A future sub-project can replace the keyword approach with embedding similarity if needed.
 
 ---
 
@@ -462,3 +632,6 @@ def get_suppressed_topics() -> list[str]
 10. Vault operations (search, write, propose) complete within 100ms in the real-time path; FAISS rebuild runs in background.
 11. `add_observation()` with a chitchat-only string scores `quality=0` and is not synthesized.
 12. `reject_proposal()` preserves the proposal file with `status: rejected`; does not delete it.
+13. A `Learning/` write with `sensitivity: high` generates a proposal, not an auto-write (sensitivity overrides area risk).
+14. Running `VaultManager()` twice on a fully-initialized vault produces no duplicate folders, files, or log entries (idempotent bootstrap).
+15. `approve_proposal()` on a proposal whose target note has been manually edited since creation returns a stale warning and does not apply the write.
