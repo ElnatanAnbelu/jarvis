@@ -4,7 +4,9 @@ VaultManager — idempotent scaffold for the JARVIS Second Brain Obsidian vault.
 All filesystem operations are idempotent: safe to call multiple times.
 """
 
+import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +25,18 @@ AREA_FOLDERS = [
     "Daily",
     "Archive",
 ]
+
+# Risk level per area — drives the proposal flow in _should_propose
+AREA_RISK = {
+    "Business":      "high",
+    "Relationships": "high",
+    "Decisions":     "high",
+    "Personal":      "medium",
+    "Goals":         "medium",
+    "Learning":      "low",
+    "Daily":         "low",
+    "Archive":       "low",
+}
 
 # Relative paths inside the vault root
 JARVIS_DIR        = Path("_JARVIS")
@@ -158,3 +172,72 @@ class VaultManager:
         md_line = f"- `{ts}` **{action}** — {summary} *(risk: {risk})*\n"
         with md_path.open("a", encoding="utf-8") as fh:
             fh.write(md_line)
+
+    # ── Note format utilities ──────────────────────────────────────────────────
+
+    def _compute_hash(self, content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def _build_frontmatter(self, title: str, area: str, source: str,
+                           sensitivity: str = "low", created_by: str = "jarvis",
+                           tags: list = None, extra: dict = None) -> str:
+        now = datetime.now().strftime("%Y-%m-%d")
+        tag_str = "[" + ", ".join(tags) + "]" if tags else "[]"
+        lines = [
+            "---",
+            f"title: {title}",
+            f"area: {area}",
+            f"tags: {tag_str}",
+            f"created: {now}",
+            f"updated: {now}",
+            f"created_by: {created_by}",
+            f"last_edited_by: {created_by}",
+            f"jarvis_last_hash: placeholder",
+            f"sensitivity: {sensitivity}",
+            f'source: "{source}"',
+        ]
+        if extra:
+            for k, v in extra.items():
+                lines.append(f"{k}: {v}")
+        lines.append("---")
+        return "\n".join(lines)
+
+    def _parse_frontmatter(self, path: Path) -> dict:
+        """Extract YAML frontmatter as a dict. Returns {} if none."""
+        try:
+            text = path.read_text(encoding="utf-8")
+            m = re.match(r'^---\n(.*?)\n---', text, re.DOTALL)
+            if not m:
+                return {}
+            result = {}
+            for line in m.group(1).splitlines():
+                if ":" in line:
+                    k, _, v = line.partition(":")
+                    result[k.strip()] = v.strip().strip('"')
+            return result
+        except Exception:
+            return {}
+
+    def _update_frontmatter_field(self, path: Path, field: str, value: str):
+        """Update a single frontmatter field in an existing note."""
+        try:
+            text = path.read_text(encoding="utf-8")
+            pattern = rf'(^{re.escape(field)}:\s*)(.*)$'
+            new_text = re.sub(pattern, rf'\g<1>{value}', text,
+                              count=1, flags=re.MULTILINE)
+            path.write_text(new_text, encoding="utf-8")
+        except Exception:
+            pass
+
+    def _should_propose(self, area: str, sensitivity: str,
+                        has_human_edits: bool) -> bool:
+        """Return True if this write must go through the proposal flow."""
+        if has_human_edits:
+            return True
+        if sensitivity == "high":
+            return True
+        risk = AREA_RISK.get(area, "medium")
+        return risk in ("high", "medium")
+
+    def _safe_title(self, title: str) -> str:
+        return re.sub(r'[<>:"/\\|?*]', '', title).strip()
