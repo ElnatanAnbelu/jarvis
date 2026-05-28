@@ -229,8 +229,23 @@ def update_note(title: str, new_facts: str):
         _last_build = 0.0
 
 
+# Topics whose facts belong in the personal Second Brain, not the project wiki.
+_PERSONAL_NOTE_TOPICS = frozenset({
+    "elnatan", "family", "goals", "health", "relationships", "interests",
+    "decisions", "habits", "sleep", "gym", "fitness", "reading", "books",
+    "hobbies", "personal", "life", "feelings", "emotions", "motivation",
+    "friends", "contacts", "dates", "birthdays",
+})
+
+
+def _is_personal_topic(note_title: str) -> bool:
+    """Return True if this note title belongs in the personal Second Brain."""
+    lower = note_title.lower().strip()
+    return any(topic in lower for topic in _PERSONAL_NOTE_TOPICS)
+
+
 def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
-    """Background: use Groq to extract facts and write to wiki."""
+    """Background: extract facts, route to personal brain or project wiki."""
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not groq_key:
         return
@@ -241,7 +256,7 @@ For each fact, output exactly:
 NOTE: <note title>
 FACT: <one-line fact>
 
-Use simple note titles like: Addis Market, Goals, Family, Elnatan, or create a new topic if needed.
+Use simple note titles like: Goals, Family, Health, Interests, Decisions, Elnatan (for personal facts about the user), or technical topics like: JARVIS, Tools, Architecture, Addis Market (for project/code facts).
 Output nothing if there's nothing worth saving.
 
 USER: {user_msg}
@@ -265,8 +280,24 @@ JARVIS: {jarvis_msg}
                 current_note = line[5:].strip()
             elif line.startswith("FACT:") and current_note:
                 fact = line[5:].strip()
-                if fact:
-                    ts = datetime.now().strftime("%Y-%m-%d")
+                if not fact:
+                    continue
+                ts = datetime.now().strftime("%Y-%m-%d")
+                if _is_personal_topic(current_note):
+                    # Route personal facts to the Second Brain observation staging layer
+                    try:
+                        from memory.observations import add_observation
+                        add_observation(
+                            source="conversation",
+                            source_detail=f"auto-extracted, {ts}",
+                            content=fact,
+                            relevance_hint=current_note,
+                        )
+                    except Exception:
+                        # Fall back to project wiki if observations unavailable
+                        update_note(current_note, f"- {fact} *(learned {ts})*")
+                else:
+                    # Technical/project facts stay in the project wiki (graphify vault)
                     update_note(current_note, f"- {fact} *(learned {ts})*")
     except Exception:
         pass
