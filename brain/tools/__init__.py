@@ -12,6 +12,7 @@ import brain.tools.memory
 import brain.tools.business
 import brain.tools.personal
 import brain.tools.strategy
+import brain.tools.second_brain
 
 # TOOLS in OpenAI/Groq format — compatible with the original brain/tools.py API
 TOOLS = [
