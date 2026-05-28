@@ -113,3 +113,31 @@ def test_should_not_propose_low_risk_low_sensitivity(vault):
 def test_should_propose_when_human_edited(vault):
     # Human edits always trigger proposal regardless of risk
     assert vault._should_propose("Learning", "low", has_human_edits=True) is True
+
+
+def test_update_frontmatter_field_changes_value(vault, tmp_path):
+    note_path = tmp_path / "SecondBrain" / "Learning" / "test_fm.md"
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    note_path.write_text(
+        "---\ntitle: Old\njarvis_last_hash: aaa\n---\n\n# Old\n",
+        encoding="utf-8"
+    )
+    vault._update_frontmatter_field(note_path, "jarvis_last_hash", "bbb")
+    updated = vault._parse_frontmatter(note_path)
+    assert updated["jarvis_last_hash"] == "bbb"
+    # title should be unchanged
+    assert updated["title"] == "Old"
+
+
+def test_safe_title_strips_forbidden_chars(vault):
+    dirty = 'My: "Note" <with> /special\\chars|?*'
+    result = vault._safe_title(dirty)
+    for ch in '<>:"/\\|?*':
+        assert ch not in result
+    assert "Note" in result
+    assert "special" in result
+
+
+def test_safe_title_clean_string_unchanged(vault):
+    clean = "Open by Andre Agassi"
+    assert vault._safe_title(clean) == clean

@@ -181,7 +181,7 @@ class VaultManager:
     def _build_frontmatter(self, title: str, area: str, source: str,
                            sensitivity: str = "low", created_by: str = "jarvis",
                            tags: list = None, extra: dict = None) -> str:
-        now = datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         tag_str = "[" + ", ".join(tags) + "]" if tags else "[]"
         lines = [
             "---",
