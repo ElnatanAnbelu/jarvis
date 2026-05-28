@@ -82,13 +82,14 @@ def get_fallback_directive(model_hint: str = "weak") -> str:
 
 
 def load_second_brain_modules() -> str:
-    """Load core Second Brain guidance for when JARVIS is doing vault work."""
-    parts = [
-        _read("specialized/second_brain_execution_overview.md"),
-        _read("specialized/safe_vault_write.md"),
-        _read("security/second_brain_vault_writes.md"),
-    ]
-    return "\n\n".join(p for p in parts if not p.startswith("[MISSING"))
+    """Load consolidated Second Brain guidance for vault work.
+
+    Replaces the previous three-module load (execution_overview +
+    safe_vault_write + security/vault_writes) with a single tighter file.
+    The originals are preserved in versions/ for rollback if needed.
+    """
+    block = _read("specialized/second_brain.md")
+    return block if not block.startswith("[MISSING") else ""
 
 
 def load_security() -> str:
