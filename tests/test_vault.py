@@ -141,3 +141,35 @@ def test_safe_title_strips_forbidden_chars(vault):
 def test_safe_title_clean_string_unchanged(vault):
     clean = "Open by Andre Agassi"
     assert vault._safe_title(clean) == clean
+
+
+def test_log_activity_appends_to_markdown(vault, tmp_path):
+    vault._log_activity("create", "Learning/Test.md", "conversation", "test note", "low")
+    content = (tmp_path / "SecondBrain" / "_JARVIS" / "_Activity.md").read_text()
+    assert "create" in content
+    assert "Learning/Test.md" in content
+    assert "conversation" in content
+
+
+def test_log_activity_appends_jsonl_entry(vault, tmp_path):
+    import json
+    vault._log_activity("update", "Daily/2026-05-28.md", "email", "gym log", "low")
+    lines = (tmp_path / "SecondBrain" / "_JARVIS" / "_Activity.jsonl").read_text().strip().splitlines()
+    entries = [json.loads(l) for l in lines if l.strip()]
+    activity = [e for e in entries if e.get("action") == "update"]
+    assert len(activity) == 1
+    assert activity[0]["note"] == "Daily/2026-05-28.md"
+    assert activity[0]["source"] == "email"
+    assert "ts" in activity[0]
+
+
+def test_log_multiple_activities_accumulate(vault, tmp_path):
+    import json
+    vault._log_activity("create", "Learning/A.md", "conv", "a", "low")
+    vault._log_activity("create", "Learning/B.md", "conv", "b", "low")
+    lines = [l for l in
+        (tmp_path / "SecondBrain" / "_JARVIS" / "_Activity.jsonl")
+        .read_text().strip().splitlines()
+        if l.strip()]
+    non_init = [l for l in lines if "vault_init" not in l]
+    assert len(non_init) == 2

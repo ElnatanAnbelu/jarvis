@@ -148,30 +148,33 @@ class VaultManager:
         """
         Append one entry to both _Activity.md and _Activity.jsonl.
 
-        Implemented as a real write here (not a stub) so that the
-        idempotency test can verify exactly one vault_init entry.
-        The full activity-log API (Task 3) will expand this.
+        _Activity.md  — human-readable markdown with section headers.
+        _Activity.jsonl — one JSON record per line (machine-readable).
         """
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
-        # JSON record
-        record = {
-            "ts": ts,
-            "action": action,
-            "note": note,
-            "source": source,
-            "summary": summary,
-            "risk": risk,
-        }
-        jsonl_path = self.vault_path / ACTIVITY_JSONL
-        with jsonl_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
+        # Human-readable markdown (append-only)
+        md_entry = (
+            f"\n## {ts} | {action} | {note}\n"
+            f"- **Source**: {source}\n"
+            f"- **Summary**: {summary}\n"
+        )
+        act_md = self.vault_path / ACTIVITY_MD
+        try:
+            with open(act_md, "a", encoding="utf-8") as f:
+                f.write(md_entry)
+        except Exception:
+            pass
 
-        # Human-readable markdown entry
-        md_path = self.vault_path / ACTIVITY_MD
-        md_line = f"- `{ts}` **{action}** — {summary} *(risk: {risk})*\n"
-        with md_path.open("a", encoding="utf-8") as fh:
-            fh.write(md_line)
+        # Machine-readable JSONL (one record per line)
+        record = {"ts": ts, "action": action, "note": note,
+                  "source": source, "summary": summary, "risk": risk}
+        act_jsonl = self.vault_path / ACTIVITY_JSONL
+        try:
+            with open(act_jsonl, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
+        except Exception:
+            pass
 
     # ── Note format utilities ──────────────────────────────────────────────────
 
