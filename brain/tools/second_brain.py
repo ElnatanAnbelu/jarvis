@@ -45,7 +45,8 @@ def _vault():
                         "description": "Source of information, e.g. 'conversation, 2026-05-28'"},
         "sensitivity": {"type": "string",
                         "description": "Sensitivity level: low (default), medium, or high"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def create_brain_note(title: str, content: str, area: str, source: str,
                       sensitivity: str = "low") -> str:
@@ -68,7 +69,8 @@ def create_brain_note(title: str, content: str, area: str, source: str,
         "source":        {"type": "string", "description": "Source of information"},
         "sensitivity":   {"type": "string",
                           "description": "Sensitivity: low (default), medium, high"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def update_brain_note(title_or_path: str, content: str, source: str,
                       sensitivity: str = "low") -> str:
@@ -92,7 +94,8 @@ def update_brain_note(title_or_path: str, content: str, source: str,
         "source":           {"type": "string", "description": "Source of information"},
         "reason":           {"type": "string",
                              "description": "Why this change is being proposed"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def propose_brain_change(title: str, proposed_content: str, action: str,
                          area: str, source: str, reason: str) -> str:
@@ -169,7 +172,8 @@ def review_proposals() -> str:
     parameters={
         "proposal_id": {"type": "string",
                         "description": "Proposal ID from review_proposals output"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def approve_proposal(proposal_id: str) -> str:
     return _vault().approve_proposal(proposal_id)
@@ -184,7 +188,8 @@ def approve_proposal(proposal_id: str) -> str:
     ),
     parameters={
         "proposal_id": {"type": "string", "description": "Proposal ID to reject"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def reject_proposal(proposal_id: str) -> str:
     return _vault().reject_proposal(proposal_id)
@@ -208,7 +213,8 @@ def reject_proposal(proposal_id: str) -> str:
         "source":  {"type": "string", "description": "Source: conversation, observation, etc."},
         "supporting_observations": {"type": "string",
                                     "description": "Evidence supporting this update"},
-    }
+    },
+    allowed_agents=["JARVIS"],
 )
 def update_personal_model(section: str, content: str, source: str,
                           supporting_observations: str = "") -> str:

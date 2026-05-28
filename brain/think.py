@@ -664,17 +664,22 @@ def _make_client(auth_key=None, is_oauth=False):
     return anthropic.Anthropic(api_key=auth_key)
 
 def _build_anthropic_tools() -> list:
-    """Convert JARVIS tools to Anthropic native tool format."""
-    from brain.tools import TOOLS
+    """Convert JARVIS tools to Anthropic native tool format.
+
+    Uses agent-filtered registry view — JARVIS gets every tool including
+    Second Brain write tools that are blocked for other agents.
+    """
+    from brain.tools.registry import get_tools
+    schemas = get_tools(agent="JARVIS")
     result = []
-    for t in TOOLS:
-        fn = t["function"]
+    for s in schemas:
         result.append({
-            "name": fn["name"],
-            "description": fn["description"],
-            "input_schema": fn["parameters"],
+            "name": s["name"],
+            "description": s["description"],
+            "input_schema": s["input_schema"],
         })
     return result
+
 
 def _build_cached_system(user_input: str) -> list:
     """
@@ -725,7 +730,7 @@ def _think_sdk(user_input: str, model: str) -> str:
         tool_results = []
         for block in resp.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input)
+                result = execute_tool(block.name, block.input, agent="JARVIS")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -771,7 +776,7 @@ def _think_cli(user_input: str, model: str) -> str:
                         args = json.loads(tc.function.arguments)
                     except Exception:
                         args = {}
-                    result = execute_tool(tc.function.name, args)
+                    result = execute_tool(tc.function.name, args, agent="JARVIS")
                     results.append(result)
                 results_str = " | ".join(results)
 
@@ -835,7 +840,7 @@ def _think_groq_with_tools(user_input: str) -> str:
             args = json.loads(tc.function.arguments)
         except Exception:
             args = {}
-        result = execute_tool(tc.function.name, args)
+        result = execute_tool(tc.function.name, args, agent="JARVIS")
         messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     final = client.chat.completions.create(
@@ -1223,7 +1228,7 @@ def think_stream(user_input: str, model: str = None):
         tool_results = []
         for block in final_msg.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input)
+                result = execute_tool(block.name, block.input, agent="JARVIS")
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
