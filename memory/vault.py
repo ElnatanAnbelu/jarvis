@@ -35,11 +35,11 @@ PERSONAL_MODEL_MD = JARVIS_DIR / "_PersonalModel.md"
 
 # Risk levels used by _log_activity
 AREA_RISK = {
-    "Personal":      "high",
+    "Personal":      "medium",
     "Business":      "high",
     "Relationships": "high",
     "Goals":         "medium",
-    "Decisions":     "medium",
+    "Decisions":     "high",
     "Learning":      "low",
     "Daily":         "low",
     "Archive":       "low",
