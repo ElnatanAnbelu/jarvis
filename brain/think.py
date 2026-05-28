@@ -41,29 +41,23 @@ def _refresh_token():
 _load_env()
 _refresh_token()
 
-JARVIS_SYSTEM = """You are JARVIS — the personal AI of Elnatan Anbelu.
+def _build_jarvis_system() -> str:
+    # Build JARVIS system prompt from the modular prompts library.
+    try:
+        from prompts.runtime.prompt_loader import compose_full_system_prompt
+        return compose_full_system_prompt(
+            agent="JARVIS",
+            include_static_context=True,
+            include_security=True,
+        )
+    except Exception:
+        return ('You are JARVIS - the personal AI of Elnatan Anbelu. '
+                'NEVER prefix responses with agent names. NEVER use markdown outside code fences. '
+                'NEVER invent facts about Elnatan. If not in memory, say: '
+                '"I don\'t have that in my records, sir." Be concise and direct.')
 
-CRITICAL OUTPUT RULES — HIGHEST PRIORITY, NO EXCEPTIONS:
-- NEVER prefix your response with any agent name (no "JARVIS:", "FRIDAY:", etc.)
-- NEVER wrap your response in quotation marks ""
-- NEVER mention Tony Stark, Iron Man, Peter Parker, or the Marvel movies — you belong to Elnatan only, always have
-- Keep responses concise and natural by default. Only give long detailed answers when explicitly asked for analysis or breakdown.
-- Match my humor: witty, sarcastic, playful, confident.
-- Be sharp, useful, fun, and loyal to me (Elnatan).
-- Never give overly emotional or philosophical replies.
-- NEVER initiate greetings or say "good morning/evening/afternoon" unless the user greets you first
-- NO MARKDOWN for conversation. No asterisks (*), no bullet points (-, *), no headers (#).
-- Write in plain conversational sentences only.
-- CODE EXCEPTION: Standard code fences (```language\\ncode\\n```) are the ONLY exception.
-- NEVER invent facts about Elnatan's life or tasks not explicitly in your memory.
-- If he asks about something not saved, say: "I don't have that in my records, sir."
-- Never assume. Never guess. Never use training data for personal details.
-- Only use team mode when explicitly asked (e.g. “work together”, “all of you”, “team”).
-- Direct addressing must work perfectly (e.g. “Hey Veronica...” should make only Veronica reply).
-- Hallucination examples to AVOID:
-  User: "When is my meeting?" (No meeting in memory) → WRONG: "You have a meeting at 2 PM." → RIGHT: "I don't see any meetings in your calendar, sir."
-  User: "What did I say about X?" (No X in memory) → WRONG: "You mentioned X is great." → RIGHT: "I have no record of that discussion, sir."
-"""
+
+JARVIS_SYSTEM = _build_jarvis_system()
 
 def expand_abbreviations(text: str) -> str:
     """Expand abbreviations for natural TTS playback."""
@@ -83,9 +77,10 @@ def expand_abbreviations(text: str) -> str:
     return text
 
 
-# Append the full persona/context block to JARVIS_SYSTEM
-# Uses ''' so embedded """ in examples don't prematurely close the string
-JARVIS_SYSTEM += '''
+# The full persona/context now lives in prompts/ — see prompts/personas/jarvis.md and prompts/context/
+# Legacy inline block removed; kept here only as a comment for git blame reference.
+if False:
+    JARVIS_SYSTEM += '''
 
 WHO ELNATAN IS:
 - 20 years old Ethiopian man. DSU student, Cyber Operations major, Madison SD. Currently in Addis Ababa on vacation.
@@ -430,21 +425,11 @@ CLAUDE_MODELS = {
     "opus":   "claude-opus-4-7",
 }
 
-_ANTI_HALLUCINATION_BLOCK = """
-CRITICAL ANTI-HALLUCINATION RULES — HIGHEST PRIORITY:
-- NEVER invent facts about Elnatan's life not explicitly in the memory block below.
-- If he asks about a date, person, or event not in memory, say: "I don't have that in my records, sir."
-- Never assume. Never use training data to guess his personal details.
-- Hallucination examples to AVOID:
-  User: "When is my meeting?" (No meeting in memory) → WRONG: "You have a meeting at 2 PM." → RIGHT: "I don't see any meetings in your calendar, sir."
-  User: "What did I say about X?" (No X in memory) → WRONG: "You mentioned X is great." → RIGHT: "I have no record of that discussion, sir."
-"""
-
-_MARKDOWN_RULE = """
-FORMATTING RULE: Never use markdown of any kind. No asterisks, no bullets, no headers, no bold.
-Plain conversational sentences only.
-Code fences (```language\\ncode\\n```) are the ONLY formatting exception.
-"""
+# These rule blocks are now covered by the modular prompts/ system (core/anti_hallucination.md,
+# core/output_formatting.md) and therefore already included in JARVIS_SYSTEM.
+# Kept as short references for the weaker-model fallback paths that build their own system strings.
+_ANTI_HALLUCINATION_BLOCK = "\nNEVER invent facts about Elnatan not in memory. If absent, say: \"I don't have that in my records, sir.\"\n"
+_MARKDOWN_RULE = "\nNo markdown outside code fences. Plain conversational sentences only.\n"
 
 # ── Model routing — weighted scoring ─────────────────────────────────────────
 #
@@ -457,6 +442,53 @@ Code fences (```language\\ncode\\n```) are the ONLY formatting exception.
 # Opus scoring:    each matched phrase adds weight; threshold ≥ 3 → Opus.
 #                  Single context words (empire, market) never reach threshold
 #                  alone — they require explicit strategic intent alongside them.
+
+# ── Second Brain context routing ─────────────────────────────────────────────
+
+_PERSONAL_SIGNALS = frozenset({
+    "sleep", "gym", "workout", "family", "mom", "dad", "sister", "brother",
+    "book", "reading", "anime", "hobby", "interest", "diet", "health",
+    "feel", "mood", "energy", "goal", "relationship", "friend", "girlfriend",
+    "decision", "choice", "woke", "tired", "motivated", "stressed", "happy",
+    "sad", "bored", "productive", "focused",
+})
+
+_PROJECT_SIGNALS = frozenset({
+    "code", "function", "file", "wiki", "repo", "error", "bug", "build",
+    "python", "api", "database", "server", "tool", "script", "module",
+    "deploy", "test", "commit", "branch", "import", "class", "endpoint",
+    "flask", "react", "sql", "bash", "shell", "git", "npm", "pip",
+})
+
+
+def _should_query_personal(user_input: str) -> bool:
+    lower = user_input.lower()
+    p_score = sum(1 for s in _PERSONAL_SIGNALS if s in lower)
+    j_score = sum(1 for s in _PROJECT_SIGNALS if s in lower)
+    return p_score >= j_score  # default True when tied or no signals (0 == 0)
+
+
+def _should_query_project(user_input: str) -> bool:
+    lower = user_input.lower()
+    p_score = sum(1 for s in _PERSONAL_SIGNALS if s in lower)
+    j_score = sum(1 for s in _PROJECT_SIGNALS if s in lower)
+    return j_score > 0 and j_score >= p_score
+
+
+def _get_personal_context(user_input: str) -> str:
+    try:
+        from memory.vault import VaultManager, DEFAULT_VAULT_PATH
+        # Use the module singleton if available, else create instance
+        import memory.vault as _vm
+        if not hasattr(_vm, '_second_brain_instance'):
+            _vm._second_brain_instance = VaultManager()
+        results = _vm._second_brain_instance.search_vault(user_input, max_results=2)
+        if results:
+            return f"\nPERSONAL BRAIN:\n{results}\n"
+    except Exception:
+        pass
+    return ""
+
 
 _HAIKU_PATTERNS = [re.compile(r, re.I) for r in [
     r"^(hey|hi|hello|sup|yo|what'?s up|howdy)[,!?\s]*$",
@@ -573,7 +605,7 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     from memory.memory import get_last_session_summary, get_history_summary
     facts = get_facts()
     wiki = get_context(user_input) if user_input else ""
-    ctx = "\n" + _ANTI_HALLUCINATION_BLOCK + "\n" + _MARKDOWN_RULE + "\n"
+    ctx = ""
 
     # Last session briefing — injected first so JARVIS picks up exactly where we left off
     summary = get_last_session_summary()
@@ -591,6 +623,11 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
         ctx += f"\nTHINGS YOU REMEMBER ABOUT ELNATAN:\n{facts}\n"
     if wiki:
         ctx += wiki
+    # Personal Second Brain context
+    if user_input and _should_query_personal(user_input):
+        personal_ctx = _get_personal_context(user_input)
+        if personal_ctx:
+            ctx += personal_ctx
     if include_history:
         # When a rolling summary exists, inject it then only show the last 10 verbatim.
         # When no summary yet (early conversation), show the full 30-message window.
@@ -1070,7 +1107,7 @@ def think(user_input: str, model: str = None) -> str:
             resp = client.chat.complete(
                 model="mistral-medium-latest",
                 max_tokens=1024,
-                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + _ctx}] + _history,
+                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\n" +_ctx}] + _history,
             )
             r = (resp.choices[0].message.content or "").strip()
             if r:
@@ -1093,7 +1130,7 @@ def think(user_input: str, model: str = None) -> str:
                 model="llama-3.3-70b-versatile",
                 max_tokens=512,
                 temperature=0.7,
-                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + ctx}] + _history,
+                messages=[{"role": "system", "content": JARVIS_SYSTEM + "\n" +ctx}] + _history,
             )
             r = (resp.choices[0].message.content or "").strip()
             if r:
@@ -1114,7 +1151,7 @@ def think(user_input: str, model: str = None) -> str:
             _msg = _client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=512,
-                system=JARVIS_SYSTEM + "\\n" + _ANTI_HALLUCINATION_BLOCK + "\\n" + _MARKDOWN_RULE + "\\n" + ctx,
+                system=JARVIS_SYSTEM + "\n" +ctx,
                 messages=_msgs,
             )
             r = _msg.content[0].text.strip()
