@@ -342,3 +342,41 @@ def test_reject_proposal_preserves_file(vault, tmp_path):
 def test_get_pending_proposals_empty(vault):
     result = vault.get_pending_proposals()
     assert "no pending" in result.lower() or result == "" or "0" in result
+
+
+# ── Task 7: Navigation + Search tests ─────────────────────────────────────────
+
+def test_get_note_returns_content(vault, tmp_path):
+    vault.create_note("React Hooks", "useState is fundamental.", "Learning", "conv")
+    result = vault.get_note("Learning/React Hooks")
+    assert "useState" in result
+
+
+def test_get_note_not_found(vault):
+    result = vault.get_note("Learning/Nonexistent Note")
+    assert "not found" in result.lower()
+
+
+def test_list_notes_returns_notes_in_area(vault, tmp_path):
+    vault.create_note("Note A", "content a", "Learning", "conv")
+    vault.create_note("Note B", "content b", "Learning", "conv")
+    result = vault.list_notes("Learning")
+    assert "Note A" in result
+    assert "Note B" in result
+
+
+def test_list_notes_all_areas(vault, tmp_path):
+    vault.create_note("Topic X", "x", "Learning", "conv")
+    result = vault.list_notes()
+    assert "Learning" in result
+
+
+def test_search_vault_keyword_fallback(vault, tmp_path):
+    vault.create_note("Gym Schedule", "I go to gym on Mon/Wed/Fri.", "Daily", "conv")
+    result = vault.search_vault("gym workout schedule")
+    assert "gym" in result.lower() or "Gym" in result
+
+
+def test_search_vault_returns_empty_when_no_match(vault):
+    result = vault.search_vault("xylophone concerto baroque")
+    assert result == "" or "no results" in result.lower()

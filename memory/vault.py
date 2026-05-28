@@ -7,6 +7,8 @@ All filesystem operations are idempotent: safe to call multiple times.
 import hashlib
 import json
 import re
+import threading
+import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -92,6 +94,13 @@ class VaultManager:
 
     def __init__(self, vault_path=None):
         self.vault_path = Path(vault_path) if vault_path else DEFAULT_VAULT_PATH
+        # FAISS index state (initialized here, built lazily in background)
+        self._index = None
+        self._chunks: list = []
+        self._titles: list = []
+        self._index_lock = threading.Lock()
+        self._last_build: float = 0.0
+        self._building: bool = False
         self._ensure_vault()
 
     # ── Bootstrap ──────────────────────────────────────────────────────────────
@@ -468,3 +477,157 @@ class VaultManager:
         self._log_activity("update", f"{area}/{path.stem}", source,
                            f"Updated note: {path.stem}", risk="low")
         return f"Updated: {area}/{path.stem}.md"
+
+    # ── Navigation ─────────────────────────────────────────────────────────────
+
+    def get_note(self, title_or_path: str) -> str:
+        """Return the full text of a note by 'Area/Title' or just 'Title'."""
+        path = self._resolve_note_path(title_or_path)
+        if path is None or not path.exists():
+            return f"Note not found: {title_or_path}"
+        return path.read_text(encoding="utf-8")
+
+    def list_notes(self, area: Optional[str] = None) -> str:
+        """List notes in one area or all areas."""
+        areas = [area] if area else list(AREA_RISK.keys())
+        lines = []
+        for a in areas:
+            folder = self.vault_path / a
+            if not folder.exists():
+                continue
+            notes = sorted(folder.glob("*.md"))
+            if notes:
+                lines.append(f"**{a}/**")
+                for n in notes:
+                    lines.append(f"  - {n.stem}")
+        return "\n".join(lines) if lines else "No notes found."
+
+    # ── Search ─────────────────────────────────────────────────────────────────
+
+    def search_vault(self, query: str, max_results: int = 3) -> str:
+        """Search vault using FAISS if available, otherwise keyword fallback."""
+        self._ensure_index()
+        with self._index_lock:
+            index_ready = self._index is not None and len(self._chunks) > 0
+        if index_ready:
+            try:
+                return self._faiss_search(query, max_results)
+            except Exception:
+                pass
+        return self._keyword_search(query, max_results)
+
+    def _keyword_search(self, query: str, max_notes: int = 3) -> str:
+        stop = {"the", "a", "an", "is", "it", "to", "of", "and", "or", "in", "on",
+                "for", "what", "how", "can", "do", "my", "me", "i"}
+        words = set(re.findall(r'\w+', query.lower())) - stop
+        if not words:
+            return ""
+        scored = []
+        for area in AREA_RISK:
+            folder = self.vault_path / area
+            if not folder.exists():
+                continue
+            for note in folder.glob("*.md"):
+                try:
+                    text = note.read_text(encoding="utf-8").lower()
+                    score = sum(text.count(w) + (3 if w in note.stem.lower() else 0)
+                                for w in words)
+                    if score > 0:
+                        body = re.sub(r'^---.*?---\s*', '',
+                                      note.read_text(encoding="utf-8"),
+                                      flags=re.DOTALL).strip()
+                        scored.append((score, f"{area}/{note.stem}", body))
+                except Exception:
+                    continue
+        scored.sort(reverse=True)
+        if not scored:
+            return ""
+        parts = [f"### {title}\n{body[:500]}" for _, title, body in scored[:max_notes]]
+        return "\n\n".join(parts)
+
+    # ── FAISS infrastructure ───────────────────────────────────────────────────
+
+    def _notes_mtime(self) -> float:
+        try:
+            mtimes = []
+            for area in AREA_RISK:
+                folder = self.vault_path / area
+                if folder.exists():
+                    mtimes.extend(p.stat().st_mtime for p in folder.glob("*.md"))
+            return max(mtimes, default=0.0)
+        except Exception:
+            return 0.0
+
+    def _ensure_index(self):
+        with self._index_lock:
+            needs_rebuild = (self._index is None or
+                (self._notes_mtime() > self._last_build and
+                 (_time.time() - self._last_build) > 60))
+        if needs_rebuild and not self._building:
+            self._building = True
+            t = threading.Thread(target=self._build_index_bg, daemon=True)
+            t.start()
+
+    def _build_index_bg(self):
+        try:
+            self._build_faiss_index()
+        except Exception:
+            pass
+        finally:
+            self._building = False
+
+    def _build_faiss_index(self):
+        try:
+            import numpy as np
+            import faiss
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            return  # gracefully skip if not installed
+        chunks, titles = [], []
+        for area in AREA_RISK:
+            folder = self.vault_path / area
+            if not folder.exists():
+                continue
+            for note in folder.glob("*.md"):
+                try:
+                    body = re.sub(r'^---.*?---\s*', '',
+                                  note.read_text(encoding="utf-8"),
+                                  flags=re.DOTALL).strip()
+                    words = body.split()
+                    for i in range(0, len(words), 80):
+                        chunks.append(" ".join(words[i:i+80]))
+                        titles.append(f"{area}/{note.stem}")
+                except Exception:
+                    continue
+        if not chunks:
+            return
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        emb = model.encode(chunks, normalize_embeddings=True, show_progress_bar=False)
+        emb = np.array(emb, dtype="float32")
+        index = faiss.IndexFlatIP(emb.shape[1])
+        index.add(emb)
+        with self._index_lock:
+            self._index = index
+            self._chunks = chunks
+            self._titles = titles
+            self._last_build = _time.time()
+
+    def _faiss_search(self, query: str, max_results: int = 3) -> str:
+        import numpy as np
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        q = np.array(model.encode([query], normalize_embeddings=True), dtype="float32")
+        with self._index_lock:
+            scores, indices = self._index.search(q, min(max_results * 3, len(self._chunks)))
+        seen, results = set(), []
+        for score, idx in zip(scores[0], indices[0]):
+            if idx < 0 or score < 0.25:
+                continue
+            title = self._titles[idx]
+            if title in seen:
+                continue
+            seen.add(title)
+            results.append(f"### {title}\n{self._chunks[idx]}")
+            if len(results) >= max_results:
+                break
+        return "\n\n".join(results)
