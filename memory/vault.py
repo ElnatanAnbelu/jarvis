@@ -1,12 +1,10 @@
 """
 VaultManager — idempotent scaffold for the JARVIS Second Brain Obsidian vault.
 
-Mirrors the singleton pattern used in memory/wiki.py.
 All filesystem operations are idempotent: safe to call multiple times.
 """
 
 import json
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,24 +30,6 @@ PROPOSALS_DIR     = JARVIS_DIR / "Proposals"
 ACTIVITY_MD       = JARVIS_DIR / "_Activity.md"
 ACTIVITY_JSONL    = JARVIS_DIR / "_Activity.jsonl"
 PERSONAL_MODEL_MD = JARVIS_DIR / "_PersonalModel.md"
-
-# Risk levels used by _log_activity
-AREA_RISK = {
-    "Personal":      "medium",
-    "Business":      "high",
-    "Relationships": "high",
-    "Goals":         "medium",
-    "Decisions":     "high",
-    "Learning":      "low",
-    "Daily":         "low",
-    "Archive":       "low",
-    "_JARVIS":       "low",
-}
-
-# ── Module-level singleton state ───────────────────────────────────────────────
-
-_vm_instance = None
-_vm_lock = threading.Lock()
 
 # ── Scaffold content ───────────────────────────────────────────────────────────
 
@@ -97,13 +77,6 @@ class VaultManager:
 
     def __init__(self, vault_path=None):
         self.vault_path = Path(vault_path) if vault_path else DEFAULT_VAULT_PATH
-        # FAISS index state — populated in later tasks
-        self._index = None
-        self._chunks: list = []
-        self._titles: list = []
-        self._model = None
-        self._index_lock = threading.Lock()
-
         self._ensure_vault()
 
     # ── Bootstrap ──────────────────────────────────────────────────────────────
