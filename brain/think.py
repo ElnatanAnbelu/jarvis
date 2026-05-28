@@ -44,12 +44,14 @@ _refresh_token()
 def _build_jarvis_system() -> str:
     # Build JARVIS system prompt from the modular prompts library.
     try:
-        from prompts.runtime.prompt_loader import compose_full_system_prompt
-        return compose_full_system_prompt(
+        from prompts.runtime.prompt_loader import compose_full_system_prompt, load_second_brain_modules
+        base = compose_full_system_prompt(
             agent="JARVIS",
             include_static_context=True,
             include_security=True,
         )
+        sb = load_second_brain_modules()
+        return base + ("\n\n" + sb if sb else "")
     except Exception:
         return ('You are JARVIS - the personal AI of Elnatan Anbelu. '
                 'NEVER prefix responses with agent names. NEVER use markdown outside code fences. '
