@@ -389,7 +389,7 @@ class VaultManager:
             note_path = self.vault_path / area_str / f"{self._safe_title(title_str)}.md"
             note_path.parent.mkdir(parents=True, exist_ok=True)
             note_path.write_text(proposed_content + "\n", encoding="utf-8")
-            new_hash = self._compute_hash(note_path.read_text(encoding="utf-8"))
+            new_hash = self._compute_hash(self._body_only(note_path.read_text(encoding="utf-8")))
             self._update_frontmatter_field(note_path, "jarvis_last_hash", new_hash)
         elif action == "update":
             existing_path = self._resolve_note_path(target)
