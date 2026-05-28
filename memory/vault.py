@@ -287,31 +287,50 @@ class VaultManager:
         # Invalidate search index (Task 7 will use this)
         # Nothing to invalidate yet — placeholder comment for now
 
-    # ── Proposal stub (Task 5 will replace this) ───────────────────────────────
+    # ── Proposal system ────────────────────────────────────────────────────────
 
-    def propose_change(self, **kwargs) -> str:
-        """Stub: will be replaced in Task 5."""
-        title = kwargs.get("title", "?")
-        area = kwargs.get("area", "")
-        source = kwargs.get("source", "")
-        action = kwargs.get("action", "create")
-        content = kwargs.get("proposed_content", "")
-        reason = kwargs.get("reason", "")
+    def _next_proposal_id(self) -> str:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
+        existing = list(proposals_dir.glob(f"{today}-*.md"))
+        return f"{today}-{len(existing) + 1:03d}"
 
-        safe = self._safe_title(title)
-        proposals_dir = self.vault_path / PROPOSALS_DIR
-        proposals_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-        proposal_path = proposals_dir / f"{ts}_{safe}.md"
-        body = (
-            f"# Proposal: {action} — {title}\n\n"
-            f"**Reason**: {reason}\n\n"
-            f"**Area**: {area}\n\n"
-            f"**Source**: {source}\n\n"
-            f"## Proposed Content\n\n{content}\n"
-        )
+    def propose_change(self, title: str, proposed_content: str, action: str,
+                       area: str, source: str, reason: str,
+                       sensitivity: str = "low") -> str:
+        proposal_id = self._next_proposal_id()
+        target = f"{area}/{self._safe_title(title)}"
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+        # Capture current note hash for stale detection at approval time
+        existing_path = self._resolve_note_path(target)
+        current_hash = ""
+        if existing_path and existing_path.exists():
+            current_hash = self._compute_hash(existing_path.read_text(encoding="utf-8"))
+
+        fm_lines = [
+            "---",
+            f"proposal_id: {proposal_id}",
+            f"status: pending",
+            f"proposed_at: {now}",
+            f"target_note: {target}",
+            f"action: {action}",
+            f"area: {area}",
+            f"risk: {AREA_RISK.get(area, 'medium')}",
+            f"sensitivity: {sensitivity}",
+            f'source: "{source}"',
+            f'reason: "{reason}"',
+            f"hash_at_proposal: {current_hash}",
+            "---",
+        ]
+        attribution = f"> *JARVIS: proposed from {source} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*"
+        body = "\n".join(fm_lines) + f"\n\n# Proposed Content\n\n{attribution}\n\n{proposed_content}\n"
+
+        proposal_path = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
         proposal_path.write_text(body, encoding="utf-8")
-        return f"proposed: {title}"
+        self._log_activity("propose", target, source,
+                           f"Proposed {action}: {title}", risk=AREA_RISK.get(area, "medium"))
+        return f"Proposal created: {proposal_id} — review with `review_proposals`"
 
     # ── Note write operations ──────────────────────────────────────────────────
 

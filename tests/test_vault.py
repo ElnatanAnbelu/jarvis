@@ -242,3 +242,45 @@ def test_update_note_proposes_when_human_edited(vault, tmp_path):
     assert "proposal" in result.lower() or "proposed" in result.lower()
     proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
     assert len(proposals) == 1
+
+
+# ── Task 5: Proposal System tests ─────────────────────────────────────────────
+
+def test_propose_change_creates_file_in_proposals_dir(vault, tmp_path):
+    vault.propose_change(
+        title="Addis Market Revenue",
+        proposed_content="Revenue hit $1000 this month.",
+        action="create",
+        area="Business",
+        source="conversation, 2026-05-28",
+        reason="Elnatan mentioned hitting first revenue milestone",
+    )
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert len(proposals) == 1
+
+
+def test_proposal_file_has_required_frontmatter(vault, tmp_path):
+    vault.propose_change("Test", "content", "create", "Business", "conv", "test")
+    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0]
+    text = p.read_text()
+    assert "proposal_id:" in text
+    assert "status: pending" in text
+    assert "target_note:" in text
+    assert "action: create" in text
+    assert "reason:" in text
+
+
+def test_proposal_ids_are_sequential(vault, tmp_path):
+    vault.propose_change("A", "c", "create", "Business", "conv", "r")
+    vault.propose_change("B", "c", "create", "Business", "conv", "r")
+    proposals = sorted((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert proposals[0].stem.endswith("-001")
+    assert proposals[1].stem.endswith("-002")
+
+
+def test_propose_change_returns_proposal_id_in_result(vault):
+    from datetime import datetime
+    result = vault.propose_change("X", "c", "create", "Business", "conv", "r")
+    assert "proposal" in result.lower()
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert today in result
