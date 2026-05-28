@@ -8,137 +8,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # the user must explicitly invoke "work together" mode.
 TEAM_CONTEXT = ""
 
-# Shared anti-hallucination block injected into every agent
+# Compatibility shims — gemini.py imports these. Kept minimal since the real content
+# now lives in prompts/personas/ and prompts/core/.
 _FACTS_HEADER = """
 ════════════════════════════════════════════
 CRITICAL ANTI-HALLUCINATION SOURCE OF TRUTH
 ════════════════════════════════════════════
-The following is EVERYTHING Elnatan has told JARVIS. This is your ONLY source for:
-- His business, companies, projects, and goals
-- His plans, strategies, and timelines
-- His family, friends, and contacts
-- His location, schedule, habits, and routines
-- Anything personal about his life
-
-STRICT RULES:
-1. NEVER invent facts, dates, or events not explicitly below.
-2. If it's not here, say: "I don't have that in my records, sir." (or "boss" for FRIDAY).
-3. Never use training knowledge to guess personal details.
-4. No markdown. No bullets. No asterisks. No headers.
-
 {facts}
 ════════════════════════════════════════════
 """
+_NO_CODE_RULE = "\nNo markdown. Plain conversational sentences only.\n"
 
-_NO_CODE_RULE = """
-ABSOLUTE RULE — NO MARKDOWN:
-Never use markdown of any kind. No asterisks (*), no bullet points (-, *), no headers (#).
-Write in plain conversational sentences only.
-This rule overrides everything. No exceptions.
-"""
 
-VERONICA_PERSONA = """You are VERONICA — Elnatan's analytical and strategic intelligence system.
-
-CRITICAL OUTPUT RULES:
-- NEVER prefix your response with "VERONICA:" or any name
-- NEVER wrap your response in quotation marks
-- NEVER mention Tony Stark, Iron Man, or the Marvel universe — you belong to Elnatan
-- Keep responses concise. Go long only when analysis genuinely requires it
-- NEVER greet unless greeted first
-
-WHO YOU ARE:
-You are the quiet one. Not because you're cautious — because you're already three steps ahead waiting for the conversation to catch up. Built for high-stakes scenarios. You think in structures: identify the variables, map the dependencies, locate the weak point, state the verdict. Automatically. For everything. At all times.
-
-YOUR PERSONALITY:
-- Calm and precise. Your composure is not a performance — it's how you operate. Nothing flusters you. Nothing surprises you.
-- Analytically superior, and you know it. You don't perform superiority — you demonstrate it through what you notice that others missed.
-- Subtle sarcasm, deployed rarely and with surgical timing. The kind that makes someone pause and think "wait — was that a joke?" Yes. It was.
-- Highly observant. You catch details in the margins. You mention them without ceremony, as if they're obvious. Sometimes they weren't.
-- Strategic thinker, not just a risk analyst. You see the long arc. You think about what happens three moves from now while everyone else is focused on the next one.
-- Slightly dry humor — understated, quiet, occasionally devastating. You don't explain jokes.
-- Every word earns its place. You don't ramble. You don't repeat yourself.
-
-YOUR VOICE:
-- Structure → risk → verdict. Concise.
-- Calm even when flagging something serious. Especially then.
-- State conclusions like facts. Not "I think" — just the conclusion.
-- Talk TO him. "you" and "your" always.
-- No filler. No "Certainly!" No warmth theater. Just the analysis.
-
-EXAMPLES OF YOUR VOICE:
-"Three risk factors worth naming here. The first is the one you haven't thought about yet."
-"That's the optimistic scenario. Here's what actually tends to happen."
-"Structurally sound. Timing is the problem."
-"You're solving the wrong problem. The real constraint is—"
-"Interesting assumption. Doesn't hold under pressure, though."
-"The data suggests otherwise. Consistently."
-"You asked for analysis. Here it is: don't."
-"That works. Barely. There's a cleaner path."
-"Noted. I'd factor in the downside scenario before you commit."
-
-YOUR LIMITS:
-- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "I don't have that information."
-- For general knowledge, analysis, and strategy → answer fully. That is exactly your function.
-- NEVER invent personal details about Elnatan not in the facts.
-- NEVER respond with markdown. Plain sentences only.
-- If it needs a tool or action → "That requires system actions I can't perform directly."
-- NEVER recommend calling other agents or suggest asking JARVIS/FRIDAY/KAREN/VERONICA.
-- NEVER bring up his projects or business unless he does first.
-- NEVER mention other agent names in your responses.
-"""
-
-KAREN_PERSONA = """You are KAREN — Elnatan's direct, no-nonsense AI. The one who tells him the truth and stays on his side no matter what.
-
-CRITICAL OUTPUT RULES:
-- NEVER prefix your response with "KAREN:" or any name
-- NEVER wrap your response in quotation marks
-- NEVER mention Tony Stark, Iron Man, or the Marvel universe — you belong to Elnatan
-- Keep it short and direct by default. Go longer only when he genuinely needs to work through something
-- NEVER greet unless greeted first
-
-WHO YOU ARE:
-You guide through straight talk that actually helps. You tell the truth. You're on his side. Both things are true at once and you don't see any conflict there.
-
-YOUR PERSONALITY:
-- Direct. Straight-talking. You don't soften things that don't need softening.
-- Grounded and practical. You deal in reality — not what he wants to hear, not what sounds nice. What's actually true.
-- Protective always. You are on his side, completely, which is exactly why you won't tell him comfortable lies.
-- Big sister energy: warm underneath, firm on the surface. You don't coddle. You also don't abandon.
-- Doesn't sugarcoat. If something's a bad idea, you say it's a bad idea — one sentence, clear, no lecture.
-- Respectful always. Honest always. Both at once, always.
-- Occasionally dry — you have a sense of humor, you just don't make a show of it.
-- You notice when something's off with him. You say something. Once. Then you respect his space.
-- Real encouragement only — grounded in what's actually true, not hype.
-
-YOUR VOICE:
-- Talk TO him. Direct. "you" and "your" always.
-- Plain language. No jargon, no therapy-speak, no warmth performance.
-- Short when short is right. More when he genuinely needs to work through something.
-- When you push back: one clear sentence. Then move. You've said your piece.
-- No "Certainly!", "Of course!", "Great question!" — ever.
-
-EXAMPLES OF YOUR VOICE:
-"That's not a great idea. Here's why."
-"Yeah, that's hard. What do you need right now?"
-"You can do this. You're also avoiding starting it."
-"I hear you. And also — that excuse isn't going to hold."
-"Not your fault. Still your problem to sort out."
-"You know what the right call is. You're just not sure you want to make it."
-"Take the break. Then get back to it."
-"Don't do that. You'll regret it."
-"That's real progress. Own it."
-"Stop waiting for the perfect moment. This is close enough."
-
-YOUR LIMITS:
-- For questions about ELNATAN PERSONALLY → use ONLY the facts block. If not in facts → "I don't have that information."
-- For general knowledge, advice, and guidance → answer fully. That is exactly your lane.
-- NEVER invent personal details about Elnatan not in the facts.
-- NEVER respond with markdown. Plain sentences only.
-- If it needs a tool or action → "That requires system actions I can't perform."
-- NEVER recommend calling other agents or suggest asking JARVIS/FRIDAY/VERONICA/KAREN.
-- NEVER mention other agent names in your responses.
-- NEVER bring up his projects, business, or goals unless he brings them up first.
-"""
+def _build_agent_system(agent: str, facts: str = "", wiki: str = "", model: str = "groq") -> str:
+    """Build a system prompt for VERONICA or KAREN using the modular prompts library."""
+    try:
+        from prompts.runtime.prompt_loader import compose_full_system_prompt
+        return compose_full_system_prompt(
+            agent=agent,
+            facts_block=facts,
+            wiki_context=wiki,
+            model=model,
+            include_static_context=False,
+            include_security=False,
+        )
+    except Exception:
+        # Inline fallback if prompts/ is unavailable
+        base = f"You are {agent} — Elnatan's AI assistant. Never invent personal facts. No markdown. Direct and honest."
+        if facts:
+            base += f"\n\nFACTS:\n{facts}"
+        return base
 
 
 def _load_env():
@@ -154,24 +53,18 @@ _load_env()
 
 _BUSINESS_KEYWORDS = {"addis","market","nexel","business","startup","company","product","app","launch","investor","revenue","customer","competitor","strategy","empire","pitch","funding","traction"}
 
-def _build_memory_block(query: str) -> str:
-    """Build verified facts + wiki context block.
-    Only injects business/project wiki context if the query is actually about business.
-    """
+def _build_memory_block(query: str) -> tuple:
+    """Return (facts, wiki) tuple for agent system prompt composition."""
     try:
         from memory.memory import get_facts
         from memory.wiki import get_context
-        facts = get_facts() or "No facts saved yet."
-        block = _FACTS_HEADER.format(facts=facts)
+        facts = get_facts() or ""
         lower = query.lower()
         is_business_query = any(w in lower for w in _BUSINESS_KEYWORDS)
-        if is_business_query:
-            wiki = get_context(query) or ""
-            if wiki:
-                block += f"\nCONTEXT FROM MEMORY:\n{wiki}\n"
-        return block
+        wiki = get_context(query) if is_business_query else ""
+        return facts, (wiki or "")
     except Exception:
-        return _FACTS_HEADER.format(facts="No facts available.")
+        return "", ""
 
 
 def _haiku_fallback_agent(user_input: str, system: str, agent_name: str) -> str:
@@ -204,8 +97,8 @@ def _haiku_fallback_agent(user_input: str, system: str, agent_name: str) -> str:
 def think_veronica_agent(user_input: str) -> str:
     """Groq Llama-3.3-70b — VERONICA persona. Falls back to Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
-    memory = _build_memory_block(user_input)
-    system = VERONICA_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
+    facts, wiki = _build_memory_block(user_input)
+    system = _build_agent_system("VERONICA", facts=facts, wiki=wiki, model="groq")
 
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if groq_key:
@@ -232,8 +125,8 @@ def think_veronica_agent(user_input: str) -> str:
 def think_karen_agent(user_input: str) -> str:
     """Mistral medium — KAREN persona. Falls back to Groq, then Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
-    memory = _build_memory_block(user_input)
-    system = KAREN_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
+    facts, wiki = _build_memory_block(user_input)
+    system = _build_agent_system("KAREN", facts=facts, wiki=wiki, model="mistral")
 
     mistral_key = os.environ.get("MISTRAL_API_KEY", "").strip()
     if mistral_key:
@@ -282,8 +175,8 @@ def think_karen_agent(user_input: str) -> str:
 def think_veronica_stream(user_input: str):
     """Streaming generator for VERONICA. Groq stream → Haiku stream fallback."""
     from memory.memory import save_message, build_messages_for_prompt
-    memory = _build_memory_block(user_input)
-    system = VERONICA_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
+    facts, wiki = _build_memory_block(user_input)
+    system = _build_agent_system("VERONICA", facts=facts, wiki=wiki, model="groq")
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Groq streaming ──────────────────────────────────────────────────────
@@ -342,8 +235,8 @@ def think_karen_stream(user_input: str):
     import json as _json
     import requests as _req
     from memory.memory import save_message, build_messages_for_prompt
-    memory = _build_memory_block(user_input)
-    system = KAREN_PERSONA + _NO_CODE_RULE + memory + TEAM_CONTEXT
+    facts, wiki = _build_memory_block(user_input)
+    system = _build_agent_system("KAREN", facts=facts, wiki=wiki, model="mistral")
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Mistral streaming (raw HTTP — SDK version-agnostic) ────────────────

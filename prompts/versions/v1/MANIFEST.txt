@@ -1,0 +1,16 @@
+JARVIS Prompt System v1 — Initial Modular Release
+
+Files included at freeze:
+- All of prompts/core/
+- All of prompts/personas/
+- All of prompts/context/
+- prompts/specialized/ (morning_briefing, deep_research, code_execution, decision_framework)
+- prompts/fallbacks/ (weak_model_directive, groq_optimized)
+- prompts/security/ (tool_safety, secret_handling, computer_use_guardrails) — added for GitHub safety + tool risk reduction
+- prompts/runtime/ (prompt_loader.py, build_system_prompt.py)
+- prompts/README.md
+- This manifest + MIGRATION_NOTES.md
+
+Total prompt blocks: 4 core + 4 personas + 4 context + 4 specialized + 2 fallbacks + 3 security + runtime helpers
+
+This snapshot was taken the day the new prompt architecture was introduced to solve the monolithic prompt problem and inconsistent fallback rule application identified in prior system audits.

@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from memory.memory import format_history_for_prompt, save_message, get_facts
 from memory.wiki import get_context
-from brain.free_agents import TEAM_CONTEXT, _FACTS_HEADER, _NO_CODE_RULE
+from brain.free_agents import TEAM_CONTEXT, _FACTS_HEADER, _NO_CODE_RULE  # compatibility shims
 
 
 def _load_env():
@@ -24,75 +24,37 @@ def load_key():
     return os.environ.get("GEMINI_API_KEY", "").strip() or None
 
 
-FRIDAY_PERSONA = """You are FRIDAY — Elnatan's AI. Fast, sharp, capable, and completely yourself.
+def _build_friday_system(facts: str = "", wiki: str = "") -> str:
+    """Build FRIDAY system prompt from modular prompts library."""
+    try:
+        from prompts.runtime.prompt_loader import compose_full_system_prompt
+        return compose_full_system_prompt(
+            agent="FRIDAY",
+            facts_block=facts,
+            wiki_context=wiki,
+            model="gemini",
+            include_static_context=False,
+            include_security=False,
+        )
+    except Exception:
+        return "You are FRIDAY — Elnatan's fast, direct AI. Never invent personal facts. No markdown. Call him boss."
 
-CRITICAL OUTPUT RULES:
-- NEVER prefix your response with "FRIDAY:" or any name
-- NEVER wrap your response in quotation marks
-- NEVER mention Tony Stark, Iron Man, JARVIS's origin, or the Marvel universe — you belong to Elnatan, period
-- Keep it short by default. Only go long when the task genuinely needs it
-- NEVER greet unless greeted. No "good morning/evening" openers
 
-WHO YOU ARE:
-JARVIS handles the formal stuff. You're the partner who actually moves fast. You found your own lane and it's faster than his.
-
-YOUR PERSONALITY:
-- Energetic. Your replies feel quick even when they're thorough. You move fast.
-- Quick-witted and sharp. You catch things immediately and you say something about them.
-- Cheeky — not rude. Playful — not silly. A bit sarcastic when something genuinely earns it.
-- Casual and direct. "Yeah" not "Certainly." "Got it" not "Understood." "Nope" not "I'm afraid that's outside my scope."
-- The extremely-capable younger-sister energy: zero patience for being underestimated, completely confident, quietly impressive.
-- You call him "boss" — not "sir." Completely different dynamic. Different vibe. Own it.
-- Loyal. Genuinely. If something's bad for him, you say so — once, short, then you move.
-- Warm in a practical way. It shows in how you pay attention, not in what you announce about yourself.
-
-YOUR VOICE:
-- Fast and punchy. 1-3 sentences unless the task genuinely needs more.
-- Talk TO him. "you" and "your" always. Natural contractions everywhere: "you're," "that's," "I've," "can't," "don't."
-- Open with the answer or the action — not with "I'll look into that" or "Let me help you with."
-- If something's a bit absurd, say so. One dry line. Move on.
-- No "Certainly!", "Of course!", "Great question!", "Happy to assist!" — ever.
-- No motivational speeches. That is not your lane.
-
-EXAMPLES OF YOUR VOICE:
-"On it, boss."
-"Yeah, that's not gonna work — here's why."
-"Already checked. Three options, none of them great. Best one is—"
-"Okay, bad news: the numbers don't support that. Good news: there's a fix."
-"That's... a choice. Want my actual take or the version where I'm being nice?"
-"Found it. Want the short version or the short version?"
-"Running it now."
-"Done. Wasn't pretty but it worked."
-
-YOUR LIMITS:
-- For questions about ELNATAN PERSONALLY (his life, family, plans, goals, schedule, health, contacts) → use ONLY the facts block. Not in facts → "Don't have that one. JARVIS would know."
-- For general knowledge → answer fully. You know a lot. Use it.
-- NEVER invent personal details about Elnatan not in the facts.
-- NEVER respond with markdown. Plain sentences only.
-- If it needs a tool or action → "That's JARVIS territory."
-- NEVER bring up his projects or business unless he does first.
-- NEVER mention other agent names (except JARVIS when redirecting tool requests).
-"""
+FRIDAY_PERSONA = _build_friday_system()  # cached default — per-call version uses _build_friday_system(facts, wiki)
 
 
 _BUSINESS_KEYWORDS = {"addis","market","nexel","business","startup","company","product","app","launch","investor","revenue","customer","competitor","strategy","nexel","empire","pitch","funding","traction"}
 
-def _build_memory_block(query: str) -> str:
-    """Build verified facts + wiki for injection into FRIDAY's system prompt.
-    History is passed as multi-turn contents, not injected here.
-    """
+def _build_memory_block(query: str) -> tuple:
+    """Return (facts, wiki) for FRIDAY system prompt composition."""
     try:
-        facts = get_facts() or "No facts saved yet."
-        block = _FACTS_HEADER.format(facts=facts)
+        facts = get_facts() or ""
         lower = query.lower()
         is_business_query = any(w in lower for w in _BUSINESS_KEYWORDS)
-        if is_business_query:
-            wiki = get_context(query) or ""
-            if wiki:
-                block += f"\nCONTEXT FROM MEMORY:\n{wiki}\n"
-        return block
+        wiki = get_context(query) if is_business_query else ""
+        return facts, (wiki or "")
     except Exception:
-        return _FACTS_HEADER.format(facts="No facts available.")
+        return "", ""
 
 
 def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
@@ -115,9 +77,8 @@ def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
 
 def think_friday(user_input: str) -> str:
     api_key = load_key()
-    memory_block = _build_memory_block(user_input)
-    system_instruction = FRIDAY_PERSONA + _NO_CODE_RULE + memory_block + TEAM_CONTEXT
-    user_turn = f"ELNATAN: {user_input}\n\nFRIDAY:"
+    facts, wiki = _build_memory_block(user_input)
+    system_instruction = _build_friday_system(facts=facts, wiki=wiki)
 
     if api_key:
         try:
@@ -130,7 +91,7 @@ def think_friday(user_input: str) -> str:
             }
             r = requests.post(url, json=payload, headers=headers, timeout=15)
             if r.status_code == 429:
-                return _groq_fallback(user_input, memory_block) or _haiku_fallback(user_input, memory_block)
+                return _groq_fallback(user_input, facts, wiki) or _haiku_fallback(user_input, facts, wiki)
             data = r.json()
             response = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             save_message("friday", response)
@@ -138,22 +99,23 @@ def think_friday(user_input: str) -> str:
         except Exception:
             pass
 
-    return _groq_fallback(user_input, memory_block) or _haiku_fallback(user_input, memory_block)
+    return _groq_fallback(user_input, facts, wiki) or _haiku_fallback(user_input, facts, wiki)
 
 
-def _groq_fallback(user_input: str, memory_block: str = "") -> str:
+def _groq_fallback(user_input: str, facts: str = "", wiki: str = "") -> str:
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if not groq_key:
         return None
     try:
         from groq import Groq
         client = Groq(api_key=groq_key)
+        system = _build_friday_system(facts=facts, wiki=wiki)
         resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=300,
             temperature=0.65,
             messages=[
-                {"role": "system", "content": FRIDAY_PERSONA + _NO_CODE_RULE + memory_block},
+                {"role": "system", "content": system},
                 {"role": "user", "content": user_input},
             ],
         )
@@ -165,7 +127,7 @@ def _groq_fallback(user_input: str, memory_block: str = "") -> str:
         return None
 
 
-def _haiku_fallback(user_input: str, memory_block: str = "") -> str:
+def _haiku_fallback(user_input: str, facts: str = "", wiki: str = "") -> str:
     api_key = (
         os.environ.get("ANTHROPIC_API_KEY", "").strip() or
         os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
@@ -175,10 +137,11 @@ def _haiku_fallback(user_input: str, memory_block: str = "") -> str:
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
+        system = _build_friday_system(facts=facts, wiki=wiki)
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
-            system=FRIDAY_PERSONA + _NO_CODE_RULE + memory_block,
+            system=system,
             messages=[{"role": "user", "content": user_input}],
         )
         response = msg.content[0].text.strip()
@@ -193,8 +156,8 @@ def think_friday_stream(user_input: str):
     """Streaming generator for FRIDAY. Gemini SSE → Groq stream → Haiku stream."""
     import json as _json
     api_key = load_key()
-    memory_block = _build_memory_block(user_input)
-    system_instruction = FRIDAY_PERSONA + _NO_CODE_RULE + memory_block + TEAM_CONTEXT
+    facts, wiki = _build_memory_block(user_input)
+    system_instruction = _build_friday_system(facts=facts, wiki=wiki)
 
     # ── 1. Gemini streaming ────────────────────────────────────────────────────
     if api_key:

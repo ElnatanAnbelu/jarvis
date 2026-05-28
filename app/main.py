@@ -82,19 +82,12 @@ def _wait_for_flask(timeout=30):
 
 
 def _greet():
-    time.sleep(1.2)
-    if _window:
-        try:
-            from brain.briefing import already_sent_today
-            briefed = already_sent_today()
-        except Exception:
-            briefed = False
-        msg = "__init__" if briefed else "Give me my morning briefing."
-        safe = msg.replace("'", "\\'")
-        try:
-            _window.evaluate_js(f"document.getElementById('inp').value='{safe}';doSend();")
-        except Exception:
-            pass
+    # Disabled: the HUD itself fires the time-aware greeting via
+    # /api/stream?message=__init__ on DOMContentLoaded (see app/hud.html).
+    # Triggering anything here would cause a double greeting and previously
+    # was injecting "Give me my morning briefing." which auto-pulled news,
+    # weather, calendar etc. — not what Elnatan wants on open.
+    return
 
 
 def _summarize_session():

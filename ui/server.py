@@ -856,22 +856,15 @@ def hud():
 
 
 if __name__ == "__main__":
-    # Proactive scheduler disabled — auto greeting only, no scheduled push messages
-    # try:
-    #     from brain.proactive import start_proactive_scheduler
-    #     start_proactive_scheduler(_proactive_q)
-    # except Exception:
-    #     pass
-    try:
-        from brain.observer import start_observer
-        start_observer(_proactive_q)
-    except Exception:
-        pass
-    try:
-        from control.wake import start_wake_monitor
-        start_wake_monitor()
-    except Exception:
-        pass
+    # All background auto-push systems disabled — JARVIS only speaks when:
+    #   1. Elnatan opens the app (one-time time-aware greeting via /api/stream?message=__init__)
+    #   2. Elnatan sends a message / asks a question
+    #
+    # Disabled:
+    #   - brain.proactive (scheduled weather/news/habit pushes to HUD + Telegram)
+    #   - brain.observer  (every-6-min pattern detection pushes to HUD queue)
+    #   - control.wake    (Mac-wake → Telegram morning briefing)
+    pass
     # Start Chatterbox voice-cloning daemon (actual actor voices via reference audio)
     threading.Thread(target=_start_clone_daemon, daemon=True).start()
     # Start Kokoro TTS daemon (fallback preset voices, fast)

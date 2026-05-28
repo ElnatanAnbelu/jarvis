@@ -71,67 +71,6 @@ html, body {
 }
 @keyframes rotateRays { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* ── LIGHT BURST — horizontal rays radiating from ring (matches reference) ── */
-.light-burst {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 280vw; height: 280vw;
-  max-width: 2400px; max-height: 2400px;
-  transform: translate(-50%, -55%);
-  z-index: 2; pointer-events: none;
-  background:
-    /* sharp horizontal core ray */
-    linear-gradient(90deg,
-      transparent 0%,
-      rgba(0,200,255,0.0) 30%,
-      rgba(120,230,255,0.18) 47%,
-      rgba(180,240,255,0.32) 50%,
-      rgba(120,230,255,0.18) 53%,
-      rgba(0,200,255,0.0) 70%,
-      transparent 100%
-    ),
-    /* burst rays — many thin conic spokes */
-    conic-gradient(
-      from -25deg at 50% 50%,
-      transparent 0deg, rgba(160,230,255,0.10) 0.4deg, transparent 1deg,
-      transparent 3deg, rgba(120,210,255,0.08) 3.3deg, transparent 4deg,
-      transparent 7deg, rgba(180,230,255,0.06) 7.4deg, transparent 8deg,
-      transparent 12deg, rgba(140,220,255,0.09) 12.5deg, transparent 13deg,
-      transparent 18deg, rgba(180,235,255,0.07) 18.6deg, transparent 19deg,
-      transparent 24deg, rgba(150,225,255,0.05) 24.4deg, transparent 25deg,
-      transparent 32deg, rgba(170,230,255,0.06) 32.5deg, transparent 33deg,
-      transparent 40deg, rgba(120,215,255,0.08) 40.6deg, transparent 41deg,
-      transparent 50deg
-    );
-  filter: blur(0.8px);
-  opacity: 0.85;
-  mix-blend-mode: screen;
-}
-.light-burst::before {
-  content: ''; position: absolute; inset: 0;
-  background: inherit;
-  transform: scaleX(-1);
-}
-.light-burst::after {
-  /* secondary slow rotating spokes for depth */
-  content: ''; position: absolute; inset: 0;
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    transparent 0%, rgba(120,200,255,0.04) 2%, transparent 4%,
-    transparent 14%, rgba(140,210,255,0.05) 16%, transparent 18%,
-    transparent 28%, rgba(120,200,255,0.04) 30%, transparent 32%,
-    transparent 42%, rgba(140,210,255,0.05) 44%, transparent 46%,
-    transparent 56%, rgba(120,200,255,0.04) 58%, transparent 60%,
-    transparent 70%, rgba(140,210,255,0.05) 72%, transparent 74%,
-    transparent 84%, rgba(120,200,255,0.04) 86%, transparent 88%,
-    transparent 100%
-  );
-  animation: burstRotate 180s linear infinite;
-  filter: blur(8px);
-  opacity: 0.7;
-}
-@keyframes burstRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
 /* Nebula ambient */
 .nebula {
   position: absolute; inset: 0; z-index: 3; pointer-events: none;
@@ -191,76 +130,27 @@ html, body {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LOWER SECTION: CHAT + AGENT PANELS (2-column stacks)
+   LOWER SECTION: CHAT + AGENT PANELS
 ═══════════════════════════════════════════════════════════ */
 #lower-section {
   position: relative;
   width: 100%; z-index: 10;
   display: flex; align-items: flex-end; justify-content: center;
-  gap: 12px;
+  gap: 0;
   padding: 0 24px 0 24px;
-  height: 280px;
+  height: 260px;
   flex-shrink: 0;
-}
-
-/* Stacked column for two agent panels on each side */
-.agent-stack {
-  display: flex; flex-direction: column;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-/* ── CURVED METALLIC CONSOLE BASE (cockpit dashboard) ── */
-#bottom-console {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  height: 130px; z-index: 9; pointer-events: none;
-  background:
-    linear-gradient(180deg,
-      transparent 0%,
-      rgba(2,10,24,0.0) 5%,
-      rgba(2,12,28,0.35) 30%,
-      rgba(4,16,36,0.85) 70%,
-      rgba(0,8,20,0.96) 100%
-    );
-  /* curved top edge using clip-path — wide saucer arc */
-  clip-path: ellipse(82% 100% at 50% 100%);
-  border-top: 1px solid rgba(0,245,255,0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(0,245,255,0.25),
-    inset 0 18px 40px rgba(0,245,255,0.06),
-    0 -2px 30px rgba(0,180,255,0.08);
-}
-/* Bright curved accent line above the console (the cyan rim) */
-#bottom-console-rim {
-  position: absolute; left: 0; right: 0; bottom: 122px;
-  height: 60px; z-index: 9; pointer-events: none;
-  background:
-    radial-gradient(ellipse 70% 100% at 50% 100%,
-      rgba(0,245,255,0.35) 0%,
-      rgba(0,200,255,0.18) 25%,
-      transparent 60%);
-  filter: blur(2px);
-}
-/* Inner curved arc on the console (decorative inlay) */
-#bottom-console-inlay {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-  width: 70%; max-width: 980px; height: 90px; z-index: 10; pointer-events: none;
-  border-top: 1px solid rgba(0,245,255,0.22);
-  border-left: 1px solid rgba(0,245,255,0.10);
-  border-right: 1px solid rgba(0,245,255,0.10);
-  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  background: linear-gradient(180deg, rgba(0,245,255,0.04) 0%, transparent 70%);
 }
 
 /* ── AGENT PANEL BASE ── */
 .agent-panel {
   flex-shrink: 0;
-  width: 200px;
-  height: 110px;
+  width: 210px;
+  height: 230px;
   background: var(--glass);
   backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid var(--glass-border);
-  padding: 10px 12px 10px;
+  padding: 14px 14px 12px;
   display: flex; flex-direction: column;
   position: relative; overflow: hidden;
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -295,12 +185,12 @@ html, body {
 
 /* Panel content */
 .panel-header {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 6px; position: relative; z-index: 4;
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px; position: relative; z-index: 4;
 }
 
 .panel-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
+  width: 38px; height: 38px; border-radius: 50%;
   border: 1.5px solid rgba(255,255,255,0.08);
   display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 900; letter-spacing: 1px;
@@ -365,12 +255,12 @@ html, body {
 .agent-panel.active .status-text { color: var(--p-color); }
 
 /* Data readouts */
-.panel-data { position: relative; z-index: 4; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.panel-data { position: relative; z-index: 4; flex: 1; display: flex; flex-direction: column; gap: 5px; }
 
 .data-row {
   display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid rgba(255,255,255,0.03);
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 .data-label { font-size: 5.5px; letter-spacing: 2px; color: rgba(255,255,255,0.15); text-transform: uppercase; }
 .data-val   { font-size: 6px; letter-spacing: 1px; color: rgba(255,255,255,0.1); font-weight: bold; transition: all 0.5s; }
@@ -378,9 +268,8 @@ html, body {
 
 /* Mini bar chart */
 .mini-bars {
-  display: none; /* hidden in compact stack layout */
-  align-items: flex-end; gap: 2px; height: 16px;
-  margin-top: 4px; position: relative; z-index: 4;
+  display: flex; align-items: flex-end; gap: 2px; height: 20px;
+  margin-top: 6px; position: relative; z-index: 4;
 }
 .mini-bar {
   flex: 1; background: rgba(255,255,255,0.05);
@@ -394,16 +283,15 @@ html, body {
 #chat-panel {
   flex: 1;
   min-width: 0;
-  max-width: 520px;
+  max-width: 560px;
   height: 230px;
-  background: rgba(1, 6, 18, 0.62);
+  background: rgba(1, 6, 18, 0.5);
   backdrop-filter: blur(25px) saturate(1.2);
-  border: 1px solid rgba(0, 245, 255, 0.16);
+  border: 1px solid rgba(0, 245, 255, 0.1);
   display: flex; flex-direction: column;
   position: relative; overflow: hidden;
-  margin: 0 6px;
+  margin: 0 12px;
   clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  box-shadow: inset 0 0 30px rgba(0,245,255,0.05), 0 0 30px rgba(0,180,255,0.08);
 }
 
 /* Chat header */
@@ -648,10 +536,9 @@ html, body {
   width: min(620px, calc(100% - 40px));
 }
 
-/* Agent panels scale fluidly with viewport (stacked layout) */
+/* Agent panels scale fluidly with viewport */
 .agent-panel {
-  width: clamp(140px, 16vw, 220px);
-  height: clamp(95px, 13vh, 120px);
+  width: clamp(110px, 14vw, 210px);
 }
 
 /* Ring canvas scales with viewport height */
@@ -661,34 +548,35 @@ html, body {
 }
 
 @media (max-width: 1200px) {
-  #chat-panel { max-width: 460px; }
+  #chat-panel { max-width: 480px; }
 }
 
 @media (max-width: 1000px) {
   #chat-panel { max-width: 360px; }
-  #lower-section { padding: 0 12px; gap: 8px; }
-  .agent-panel { width: clamp(130px, 16vw, 180px); }
+  #lower-section { padding: 0 12px; gap: 0; }
+  .agent-panel { height: 210px; }
+  #lower-section { height: 220px; }
 }
 
 @media (max-width: 780px) {
-  /* Drop one panel from each stack — keep top of each */
+  /* Hide outer panels, keep inner two + chat */
   #ap-FRIDAY, #ap-JARVIS { display: none; }
-  .agent-panel { width: clamp(120px, 18vw, 170px); }
+  .agent-panel { width: clamp(100px, 18vw, 180px); height: 200px; }
+  #lower-section { height: 210px; }
   #chat-panel { max-width: none; }
 }
 
 @media (max-width: 560px) {
   /* Chat only — hide all agent panels */
-  .agent-stack { display: none; }
+  .agent-panel { display: none; }
   #chat-panel { max-width: none; margin: 0 8px; }
-  #lower-section { height: 220px; padding: 0 8px; }
+  #lower-section { height: 200px; padding: 0 8px; }
 }
 
-/* Short windows — shrink */
+/* Short windows — shrink ring */
 @media (max-height: 700px) {
-  #lower-section { height: 240px; }
-  #chat-panel { height: 200px; }
-  .agent-panel { height: 92px; }
+  #lower-section { height: 200px; }
+  .agent-panel { height: 185px; }
 }
 @media (max-height: 560px) {
   #ring-zone { display: none; }
@@ -749,15 +637,9 @@ html, body {
 
   <!-- ATMOSPHERE LAYERS -->
   <canvas id="bg-canvas"></canvas>
-  <div class="light-burst"></div>
   <div class="god-ray"></div>
   <div class="nebula"></div>
   <div class="vignette"></div>
-
-  <!-- CURVED METALLIC CONSOLE BASE (cockpit dashboard) -->
-  <div id="bottom-console-rim"></div>
-  <div id="bottom-console"></div>
-  <div id="bottom-console-inlay"></div>
 
   <!-- SCREEN CORNERS -->
   <div class="screen-corner sc-tl"></div>
@@ -807,69 +689,66 @@ html, body {
       <div class="lens-flare" style="width:2px;height:2px;background:rgba(255,255,255,0.7);box-shadow:0 0 6px 2px rgba(0,245,255,0.4);top:68%;left:38%;animation-delay:2.5s;"></div>
     </div>
 
-    <!-- LOWER SECTION: 2 STACKED COLUMNS + CHAT -->
+    <!-- LOWER SECTION: 4 AGENT PANELS + CHAT -->
     <div id="lower-section">
 
-      <!-- LEFT STACK: VERONICA (top) + FRIDAY (bottom) -->
-      <div class="agent-stack">
-
-        <div class="agent-panel" id="ap-VERONICA">
-          <div class="panel-glow-overlay"></div>
-          <div class="panel-scan"></div>
-          <div class="panel-header">
-            <div class="panel-avatar" id="av-VERONICA">VER</div>
-            <div class="panel-title-block">
-              <div class="panel-name">VERONICA</div>
-              <div class="panel-role">RISK · STRATEGY</div>
-            </div>
-          </div>
-          <div class="panel-status-row">
-            <div class="status-dot"></div>
-            <div class="status-text" id="st-VERONICA">STANDBY</div>
-          </div>
-          <div class="panel-data">
-            <div class="data-row"><span class="data-label">ANALYSIS</span><span class="data-val" id="d-VERONICA-1">READY</span></div>
-            <div class="data-row"><span class="data-label">RISK LVL</span><span class="data-val" id="d-VERONICA-2">LOW</span></div>
-            <div class="data-row"><span class="data-label">MODELS</span><span class="data-val" id="d-VERONICA-3">7</span></div>
-          </div>
-          <div class="mini-bars" id="bars-VERONICA">
-            <div class="mini-bar hi" style="height:85%"></div><div class="mini-bar" style="height:40%"></div>
-            <div class="mini-bar" style="height:60%"></div><div class="mini-bar hi" style="height:75%"></div>
-            <div class="mini-bar" style="height:30%"></div><div class="mini-bar hi" style="height:95%"></div>
-            <div class="mini-bar" style="height:50%"></div><div class="mini-bar" style="height:20%"></div>
-            <div class="mini-bar hi" style="height:70%"></div><div class="mini-bar" style="height:45%"></div>
+      <!-- FRIDAY (bottom-left) -->
+      <div class="agent-panel" id="ap-FRIDAY">
+        <div class="panel-glow-overlay"></div>
+        <div class="panel-scan"></div>
+        <div class="panel-header">
+          <div class="panel-avatar" id="av-FRIDAY">FRI</div>
+          <div class="panel-title-block">
+            <div class="panel-name">FRIDAY</div>
+            <div class="panel-role">RECON · DATA · SPEED</div>
           </div>
         </div>
+        <div class="panel-status-row">
+          <div class="status-dot"></div>
+          <div class="status-text" id="st-FRIDAY">STANDBY</div>
+        </div>
+        <div class="panel-data">
+          <div class="data-row"><span class="data-label">NEURAL LINK</span><span class="data-val" id="d-FRIDAY-1">98.4%</span></div>
+          <div class="data-row"><span class="data-label">RESPONSE</span><span class="data-val" id="d-FRIDAY-2">12ms</span></div>
+          <div class="data-row"><span class="data-label">TASKS</span><span class="data-val" id="d-FRIDAY-3">0</span></div>
+        </div>
+        <div class="mini-bars" id="bars-FRIDAY">
+          <div class="mini-bar" style="height:30%"></div><div class="mini-bar hi" style="height:70%"></div>
+          <div class="mini-bar" style="height:45%"></div><div class="mini-bar hi" style="height:90%"></div>
+          <div class="mini-bar" style="height:55%"></div><div class="mini-bar" style="height:35%"></div>
+          <div class="mini-bar hi" style="height:80%"></div><div class="mini-bar" style="height:50%"></div>
+          <div class="mini-bar" style="height:25%"></div><div class="mini-bar hi" style="height:65%"></div>
+        </div>
+      </div>
 
-        <div class="agent-panel" id="ap-FRIDAY">
-          <div class="panel-glow-overlay"></div>
-          <div class="panel-scan"></div>
-          <div class="panel-header">
-            <div class="panel-avatar" id="av-FRIDAY">FRI</div>
-            <div class="panel-title-block">
-              <div class="panel-name">FRIDAY</div>
-              <div class="panel-role">RECON · DATA · SPEED</div>
-            </div>
-          </div>
-          <div class="panel-status-row">
-            <div class="status-dot"></div>
-            <div class="status-text" id="st-FRIDAY">STANDBY</div>
-          </div>
-          <div class="panel-data">
-            <div class="data-row"><span class="data-label">NEURAL LINK</span><span class="data-val" id="d-FRIDAY-1">98.4%</span></div>
-            <div class="data-row"><span class="data-label">RESPONSE</span><span class="data-val" id="d-FRIDAY-2">12ms</span></div>
-            <div class="data-row"><span class="data-label">TASKS</span><span class="data-val" id="d-FRIDAY-3">0</span></div>
-          </div>
-          <div class="mini-bars" id="bars-FRIDAY">
-            <div class="mini-bar" style="height:30%"></div><div class="mini-bar hi" style="height:70%"></div>
-            <div class="mini-bar" style="height:45%"></div><div class="mini-bar hi" style="height:90%"></div>
-            <div class="mini-bar" style="height:55%"></div><div class="mini-bar" style="height:35%"></div>
-            <div class="mini-bar hi" style="height:80%"></div><div class="mini-bar" style="height:50%"></div>
-            <div class="mini-bar" style="height:25%"></div><div class="mini-bar hi" style="height:65%"></div>
+      <!-- VERONICA (bottom-left-center) -->
+      <div class="agent-panel" id="ap-VERONICA" style="margin-left:10px;">
+        <div class="panel-glow-overlay"></div>
+        <div class="panel-scan"></div>
+        <div class="panel-header">
+          <div class="panel-avatar" id="av-VERONICA">VER</div>
+          <div class="panel-title-block">
+            <div class="panel-name">VERONICA</div>
+            <div class="panel-role">RISK · STRATEGY</div>
           </div>
         </div>
-
-      </div><!-- /left-stack -->
+        <div class="panel-status-row">
+          <div class="status-dot"></div>
+          <div class="status-text" id="st-VERONICA">STANDBY</div>
+        </div>
+        <div class="panel-data">
+          <div class="data-row"><span class="data-label">ANALYSIS</span><span class="data-val" id="d-VERONICA-1">READY</span></div>
+          <div class="data-row"><span class="data-label">RISK LVL</span><span class="data-val" id="d-VERONICA-2">LOW</span></div>
+          <div class="data-row"><span class="data-label">MODELS</span><span class="data-val" id="d-VERONICA-3">7</span></div>
+        </div>
+        <div class="mini-bars" id="bars-VERONICA">
+          <div class="mini-bar hi" style="height:85%"></div><div class="mini-bar" style="height:40%"></div>
+          <div class="mini-bar" style="height:60%"></div><div class="mini-bar hi" style="height:75%"></div>
+          <div class="mini-bar" style="height:30%"></div><div class="mini-bar hi" style="height:95%"></div>
+          <div class="mini-bar" style="height:50%"></div><div class="mini-bar" style="height:20%"></div>
+          <div class="mini-bar hi" style="height:70%"></div><div class="mini-bar" style="height:45%"></div>
+        </div>
+      </div>
 
       <!-- CHAT PANEL (center) -->
       <div id="chat-panel">
@@ -886,66 +765,63 @@ html, body {
         </div>
       </div>
 
-      <!-- RIGHT STACK: KAREN (top) + JARVIS (bottom) -->
-      <div class="agent-stack">
-
-        <div class="agent-panel" id="ap-KAREN">
-          <div class="panel-glow-overlay"></div>
-          <div class="panel-scan"></div>
-          <div class="panel-header">
-            <div class="panel-avatar" id="av-KAREN">KAR</div>
-            <div class="panel-title-block">
-              <div class="panel-name">KAREN</div>
-              <div class="panel-role">GUIDANCE · PROTOCOL</div>
-            </div>
-          </div>
-          <div class="panel-status-row">
-            <div class="status-dot"></div>
-            <div class="status-text" id="st-KAREN">STANDBY</div>
-          </div>
-          <div class="panel-data">
-            <div class="data-row"><span class="data-label">PROTOCOL</span><span class="data-val" id="d-KAREN-1">ACTIVE</span></div>
-            <div class="data-row"><span class="data-label">UPTIME</span><span class="data-val" id="d-KAREN-2">99.9%</span></div>
-            <div class="data-row"><span class="data-label">ALERTS</span><span class="data-val" id="d-KAREN-3">0</span></div>
-          </div>
-          <div class="mini-bars" id="bars-KAREN">
-            <div class="mini-bar" style="height:40%"></div><div class="mini-bar hi" style="height:80%"></div>
-            <div class="mini-bar hi" style="height:95%"></div><div class="mini-bar" style="height:35%"></div>
-            <div class="mini-bar" style="height:55%"></div><div class="mini-bar hi" style="height:70%"></div>
-            <div class="mini-bar" style="height:25%"></div><div class="mini-bar hi" style="height:85%"></div>
-            <div class="mini-bar" style="height:45%"></div><div class="mini-bar" style="height:60%"></div>
+      <!-- KAREN (bottom-right-center) -->
+      <div class="agent-panel" id="ap-KAREN" style="margin-right:10px;">
+        <div class="panel-glow-overlay"></div>
+        <div class="panel-scan"></div>
+        <div class="panel-header">
+          <div class="panel-avatar" id="av-KAREN">KAR</div>
+          <div class="panel-title-block">
+            <div class="panel-name">KAREN</div>
+            <div class="panel-role">GUIDANCE · PROTOCOL</div>
           </div>
         </div>
+        <div class="panel-status-row">
+          <div class="status-dot"></div>
+          <div class="status-text" id="st-KAREN">STANDBY</div>
+        </div>
+        <div class="panel-data">
+          <div class="data-row"><span class="data-label">PROTOCOL</span><span class="data-val" id="d-KAREN-1">ACTIVE</span></div>
+          <div class="data-row"><span class="data-label">UPTIME</span><span class="data-val" id="d-KAREN-2">99.9%</span></div>
+          <div class="data-row"><span class="data-label">ALERTS</span><span class="data-val" id="d-KAREN-3">0</span></div>
+        </div>
+        <div class="mini-bars" id="bars-KAREN">
+          <div class="mini-bar" style="height:40%"></div><div class="mini-bar hi" style="height:80%"></div>
+          <div class="mini-bar hi" style="height:95%"></div><div class="mini-bar" style="height:35%"></div>
+          <div class="mini-bar" style="height:55%"></div><div class="mini-bar hi" style="height:70%"></div>
+          <div class="mini-bar" style="height:25%"></div><div class="mini-bar hi" style="height:85%"></div>
+          <div class="mini-bar" style="height:45%"></div><div class="mini-bar" style="height:60%"></div>
+        </div>
+      </div>
 
-        <div class="agent-panel" id="ap-JARVIS">
-          <div class="panel-glow-overlay"></div>
-          <div class="panel-scan"></div>
-          <div class="panel-header">
-            <div class="panel-avatar" id="av-JARVIS">JAR</div>
-            <div class="panel-title-block">
-              <div class="panel-name">JARVIS</div>
-              <div class="panel-role">COMMAND · SYNTHESIS</div>
-            </div>
-          </div>
-          <div class="panel-status-row">
-            <div class="status-dot"></div>
-            <div class="status-text" id="st-JARVIS">ACTIVE</div>
-          </div>
-          <div class="panel-data">
-            <div class="data-row"><span class="data-label">CORE</span><span class="data-val" id="d-JARVIS-1">ONLINE</span></div>
-            <div class="data-row"><span class="data-label">LATENCY</span><span class="data-val" id="d-JARVIS-2">8ms</span></div>
-            <div class="data-row"><span class="data-label">QUERIES</span><span class="data-val" id="d-JARVIS-3">0</span></div>
-          </div>
-          <div class="mini-bars" id="bars-JARVIS">
-            <div class="mini-bar hi" style="height:90%"></div><div class="mini-bar" style="height:50%"></div>
-            <div class="mini-bar hi" style="height:75%"></div><div class="mini-bar" style="height:30%"></div>
-            <div class="mini-bar hi" style="height:85%"></div><div class="mini-bar" style="height:45%"></div>
-            <div class="mini-bar" style="height:60%"></div><div class="mini-bar hi" style="height:95%"></div>
-            <div class="mini-bar" style="height:35%"></div><div class="mini-bar hi" style="height:70%"></div>
+      <!-- JARVIS (bottom-right) -->
+      <div class="agent-panel" id="ap-JARVIS">
+        <div class="panel-glow-overlay"></div>
+        <div class="panel-scan"></div>
+        <div class="panel-header">
+          <div class="panel-avatar" id="av-JARVIS">JAR</div>
+          <div class="panel-title-block">
+            <div class="panel-name">JARVIS</div>
+            <div class="panel-role">COMMAND · SYNTHESIS</div>
           </div>
         </div>
-
-      </div><!-- /right-stack -->
+        <div class="panel-status-row">
+          <div class="status-dot"></div>
+          <div class="status-text" id="st-JARVIS">ACTIVE</div>
+        </div>
+        <div class="panel-data">
+          <div class="data-row"><span class="data-label">CORE</span><span class="data-val" id="d-JARVIS-1">ONLINE</span></div>
+          <div class="data-row"><span class="data-label">LATENCY</span><span class="data-val" id="d-JARVIS-2">8ms</span></div>
+          <div class="data-row"><span class="data-label">QUERIES</span><span class="data-val" id="d-JARVIS-3">0</span></div>
+        </div>
+        <div class="mini-bars" id="bars-JARVIS">
+          <div class="mini-bar hi" style="height:90%"></div><div class="mini-bar" style="height:50%"></div>
+          <div class="mini-bar hi" style="height:75%"></div><div class="mini-bar" style="height:30%"></div>
+          <div class="mini-bar hi" style="height:85%"></div><div class="mini-bar" style="height:45%"></div>
+          <div class="mini-bar" style="height:60%"></div><div class="mini-bar hi" style="height:95%"></div>
+          <div class="mini-bar" style="height:35%"></div><div class="mini-bar hi" style="height:70%"></div>
+        </div>
+      </div>
 
     </div><!-- /lower-section -->
 
