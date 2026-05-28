@@ -279,10 +279,11 @@ def test_proposal_ids_are_sequential(vault, tmp_path):
 
 
 def test_propose_change_returns_proposal_id_in_result(vault):
-    from datetime import datetime
+    from datetime import datetime, timezone
     result = vault.propose_change("X", "c", "create", "Business", "conv", "r")
     assert "proposal" in result.lower()
-    today = datetime.now().strftime("%Y-%m-%d")
+    # Proposal IDs are generated in UTC; compare against UTC date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     assert today in result
 
 
