@@ -380,3 +380,37 @@ def test_search_vault_keyword_fallback(vault, tmp_path):
 def test_search_vault_returns_empty_when_no_match(vault):
     result = vault.search_vault("xylophone concerto baroque")
     assert result == "" or "no results" in result.lower()
+
+
+# ── Task 8: Personal Model tests ───────────────────────────────────────────────
+
+def test_update_personal_model_always_proposes(vault, tmp_path):
+    result = vault.update_personal_model(
+        section="Interests & Hobbies",
+        content="Elnatan has been discussing anime in every session this week.",
+        source="conversation pattern, 2026-05-28",
+        supporting_observations="3 sessions mentioned anime",
+    )
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert len(proposals) == 1
+    assert "proposal" in result.lower()
+
+
+def test_update_personal_model_never_auto_writes(vault, tmp_path):
+    vault.update_personal_model("Energy Patterns", "Prefers late night work.",
+                                "observation", "5 late-night sessions")
+    pm = tmp_path / "SecondBrain" / "_JARVIS" / "_PersonalModel.md"
+    assert "Prefers late night work" not in pm.read_text()
+
+
+def test_update_personal_model_proposal_includes_evidence(vault, tmp_path):
+    vault.update_personal_model(
+        section="Decision-Making Style",
+        content="Tends to delay decisions under uncertainty.",
+        source="conversation",
+        supporting_observations="Mentioned hesitation 4 times this week",
+    )
+    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0]
+    text = p.read_text()
+    assert "Mentioned hesitation" in text
+    assert "Decision-Making Style" in text

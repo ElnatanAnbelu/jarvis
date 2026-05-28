@@ -612,6 +612,28 @@ class VaultManager:
             self._titles = titles
             self._last_build = _time.time()
 
+    # ── Personal Model ─────────────────────────────────────────────────────────
+
+    def update_personal_model(self, section: str, content: str,
+                              source: str, supporting_observations: str = "") -> str:
+        """Propose an update to the Personal Model — never writes directly."""
+        evidence_block = ""
+        if supporting_observations:
+            evidence_block = f"\n\n*Supporting evidence: {supporting_observations}*"
+        full_content = (
+            f"### {section}\n\n{content}{evidence_block}\n\n"
+            f"*Proposed update — requires review*"
+        )
+        return self.propose_change(
+            title="_PersonalModel",
+            proposed_content=full_content,
+            action="update",
+            area="_JARVIS",
+            source=source,
+            reason=f"Personal Model update: {section}",
+            sensitivity="high",
+        )
+
     def _faiss_search(self, query: str, max_results: int = 3) -> str:
         import numpy as np
         from sentence_transformers import SentenceTransformer
