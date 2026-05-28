@@ -315,7 +315,7 @@ class VaultManager:
         existing_path = self._resolve_note_path(target)
         current_hash = ""
         if existing_path and existing_path.exists():
-            current_hash = self._compute_hash(existing_path.read_text(encoding="utf-8"))
+            current_hash = self._compute_hash(self._body_only(existing_path.read_text(encoding="utf-8")))
 
         fm_lines = [
             "---",
@@ -383,7 +383,7 @@ class VaultManager:
         if action == "update" and target:
             existing_path = self._resolve_note_path(target)
             if existing_path and existing_path.exists():
-                current_hash = self._compute_hash(existing_path.read_text(encoding="utf-8"))
+                current_hash = self._compute_hash(self._body_only(existing_path.read_text(encoding="utf-8")))
                 if hash_at_proposal and current_hash != hash_at_proposal:
                     self._update_proposal_status(p, "stale")
                     return (
@@ -397,9 +397,11 @@ class VaultManager:
         if action == "create":
             note_path = self.vault_path / area_str / f"{self._safe_title(title_str)}.md"
             note_path.parent.mkdir(parents=True, exist_ok=True)
-            note_path.write_text(proposed_content + "\n", encoding="utf-8")
-            new_hash = self._compute_hash(self._body_only(note_path.read_text(encoding="utf-8")))
-            self._update_frontmatter_field(note_path, "jarvis_last_hash", new_hash)
+            fm_new = self._build_frontmatter(
+                title=title_str, area=area_str, source=source,
+                created_by="jarvis"
+            )
+            self._write_note(note_path, fm_new, proposed_content, source)
         elif action == "update":
             existing_path = self._resolve_note_path(target)
             if existing_path:
@@ -529,12 +531,12 @@ class VaultManager:
                 continue
             for note in folder.glob("*.md"):
                 try:
-                    text = note.read_text(encoding="utf-8").lower()
+                    orig = note.read_text(encoding="utf-8")
+                    text = orig.lower()
                     score = sum(text.count(w) + (3 if w in note.stem.lower() else 0)
                                 for w in words)
                     if score > 0:
-                        body = re.sub(r'^---.*?---\s*', '',
-                                      note.read_text(encoding="utf-8"),
+                        body = re.sub(r'^---.*?---\s*', '', orig,
                                       flags=re.DOTALL).strip()
                         scored.append((score, f"{area}/{note.stem}", body))
                 except Exception:
