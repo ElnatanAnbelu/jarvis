@@ -1,6 +1,6 @@
 # Second Brain — Vault Write Layer (Sub-Project 1)
 **Date:** 2026-05-28
-**Status:** Approved for implementation
+**Status:** Approved for implementation (v2 — post-review)
 
 ---
 
@@ -35,7 +35,8 @@ JARVIS operates with two distinct knowledge systems:
 SecondBrain/
 ├── .obsidian/               ← Obsidian config (created when user opens vault)
 ├── _JARVIS/
-│   ├── _Activity.md         ← append-only audit log of all JARVIS writes
+│   ├── _Activity.md         ← human-readable audit log of all JARVIS writes
+│   ├── _Activity.jsonl      ← machine-readable log (same events, JSONL format)
 │   ├── _PersonalModel.md    ← JARVIS's synthesized model of Elnatan (proposal-only)
 │   └── Proposals/
 │       └── 2026-05-28-001.md  ← individual reviewable proposal files
@@ -56,7 +57,7 @@ SecondBrain/
 | Relationships | High | Always propose |
 | Decisions | High | Always propose |
 | _JARVIS/_PersonalModel | High | Always propose |
-| Personal | Medium | Propose by default; auto-write with clear factual grounding |
+| Personal | Medium | Propose by default; auto-write only for clearly factual, low-sensitivity content |
 | Goals | Medium | Propose by default |
 | Learning | Low | Auto-write with attribution |
 | Daily | Low | Auto-write with attribution |
@@ -77,7 +78,7 @@ created: 2026-05-28
 updated: 2026-05-28
 created_by: jarvis          # or "human"
 last_edited_by: jarvis      # updated on every write
-jarvis_last_hash: abc123    # SHA-256 of content at last JARVIS write (for conflict detection)
+jarvis_last_hash: abc123    # SHA-256 of content at last JARVIS write (conflict detection)
 sensitivity: low            # low / medium / high
 source: "conversation, 2026-05-28"
 ---
@@ -102,33 +103,52 @@ When JARVIS tries to write to an existing note:
 1. Read current file content.
 2. Compute SHA-256 hash of current content.
 3. Compare with `jarvis_last_hash` from frontmatter.
-4. If hashes match → Elnatan hasn't edited since last JARVIS write → proceed with auto-write (if low-risk) or propose (if high-risk).
-5. If hashes differ → Elnatan has made manual edits → **demote to proposal regardless of risk level.** Do not overwrite human edits.
+4. **Hashes match** → Elnatan hasn't edited since last JARVIS write → proceed normally (auto-write if low-risk, propose if high-risk).
+5. **Hashes differ** → Elnatan has made manual edits → **demote to proposal regardless of risk level.** Never overwrite human edits.
+
+New notes (no `jarvis_last_hash`) are always written fresh.
 
 ---
 
 ## Observation Staging
 
-**Problem:** Life signals (email, calendar, conversation) arrive continuously. Writing a vault note for each one creates noise and write overhead.
+**Problem:** Life signals arrive continuously. Writing a vault note for each one creates noise and overhead.
 
-**Solution:** Raw observations are buffered in SQLite before synthesis.
+**Solution:** Raw observations are buffered in SQLite before synthesis. Synthesis happens in batches, not per-observation.
 
-**`memory/observations.py`** manages a lightweight observations table:
+**`memory/observations.py`** manages a lightweight table:
 
 ```sql
 CREATE TABLE observations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,          -- "email", "calendar", "conversation", "manual"
-    source_detail TEXT,            -- "email from Yostina", "calendar event: Gym"
-    content TEXT NOT NULL,         -- raw observation text
-    relevance_hint TEXT,           -- suggested area or topic
-    tags TEXT,                     -- comma-separated suggested tags
-    captured_at TEXT NOT NULL,     -- ISO timestamp
-    synthesized INTEGER DEFAULT 0  -- 0=pending, 1=synthesized
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source       TEXT NOT NULL,          -- "email", "calendar", "conversation", "manual"
+    source_detail TEXT,                  -- "email from Yostina", "calendar: Gym"
+    content      TEXT NOT NULL,          -- raw observation text
+    relevance_hint TEXT,                 -- suggested area or topic
+    tags         TEXT,                   -- comma-separated suggested tags
+    sensitivity  TEXT DEFAULT 'low',     -- low / medium / high
+    captured_at  TEXT NOT NULL,          -- ISO timestamp
+    synthesized  INTEGER DEFAULT 0       -- 0=pending, 1=synthesized
 );
 ```
 
-Synthesis happens in batches (background worker or on explicit trigger), not per-observation.
+### Observation Quality Filter
+
+Before an observation reaches the synthesis layer, it is evaluated against these criteria. Observations that fail are discarded or flagged, not synthesized:
+
+| Criterion | Pass condition |
+|-----------|---------------|
+| **Personal relevance** | Content is specifically about Elnatan's life, not general world knowledge |
+| **Information density** | Contains at least one new fact, decision, interest, or pattern — not just chitchat |
+| **Source credibility** | Source is a first-person signal (Elnatan speaking directly, email, calendar) or a clear close-context signal |
+| **Non-redundant** | Not a duplicate or near-duplicate of a recent observation on the same topic |
+| **Length floor** | At least 15 words of substantive content |
+
+Observations that pass all criteria are marked `quality=1` in a separate column. Only quality-flagged observations are sent to synthesis.
+
+```sql
+ALTER TABLE observations ADD COLUMN quality INTEGER DEFAULT 0;
+```
 
 ---
 
@@ -159,34 +179,83 @@ reason: "Elnatan mentioned starting to read this book"
 > *JARVIS: observed from conversation on 2026-05-28*
 
 Elnatan started reading "Open" by Andre Agassi. Added to reading list.
-
 Status: reading
 ```
 
-Proposals are approved/rejected via JARVIS tool calls (`approve_proposal("2026-05-28-001")`), which moves the content to the target note and updates the proposal status.
+---
+
+## Approval / Review UX (v1)
+
+The v1 review flow is entirely via JARVIS chat — no separate UI needed.
+
+### Reviewing proposals
+
+```
+User: "show my pending brain proposals"
+JARVIS: calls review_proposals() → shows a numbered list:
+  [2026-05-28-001] Learning/Open by Andre Agassi — create (low risk)
+    Reason: mentioned starting to read this book
+  [2026-05-28-002] Business/Addis Market Vendor Count — update (HIGH risk)
+    Reason: mentioned 34 vendors onboarded
+
+User: "approve 001"  or  "approve all low risk"  or  "reject 002"
+JARVIS: calls approve_proposal("2026-05-28-001") → writes the note, updates status
+```
+
+### Rules for the review flow
+
+- JARVIS **never** silently applies proposals. Each approval is explicit.
+- `approve all low risk` is valid shorthand — approves all pending low-risk proposals in one step.
+- Rejected proposals have their status set to `rejected` but the file is preserved in `_JARVIS/Proposals/` for reference.
+- JARVIS may proactively surface proposals at the start of a session if there are 3+ pending ("You have 4 pending brain proposals — want to review them?"), but does not repeat this more than once per session.
+
+---
+
+## Personal Model — Trigger Conditions
+
+`_JARVIS/_PersonalModel.md` is the highest-leverage note in the vault. All updates are proposal-only.
+
+JARVIS should propose a Personal Model update when:
+
+| Trigger | Example |
+|---------|---------|
+| A topic appears in 3+ separate sessions | Discussing pottery, anime, or a book repeatedly across days |
+| Elnatan explicitly shares something about himself | "I've realized I work best late at night" |
+| A previous model entry is contradicted | Elnatan says he doesn't enjoy something the model listed as a strength |
+| A significant life decision is made | Choosing to stay in school, deciding to launch Nexel |
+| A clear new pattern emerges from observations | Consistent late-night work sessions logged across a week |
+| Quarterly by default | Even if no major trigger, propose a full model review every ~90 days |
+
+Proposals to `_PersonalModel.md` must always cite the supporting observations or conversations that justify the update. No update without evidence.
 
 ---
 
 ## Activity Log Format
 
-`_JARVIS/_Activity.md` is append-only. Each entry:
-
-```
+**Human-readable:** `_JARVIS/_Activity.md` (append-only):
+```markdown
 ## 2026-05-28T14:32:00 | create | Learning/Open by Andre Agassi
 - **Action**: Created new note
 - **Source**: conversation, 2026-05-28
 - **Summary**: Elnatan mentioned starting to read "Open" by Andre Agassi
 ```
 
+**Machine-readable:** `_JARVIS/_Activity.jsonl` (one JSON object per line):
+```json
+{"ts": "2026-05-28T14:32:00", "action": "create", "note": "Learning/Open by Andre Agassi", "source": "conversation", "summary": "started reading Open by Andre Agassi", "risk": "low"}
+```
+
+The JSONL log enables future analytics: proposal acceptance rate, write frequency per area, vault growth over time, JARVIS activity summaries.
+
 ---
 
 ## Personal Model Note
 
-`_JARVIS/_PersonalModel.md` is a structured synthesis note tracking Elnatan's evolving traits:
+`_JARVIS/_PersonalModel.md` is a structured synthesis note:
 
 ```markdown
 # Personal Model — Elnatan Anbelu
-*Last updated: 2026-05-28 by JARVIS*
+*Last updated: 2026-05-28 by JARVIS (proposed, approved by Elnatan)*
 
 ## Interests & Hobbies
 ## Energy Patterns
@@ -196,7 +265,84 @@ Proposals are approved/rejected via JARVIS tool calls (`approve_proposal("2026-0
 ## Relationship Patterns
 ```
 
-All updates to this note go through the proposal flow. This note is never auto-written.
+All updates go through the proposal flow. Every section update includes the date and source observations. The note header tracks when it was last updated and whether it was human-reviewed.
+
+---
+
+## Human Feedback and Correction Loops
+
+The system must support Elnatan giving JARVIS ongoing quality feedback so synthesis improves over time.
+
+### Explicit correction flow
+
+```
+User: "that brain note about X is wrong"
+JARVIS: asks what's incorrect → records a correction observation with source="human_correction"
+       → marks the original note as needing review → proposes an updated version
+
+User: "JARVIS is writing too much about Addis Market in my brain"
+JARVIS: acknowledges → reduces relevance score for that topic in observation filtering
+       → stores a suppression preference in memory/observations meta
+```
+
+### Correction is an observation
+
+When Elnatan corrects something, that correction is stored as a high-priority observation with `sensitivity=high` and `source=human_correction`. It feeds back into the synthesis layer so the same mistake is not repeated.
+
+### Quality rating (passive)
+
+When JARVIS surfaces a brain note in conversation and Elnatan responds positively or engages with it, that is logged as a positive signal. When Elnatan ignores it or says it's irrelevant, that's a negative signal. These signals accumulate into per-area usefulness scores visible in the activity log.
+
+This is lightweight — no explicit rating required from Elnatan. The signals come from natural conversational behavior.
+
+---
+
+## Performance Considerations
+
+Vault operations must not degrade real-time conversation response time.
+
+| Operation | Strategy |
+|-----------|----------|
+| FAISS index build | Background thread only. Never blocks caller. Triggered after writes with debounce (≥5s). |
+| FAISS search | Fast-path with 500ms timeout. Falls back to keyword search if index not ready. |
+| Note reads | Synchronous, fast (local file I/O). Acceptable in real-time path. |
+| Note writes (auto) | Synchronous but fast. Acceptable for low-risk writes during conversation. |
+| Note writes (proposals) | Write proposal file synchronously (small). Apply proposal separately when approved. |
+| Observation staging | Insert to SQLite is <1ms. Always safe in real-time path. |
+| Synthesis | Background only. Never triggered during live conversation. |
+| Activity log append | Synchronous, append-only. Fast. |
+| Index rebuild trigger | Debounced: rebuild only if notes have changed AND 60s have passed since last build. |
+
+**Hard rule:** Any vault operation that could take >100ms must run in a background thread. `_ensure_index()` already follows this pattern in `wiki.py` — `vault.py` will use the same approach.
+
+---
+
+## Dual-Brain Context Routing
+
+The v1 approach is signal-based scoring. This is acknowledged as a starting point — it will need tuning but is the right architecture to start with.
+
+```python
+_PERSONAL_SIGNALS = {
+    "sleep", "gym", "workout", "family", "mom", "dad", "sister", "brother",
+    "book", "reading", "anime", "hobby", "interest", "diet", "health",
+    "feel", "mood", "energy", "goal", "relationship", "friend",
+    "decision", "choice", "should i", "thinking about",
+}
+_PROJECT_SIGNALS = {
+    "code", "function", "file", "wiki", "repo", "error", "bug", "build",
+    "jarvis", "python", "api", "database", "server", "tool", "script",
+    "deploy", "test", "commit", "branch", "import",
+}
+```
+
+**Routing logic:**
+1. Score both signal sets against the query.
+2. If personal_score > project_score → personal brain only.
+3. If project_score > personal_score → project brain only.
+4. If both > 0 and within 2 points → query both, combine results, deduplicate.
+5. If both = 0 (no signals matched) → **default to personal brain** (personal context is more often relevant in normal conversation).
+
+**Fallback awareness:** The routing function will log its decision (personal/project/both) at debug level so the behavior can be observed and tuned. If signal sets are clearly wrong, they are easy to update.
 
 ---
 
@@ -207,77 +353,74 @@ All updates to this note go through the proposal flow. This note is never auto-w
 ```python
 class VaultManager:
     VAULT_PATH = Path("~/Documents/SecondBrain").expanduser()
-    AREA_RISK = { "Business": "high", "Relationships": "high", ... }
+    AREA_RISK = {
+        "Business": "high", "Relationships": "high", "Decisions": "high",
+        "Personal": "medium", "Goals": "medium",
+        "Learning": "low", "Daily": "low", "Archive": "low",
+    }
 
-    # Core operations
-    def create_note(title, content, area, source, tags=[]) -> str
+    # Core operations (risk-aware)
+    def create_note(title, content, area, source, tags=[], sensitivity="low") -> str
     def update_note(title, content, source) -> str
     def propose_change(title, proposed_content, action, source, reason) -> str
 
-    # Navigation
-    def search_vault(query, max_results=5) -> str
-    def get_note(title) -> str
+    # Navigation + search
+    def search_vault(query, max_results=5) -> str          # FAISS with keyword fallback
+    def get_note(title_or_path) -> str
     def list_notes(area=None) -> list[str]
 
     # Review flow
-    def get_pending_proposals() -> str
+    def get_pending_proposals() -> str                     # formatted list for chat
     def approve_proposal(proposal_id) -> str
     def reject_proposal(proposal_id) -> str
 
     # Personal model
-    def update_personal_model(section, content, source) -> str
+    def update_personal_model(section, content, source, supporting_observations) -> str
+
+    # Feedback
+    def record_correction(note_title, correction, source="human_correction") -> str
 
     # Internal
-    def _write_safe(path, content, source) -> None   # handles conflict detection + activity log
+    def _should_propose(area, sensitivity, has_human_edits) -> bool
+    def _write_safe(path, content, source) -> None
     def _compute_hash(content) -> str
-    def _log_activity(action, note, source, summary) -> None
-    def _build_index() -> None                        # FAISS index for search
-    def _ensure_index() -> None                       # background rebuild trigger
+    def _log_activity(action, note, source, summary, risk) -> None  # writes both MD + JSONL
+    def _build_index() -> None
+    def _ensure_index() -> None
+    def _score_proposal_area(area) -> str                  # returns "low"/"medium"/"high"
 ```
 
 ### `memory/observations.py` — Observation Staging
 
 ```python
-def add_observation(source, source_detail, content, relevance_hint="", tags="") -> int
-def get_pending_observations(limit=20) -> list[dict]
+def add_observation(source, source_detail, content, relevance_hint="",
+                    tags="", sensitivity="low") -> int
+def score_observation_quality(obs: dict) -> bool      # applies quality filter rules
+def get_pending_observations(limit=20) -> list[dict]  # quality=1 only
 def mark_synthesized(observation_id) -> None
 def get_recent_observations(hours=24) -> list[dict]
+def suppress_topic(topic: str) -> None                # stores user preference
+def get_suppressed_topics() -> list[str]
 ```
 
-### `brain/tools/second_brain.py` — JARVIS Tool Interface
+### `brain/tools/second_brain.py` — JARVIS Tool Interface (10 tools)
 
-10 tools registered via `@tool` decorator:
-
-| Tool | Description |
-|------|-------------|
-| `create_brain_note` | Create a new note in the personal brain |
-| `update_brain_note` | Append/update an existing note with attribution |
-| `propose_brain_change` | Stage a proposed change for human review |
-| `search_brain` | Semantic search across the personal vault |
-| `get_brain_note` | Read a specific note by title |
-| `list_brain_notes` | List notes in an area |
-| `review_proposals` | Get all pending proposals |
-| `approve_proposal` | Approve and apply a pending proposal |
-| `reject_proposal` | Reject and archive a pending proposal |
-| `update_personal_model` | Propose an update to the Personal Model |
+| Tool | Risk check | Description |
+|------|-----------|-------------|
+| `create_brain_note` | Yes | Create a new note; auto-write or propose based on area risk |
+| `update_brain_note` | Yes + conflict | Append to existing note with attribution; conflict → propose |
+| `propose_brain_change` | Always propose | Explicitly stage a change for human review |
+| `search_brain` | No | Semantic search across the personal vault |
+| `get_brain_note` | No | Read a specific note by title or path |
+| `list_brain_notes` | No | List notes in an area |
+| `review_proposals` | No | Get all pending proposals, formatted for chat |
+| `approve_proposal` | No | Approve and apply a pending proposal |
+| `reject_proposal` | No | Reject and archive a pending proposal |
+| `update_personal_model` | Always propose | Propose an update to a Personal Model section |
 
 ### Context Routing in `brain/think.py`
 
-`_build_context()` gains a lightweight routing function:
-
-```python
-_PERSONAL_SIGNALS = {"sleep", "gym", "family", "book", "reading", "hobby", ...}
-_PROJECT_SIGNALS  = {"code", "function", "file", "wiki", "repo", "error", ...}
-
-def _route_context(user_input, facts, wiki_result):
-    lower = user_input.lower()
-    words = set(lower.split())
-    personal_score = len(words & _PERSONAL_SIGNALS)
-    project_score  = len(words & _PROJECT_SIGNALS)
-    ...
-```
-
-Default when ambiguous: query personal brain. Both brains are queried only when signals from both are present.
+`_build_context()` is updated with a routing layer that decides which brain(s) to query per request. The routing decision is logged at debug level for tuneability. Default (no signals matched) routes to personal brain only.
 
 ---
 
@@ -295,7 +438,7 @@ Default when ambiguous: query personal brain. Both brains are queried only when 
 
 | File | Status |
 |------|--------|
-| `~/Documents/SecondBrain/` | CREATE (vault scaffold) |
+| `~/Documents/SecondBrain/` | CREATE (vault scaffold + anchor notes) |
 | `memory/vault.py` | CREATE |
 | `memory/observations.py` | CREATE |
 | `brain/tools/second_brain.py` | CREATE |
@@ -308,12 +451,14 @@ Default when ambiguous: query personal brain. Both brains are queried only when 
 ## Success Criteria
 
 1. `~/Documents/SecondBrain/` exists with correct folder structure, openable in Obsidian.
-2. JARVIS can create a note in Learning/ with correct attribution frontmatter.
-3. JARVIS auto-proposes (does not auto-write) to Business/, Relationships/, Decisions/.
-4. Conflict detection correctly demotes a write to a proposal when the human has edited the note.
-5. Activity log records all writes correctly.
-6. `search_brain("gym schedule")` returns relevant notes if they exist.
-7. Context routing correctly pulls personal brain context for personal queries.
-8. `review_proposals` tool returns pending proposals in a readable format.
-9. All 10 tools register cleanly in the tool registry and pass syntax check.
-10. Vault operations are non-blocking in real-time conversation (background where needed).
+2. JARVIS can create a note in `Learning/` with correct attribution frontmatter.
+3. JARVIS auto-proposes (does not auto-write) to `Business/`, `Relationships/`, `Decisions/`.
+4. Conflict detection correctly demotes to a proposal when the human has edited the note.
+5. `_JARVIS/_Activity.md` and `_Activity.jsonl` both record writes correctly.
+6. `search_brain("gym schedule")` returns relevant notes via FAISS (keyword fallback if index not ready).
+7. Context routing correctly pulls personal brain context for personal queries, project brain for code queries.
+8. `review_proposals` returns pending proposals in a readable numbered list.
+9. All 10 tools register cleanly in the tool registry and pass `py_compile`.
+10. Vault operations (search, write, propose) complete within 100ms in the real-time path; FAISS rebuild runs in background.
+11. `add_observation()` with a chitchat-only string scores `quality=0` and is not synthesized.
+12. `reject_proposal()` preserves the proposal file with `status: rejected`; does not delete it.
