@@ -173,3 +173,72 @@ def test_log_multiple_activities_accumulate(vault, tmp_path):
         if l.strip()]
     non_init = [l for l in lines if "vault_init" not in l]
     assert len(non_init) == 2
+
+
+# ── Task 4: create_note / update_note tests ────────────────────────────────────
+
+def test_create_note_low_risk_writes_file(vault, tmp_path):
+    result = vault.create_note(
+        title="Python Basics",
+        content="Python is a high-level language.",
+        area="Learning",
+        source="conversation, 2026-05-28",
+    )
+    note_path = tmp_path / "SecondBrain" / "Learning" / "Python Basics.md"
+    assert note_path.exists()
+    content = note_path.read_text()
+    assert "Python is a high-level language" in content
+    assert "JARVIS" in content  # attribution blockquote
+    assert "created" in result.lower() or "auto_write" in result
+
+
+def test_create_note_high_risk_creates_proposal(vault, tmp_path):
+    result = vault.create_note(
+        title="Investor Ahmed",
+        content="Met investor Ahmed today.",
+        area="Relationships",
+        source="conversation, 2026-05-28",
+    )
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert len(proposals) == 1
+    assert "proposal" in result.lower() or "proposed" in result.lower()
+    rel_path = tmp_path / "SecondBrain" / "Relationships" / "Investor Ahmed.md"
+    assert not rel_path.exists()
+
+
+def test_create_note_low_area_high_sensitivity_creates_proposal(vault, tmp_path):
+    result = vault.create_note(
+        title="Medical Checkup",
+        content="Had a checkup. All good.",
+        area="Learning",
+        source="conversation",
+        sensitivity="high",
+    )
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert len(proposals) == 1
+
+
+def test_create_note_writes_attribution_header(vault, tmp_path):
+    vault.create_note("Book Notes", "Key takeaway here.", "Learning", "email, 2026-05-28")
+    note = (tmp_path / "SecondBrain" / "Learning" / "Book Notes.md").read_text()
+    assert "*JARVIS:" in note
+    assert "email, 2026-05-28" in note
+
+
+def test_update_note_appends_when_no_conflict(vault, tmp_path):
+    vault.create_note("My Log", "Entry 1.", "Daily", "conv")
+    result = vault.update_note("Daily/My Log", "Entry 2.", "conv")
+    note = (tmp_path / "SecondBrain" / "Daily" / "My Log.md").read_text()
+    assert "Entry 1" in note
+    assert "Entry 2" in note
+    assert "proposed" not in result.lower()
+
+
+def test_update_note_proposes_when_human_edited(vault, tmp_path):
+    vault.create_note("My Log", "Entry 1.", "Daily", "conv")
+    note_path = tmp_path / "SecondBrain" / "Daily" / "My Log.md"
+    note_path.write_text(note_path.read_text() + "\n*human addition*\n", encoding="utf-8")
+    result = vault.update_note("Daily/My Log", "Entry 2.", "conv")
+    assert "proposal" in result.lower() or "proposed" in result.lower()
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    assert len(proposals) == 1

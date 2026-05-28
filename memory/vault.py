@@ -9,6 +9,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -244,3 +245,121 @@ class VaultManager:
 
     def _safe_title(self, title: str) -> str:
         return re.sub(r'[<>:"/\\|?*]', '', title).strip()
+
+    # ── Note path resolution ───────────────────────────────────────────────────
+
+    def _resolve_note_path(self, title_or_path: str) -> Optional[Path]:
+        """Find a note by 'Area/Title' or just 'Title' (searches all areas)."""
+        if "/" in title_or_path:
+            area, _, title = title_or_path.partition("/")
+            p = self.vault_path / area / f"{self._safe_title(title)}.md"
+            return p if p.exists() else None
+        for area in AREA_RISK:
+            p = self.vault_path / area / f"{self._safe_title(title_or_path)}.md"
+            if p.exists():
+                return p
+        return None
+
+    def _detect_human_edits(self, path: Path) -> bool:
+        """Return True if the body has been edited since JARVIS last wrote it."""
+        fm = self._parse_frontmatter(path)
+        stored_hash = fm.get("jarvis_last_hash", "")
+        if not stored_hash or stored_hash == "placeholder":
+            return False
+        current_content = path.read_text(encoding="utf-8")
+        return self._compute_hash(self._body_only(current_content)) != stored_hash
+
+    @staticmethod
+    def _body_only(text: str) -> str:
+        """Return the portion of a note after the closing frontmatter '---'."""
+        # Skip the opening '---', content, closing '---'
+        m = re.match(r'^---\n.*?\n---\n(.*)', text, re.DOTALL)
+        return m.group(1) if m else text
+
+    def _write_note(self, path: Path, frontmatter: str, body: str, source: str):
+        """Write note to disk and store a hash of the body (post-frontmatter)."""
+        content = frontmatter + "\n\n" + body.strip() + "\n"
+        path.write_text(content, encoding="utf-8")
+        # Hash only the body so the stored value is stable regardless of
+        # future frontmatter field updates (updated, last_edited_by, etc.).
+        body_hash = self._compute_hash(self._body_only(content))
+        self._update_frontmatter_field(path, "jarvis_last_hash", body_hash)
+        # Invalidate search index (Task 7 will use this)
+        # Nothing to invalidate yet — placeholder comment for now
+
+    # ── Proposal stub (Task 5 will replace this) ───────────────────────────────
+
+    def propose_change(self, **kwargs) -> str:
+        """Stub: will be replaced in Task 5."""
+        title = kwargs.get("title", "?")
+        area = kwargs.get("area", "")
+        source = kwargs.get("source", "")
+        action = kwargs.get("action", "create")
+        content = kwargs.get("proposed_content", "")
+        reason = kwargs.get("reason", "")
+
+        safe = self._safe_title(title)
+        proposals_dir = self.vault_path / PROPOSALS_DIR
+        proposals_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        proposal_path = proposals_dir / f"{ts}_{safe}.md"
+        body = (
+            f"# Proposal: {action} — {title}\n\n"
+            f"**Reason**: {reason}\n\n"
+            f"**Area**: {area}\n\n"
+            f"**Source**: {source}\n\n"
+            f"## Proposed Content\n\n{content}\n"
+        )
+        proposal_path.write_text(body, encoding="utf-8")
+        return f"proposed: {title}"
+
+    # ── Note write operations ──────────────────────────────────────────────────
+
+    def create_note(self, title: str, content: str, area: str, source: str,
+                    tags: list = None, sensitivity: str = "low") -> str:
+        """Create a new note, routing through proposal flow when required."""
+        if self._should_propose(area, sensitivity, has_human_edits=False):
+            return self.propose_change(
+                title=title, proposed_content=content, action="create",
+                area=area, source=source, reason=f"New {area} note: {title}"
+            )
+        safe = self._safe_title(title)
+        path = self.vault_path / area / f"{safe}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        attribution = f"> *JARVIS: learned from {source}*"
+        fm = self._build_frontmatter(title, area, source, sensitivity,
+                                     created_by="jarvis", tags=tags or [])
+        body = f"# {title}\n\n{attribution}\n\n{content}"
+        self._write_note(path, fm, body, source)
+        self._log_activity("create", f"{area}/{safe}", source,
+                           f"Created note: {title}", risk="low")
+        return f"Created: {area}/{safe}.md"
+
+    def update_note(self, title_or_path: str, content: str, source: str,
+                    sensitivity: str = "low") -> str:
+        """Append content to an existing note, routing through proposal flow when required."""
+        path = self._resolve_note_path(title_or_path)
+        if path is None:
+            return f"Note not found: {title_or_path}"
+        area = path.parent.name
+        has_human_edits = self._detect_human_edits(path)
+        if self._should_propose(area, sensitivity, has_human_edits):
+            return self.propose_change(
+                title=path.stem, proposed_content=content, action="update",
+                area=area, source=source,
+                reason="Human edits detected — proposing update for review"
+                       if has_human_edits else f"High-risk area update: {area}"
+            )
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        attribution = f"> *JARVIS: updated from {source} on {now}*"
+        existing = path.read_text(encoding="utf-8")
+        updated = existing.rstrip() + f"\n\n{attribution}\n\n{content}\n"
+        path.write_text(updated, encoding="utf-8")
+        # Hash only the body so future frontmatter updates don't look like human edits
+        new_hash = self._compute_hash(self._body_only(updated))
+        self._update_frontmatter_field(path, "jarvis_last_hash", new_hash)
+        self._update_frontmatter_field(path, "updated", now)
+        self._update_frontmatter_field(path, "last_edited_by", "jarvis")
+        self._log_activity("update", f"{area}/{path.stem}", source,
+                           f"Updated note: {path.stem}", risk="low")
+        return f"Updated: {area}/{path.stem}.md"
