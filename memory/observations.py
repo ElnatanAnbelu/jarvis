@@ -9,7 +9,7 @@ import hashlib
 import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -98,13 +98,13 @@ def add_observation(source: str, source_detail: str, content: str,
     """Stage an observation. Applies quality filter and deduplication. Returns row id."""
     quality = 1 if score_observation_quality({"content": content, "source": source}) else 0
     content_hash = hashlib.sha256(content.encode()).hexdigest()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     with _lock:
         conn = _get_conn()
 
         # Deduplication: skip identical observations captured in last 24h
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         existing = conn.execute(
             "SELECT id FROM observations WHERE content_hash = ? AND captured_at > ?",
             (content_hash, cutoff)
@@ -163,7 +163,7 @@ def mark_synthesized(observation_id: int):
 
 def get_recent_observations(hours: int = 24) -> list:
     """Return all observations (any quality) from the past N hours."""
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
@@ -175,7 +175,7 @@ def get_recent_observations(hours: int = 24) -> list:
 
 def suppress_topic(topic: str):
     """Suppress a topic — mark matching pending observations as quality=0."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with _lock:
         conn = _get_conn()
         conn.execute(
