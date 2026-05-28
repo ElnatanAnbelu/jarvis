@@ -43,11 +43,15 @@ _refresh_token()
 
 def _build_jarvis_system() -> str:
     # Build JARVIS system prompt from the modular prompts library.
+    # Business context is excluded from the static prompt — _build_context()
+    # injects it dynamically only on business-relevant queries (B2). This
+    # reduces constant Addis Market / empire priming on every turn.
     try:
         from prompts.runtime.prompt_loader import compose_full_system_prompt, load_second_brain_modules
         base = compose_full_system_prompt(
             agent="JARVIS",
             include_static_context=True,
+            include_business=False,
             include_security=True,
         )
         sb = load_second_brain_modules()
@@ -492,6 +496,39 @@ def _get_personal_context(user_input: str) -> str:
     return ""
 
 
+# ── B2: Conditional business context injection ───────────────────────────────
+# Business context (Addis Market, Nexel, KPIs, etc.) is no longer in the
+# static system prompt. It is injected here only when the query is
+# business-relevant. This reduces constant priming and Addis Market over-focus.
+
+_BUSINESS_CONTEXT_SIGNALS = frozenset({
+    "addis", "market", "nexel", "business", "vendor", "revenue", "investor",
+    "startup", "product", "launch", "kpi", "pipeline", "pitch", "financials",
+    "company", "founder", "mrr", "arr", "competitor", "valuation", "funding",
+    "expense", "profit", "deal", "client", "customer",
+})
+
+
+def _is_business_query(user_input: str) -> bool:
+    """True when the user input contains business/venture signals."""
+    if not user_input:
+        return False
+    lower = user_input.lower()
+    return any(s in lower for s in _BUSINESS_CONTEXT_SIGNALS)
+
+
+def _get_business_context() -> str:
+    """Load business_context.md for dynamic injection."""
+    try:
+        from prompts.runtime.prompt_loader import load_business_context
+        block = load_business_context()
+        if block:
+            return f"\nBUSINESS CONTEXT (injected — current query is business-related):\n{block}\n"
+    except Exception:
+        pass
+    return ""
+
+
 _HAIKU_PATTERNS = [re.compile(r, re.I) for r in [
     r"^(hey|hi|hello|sup|yo|what'?s up|howdy)[,!?\s]*$",
     r"^(thanks?|thank you|thx|ok|okay|alright|got it|cool|nice|perfect|sounds good|great)[,!?\s]*$",
@@ -630,6 +667,11 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
         personal_ctx = _get_personal_context(user_input)
         if personal_ctx:
             ctx += personal_ctx
+    # Business context — only injected on business-relevant queries (B2)
+    if _is_business_query(user_input):
+        biz = _get_business_context()
+        if biz:
+            ctx += biz
     if include_history:
         # When a rolling summary exists, inject it then only show the last 10 verbatim.
         # When no summary yet (early conversation), show the full 30-message window.

@@ -52,6 +52,12 @@ def load_context(include_profile: bool = True, include_business: bool = True, in
     return "\n\n".join(parts)
 
 
+def load_business_context() -> str:
+    """Load just the business context block — used for dynamic injection
+    on business-relevant queries (see brain/think.py _is_business_query)."""
+    return _read("context/business_context.md")
+
+
 def build_facts_block(facts: str, wiki: str = "", session_summary: str = "") -> str:
     """Inject live facts into the official template."""
     template = _read("context/facts_injection_template.md")
@@ -102,6 +108,7 @@ def compose_full_system_prompt(
     session_summary: str = "",
     model: str = "claude",
     include_static_context: bool = True,
+    include_business: bool = True,
     specialized_task: Optional[str] = None,
     include_security: bool = True,
 ) -> str:
@@ -109,6 +116,10 @@ def compose_full_system_prompt(
     Main composition function.
 
     This is the recommended way to build system prompts going forward.
+
+    include_business=False excludes the static business_context.md from
+    the prompt. Callers (e.g. brain/think.py) inject business context
+    dynamically only on business-relevant queries — see _is_business_query.
     """
     sections = []
 
@@ -118,9 +129,10 @@ def compose_full_system_prompt(
     # 2. Persona
     sections.append(load_persona(agent))
 
-    # 3. Static context (optional)
+    # 3. Static context (optional; business excluded by default for JARVIS
+    #    to reduce constant Addis Market priming — injected dynamically)
     if include_static_context:
-        sections.append(load_context())
+        sections.append(load_context(include_business=include_business))
 
     # 4. Live facts (critical)
     if facts_block or wiki_context or session_summary:
