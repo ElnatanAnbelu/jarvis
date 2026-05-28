@@ -284,3 +284,61 @@ def test_propose_change_returns_proposal_id_in_result(vault):
     assert "proposal" in result.lower()
     today = datetime.now().strftime("%Y-%m-%d")
     assert today in result
+
+
+# ── Task 6: Proposal Review Flow tests ────────────────────────────────────────
+
+def test_get_pending_proposals_lists_pending_only(vault, tmp_path):
+    vault.propose_change("A", "c1", "create", "Business", "conv", "r1")
+    vault.propose_change("B", "c2", "create", "Decisions", "conv", "r2")
+    result = vault.get_pending_proposals()
+    assert "001" in result
+    assert "002" in result
+
+
+def test_approve_proposal_writes_note(vault, tmp_path):
+    vault.propose_change("New Insight", "This is the content.", "create",
+                         "Learning", "conversation", "test insight")
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    pid = proposals[0].stem
+    result = vault.approve_proposal(pid)
+    note_path = tmp_path / "SecondBrain" / "Learning" / "New Insight.md"
+    assert note_path.exists()
+    assert "This is the content." in note_path.read_text()
+    assert "approved" in result.lower()
+
+
+def test_approve_proposal_marks_status_approved(vault, tmp_path):
+    vault.propose_change("X", "content", "create", "Learning", "conv", "r")
+    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    vault.approve_proposal(pid)
+    proposal_text = (tmp_path / "SecondBrain" / "_JARVIS" / "Proposals" / f"{pid}.md").read_text()
+    assert "status: approved" in proposal_text
+
+
+def test_approve_proposal_stale_when_note_changed(vault, tmp_path):
+    # Create a note, then propose an update to it
+    vault.create_note("Existing Note", "original content", "Learning", "conv")
+    vault.propose_change("Existing Note", "updated content", "update",
+                         "Learning", "conv", "update reason")
+    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    # Human edits the note AFTER the proposal was created
+    note_path = tmp_path / "SecondBrain" / "Learning" / "Existing Note.md"
+    note_path.write_text(note_path.read_text() + "\n*human edit*\n", encoding="utf-8")
+    result = vault.approve_proposal(pid)
+    assert "stale" in result.lower()
+    assert "updated content" not in note_path.read_text()
+
+
+def test_reject_proposal_preserves_file(vault, tmp_path):
+    vault.propose_change("Sensitive", "data", "create", "Decisions", "conv", "reason")
+    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    vault.reject_proposal(pid)
+    proposal_path = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals" / f"{pid}.md"
+    assert proposal_path.exists()
+    assert "status: rejected" in proposal_path.read_text()
+
+
+def test_get_pending_proposals_empty(vault):
+    result = vault.get_pending_proposals()
+    assert "no pending" in result.lower() or result == "" or "0" in result

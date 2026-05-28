@@ -332,6 +332,92 @@ class VaultManager:
                            f"Proposed {action}: {title}", risk=AREA_RISK.get(area, "medium"))
         return f"Proposal created: {proposal_id} — review with `review_proposals`"
 
+    # ── Proposal review ────────────────────────────────────────────────────────
+
+    def get_pending_proposals(self) -> str:
+        proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
+        pending = []
+        for p in sorted(proposals_dir.glob("*.md")):
+            fm = self._parse_frontmatter(p)
+            if fm.get("status") == "pending":
+                pid = fm.get("proposal_id", p.stem)
+                target = fm.get("target_note", "unknown")
+                action = fm.get("action", "?")
+                risk = fm.get("risk", "?")
+                reason = fm.get("reason", "").strip('"')
+                pending.append(
+                    f"[{pid}] {target} — {action} ({risk} risk)\n  Reason: {reason}"
+                )
+        if not pending:
+            return "No pending proposals."
+        return "Pending proposals:\n\n" + "\n\n".join(pending)
+
+    def approve_proposal(self, proposal_id: str) -> str:
+        p = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
+        if not p.exists():
+            return f"Proposal not found: {proposal_id}"
+
+        fm = self._parse_frontmatter(p)
+        target = fm.get("target_note", "")
+        action = fm.get("action", "create")
+        hash_at_proposal = fm.get("hash_at_proposal", "")
+
+        # Extract proposed content (everything after "# Proposed Content" heading)
+        full_text = p.read_text(encoding="utf-8")
+        content_match = re.search(r'---\n\n# Proposed Content\n\n(.*)', full_text, re.DOTALL)
+        proposed_content = content_match.group(1).strip() if content_match else ""
+
+        # Split target into area and title
+        area_str, _, title_str = target.partition("/")
+
+        # Approval-time stale check for updates
+        if action == "update" and target:
+            existing_path = self._resolve_note_path(target)
+            if existing_path and existing_path.exists():
+                current_hash = self._compute_hash(existing_path.read_text(encoding="utf-8"))
+                if hash_at_proposal and current_hash != hash_at_proposal:
+                    self._update_proposal_status(p, "stale")
+                    return (
+                        f"Proposal {proposal_id} is stale — `{target}` was edited "
+                        f"after this proposal was created. Review `{target}` manually "
+                        f"and re-propose if still relevant."
+                    )
+
+        # Apply the proposal
+        source = fm.get("source", "proposal").strip('"')
+        if action == "create":
+            note_path = self.vault_path / area_str / f"{self._safe_title(title_str)}.md"
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+            note_path.write_text(proposed_content + "\n", encoding="utf-8")
+            new_hash = self._compute_hash(note_path.read_text(encoding="utf-8"))
+            self._update_frontmatter_field(note_path, "jarvis_last_hash", new_hash)
+        elif action == "update":
+            existing_path = self._resolve_note_path(target)
+            if existing_path:
+                updated = existing_path.read_text(encoding="utf-8").rstrip()
+                updated += f"\n\n{proposed_content}\n"
+                existing_path.write_text(updated, encoding="utf-8")
+                new_hash = self._compute_hash(updated)
+                self._update_frontmatter_field(existing_path, "jarvis_last_hash", new_hash)
+
+        self._update_proposal_status(p, "approved")
+        self._log_activity("approve", target, "human", f"Approved proposal {proposal_id}")
+        return f"Approved and applied: {proposal_id} → {target}"
+
+    def reject_proposal(self, proposal_id: str) -> str:
+        p = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
+        if not p.exists():
+            return f"Proposal not found: {proposal_id}"
+        self._update_proposal_status(p, "rejected")
+        self._log_activity("reject", proposal_id, "human", f"Rejected proposal {proposal_id}")
+        return f"Rejected: {proposal_id} (file preserved in Proposals/)"
+
+    def _update_proposal_status(self, proposal_path: Path, status: str):
+        text = proposal_path.read_text(encoding="utf-8")
+        updated = re.sub(r'^(status:\s*).*$', rf'\g<1>{status}',
+                         text, count=1, flags=re.MULTILINE)
+        proposal_path.write_text(updated, encoding="utf-8")
+
     # ── Note write operations ──────────────────────────────────────────────────
 
     def create_note(self, title: str, content: str, area: str, source: str,
