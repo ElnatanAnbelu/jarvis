@@ -53,8 +53,61 @@ _load_env()
 
 _BUSINESS_KEYWORDS = {"addis","market","nexel","business","startup","company","product","app","launch","investor","revenue","customer","competitor","strategy","empire","pitch","funding","traction"}
 
+# Personal signals — overlap with brain/think.py _PERSONAL_SIGNALS, used to
+# decide whether to auto-inject Second Brain context for non-JARVIS agents.
+_PERSONAL_BRAIN_SIGNALS = frozenset({
+    "sleep", "gym", "workout", "family", "mom", "dad", "sister", "brother",
+    "book", "reading", "anime", "hobby", "interest", "diet", "health",
+    "feel", "mood", "energy", "goal", "relationship", "friend",
+    "decision", "choice", "tired", "motivated", "stressed", "happy",
+    "sad", "bored", "productive", "focused", "habit", "routine",
+})
+
+
+def _get_brain_context_for_agent(query: str) -> str:
+    """Auto-injected Second Brain context for FRIDAY/VERONICA/KAREN.
+
+    These agents do not call tools at runtime — their personas state they
+    have read-only brain access, but the actual mechanism is auto-injection
+    by the server before the API call. When the query has personal signals,
+    we search the vault and inject up to 2 results as context they can read
+    and reference naturally.
+
+    Returns empty string when:
+      - Query has no personal signals
+      - Vault is unavailable or empty
+      - Any failure (silent fallback — agent works without brain context)
+    """
+    if not query:
+        return ""
+    lower = query.lower()
+    if not any(s in lower for s in _PERSONAL_BRAIN_SIGNALS):
+        return ""
+    try:
+        import memory.vault as _vm
+        if not hasattr(_vm, "_second_brain_instance") or _vm._second_brain_instance is None:
+            from memory.vault import VaultManager
+            _vm._second_brain_instance = VaultManager()
+        result = _vm._second_brain_instance.search_vault(query, max_results=2)
+        if not result:
+            return ""
+        block = (
+            "\nBRAIN CONTEXT (auto-injected — relevant notes from Elnatan's "
+            "Personal Second Brain; reference these directly, do not invent):\n"
+            f"{result}\n"
+        )
+        return block
+    except Exception:
+        return ""
+
+
 def _build_memory_block(query: str) -> tuple:
-    """Return (facts, wiki) tuple for agent system prompt composition."""
+    """Return (facts, wiki, brain) tuple for agent system prompt composition.
+
+    facts: long-term recorded facts from the memory module
+    wiki:  graphify project/codebase context (business queries only)
+    brain: Personal Second Brain context (personal queries only)
+    """
     try:
         from memory.memory import get_facts
         from memory.wiki import get_context
@@ -62,9 +115,10 @@ def _build_memory_block(query: str) -> tuple:
         lower = query.lower()
         is_business_query = any(w in lower for w in _BUSINESS_KEYWORDS)
         wiki = get_context(query) if is_business_query else ""
-        return facts, (wiki or "")
+        brain = _get_brain_context_for_agent(query)
+        return facts, (wiki or ""), brain
     except Exception:
-        return "", ""
+        return "", "", ""
 
 
 def _haiku_fallback_agent(user_input: str, system: str, agent_name: str) -> str:
@@ -97,8 +151,8 @@ def _haiku_fallback_agent(user_input: str, system: str, agent_name: str) -> str:
 def think_veronica_agent(user_input: str) -> str:
     """Groq Llama-3.3-70b — VERONICA persona. Falls back to Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
-    facts, wiki = _build_memory_block(user_input)
-    system = _build_agent_system("VERONICA", facts=facts, wiki=wiki, model="groq")
+    facts, wiki, brain = _build_memory_block(user_input)
+    system = _build_agent_system("VERONICA", facts=facts, wiki=(wiki + brain), model="groq")
 
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     if groq_key:
@@ -125,8 +179,8 @@ def think_veronica_agent(user_input: str) -> str:
 def think_karen_agent(user_input: str) -> str:
     """Mistral medium — KAREN persona. Falls back to Groq, then Haiku."""
     from memory.memory import save_message, build_messages_for_prompt
-    facts, wiki = _build_memory_block(user_input)
-    system = _build_agent_system("KAREN", facts=facts, wiki=wiki, model="mistral")
+    facts, wiki, brain = _build_memory_block(user_input)
+    system = _build_agent_system("KAREN", facts=facts, wiki=(wiki + brain), model="mistral")
 
     mistral_key = os.environ.get("MISTRAL_API_KEY", "").strip()
     if mistral_key:
@@ -175,8 +229,8 @@ def think_karen_agent(user_input: str) -> str:
 def think_veronica_stream(user_input: str):
     """Streaming generator for VERONICA. Groq stream → Haiku stream fallback."""
     from memory.memory import save_message, build_messages_for_prompt
-    facts, wiki = _build_memory_block(user_input)
-    system = _build_agent_system("VERONICA", facts=facts, wiki=wiki, model="groq")
+    facts, wiki, brain = _build_memory_block(user_input)
+    system = _build_agent_system("VERONICA", facts=facts, wiki=(wiki + brain), model="groq")
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Groq streaming ──────────────────────────────────────────────────────
@@ -235,8 +289,8 @@ def think_karen_stream(user_input: str):
     import json as _json
     import requests as _req
     from memory.memory import save_message, build_messages_for_prompt
-    facts, wiki = _build_memory_block(user_input)
-    system = _build_agent_system("KAREN", facts=facts, wiki=wiki, model="mistral")
+    facts, wiki, brain = _build_memory_block(user_input)
+    system = _build_agent_system("KAREN", facts=facts, wiki=(wiki + brain), model="mistral")
     messages = build_messages_for_prompt(user_input, limit=30)
 
     # ── 1. Mistral streaming (raw HTTP — SDK version-agnostic) ────────────────

@@ -46,15 +46,21 @@ FRIDAY_PERSONA = _build_friday_system()  # cached default — per-call version u
 _BUSINESS_KEYWORDS = {"addis","market","nexel","business","startup","company","product","app","launch","investor","revenue","customer","competitor","strategy","nexel","empire","pitch","funding","traction"}
 
 def _build_memory_block(query: str) -> tuple:
-    """Return (facts, wiki) for FRIDAY system prompt composition."""
+    """Return (facts, wiki, brain) for FRIDAY system prompt composition.
+
+    brain is auto-injected Second Brain context when the query has
+    personal signals — same mechanism as VERONICA/KAREN in free_agents.py.
+    """
     try:
+        from brain.free_agents import _get_brain_context_for_agent
         facts = get_facts() or ""
         lower = query.lower()
         is_business_query = any(w in lower for w in _BUSINESS_KEYWORDS)
         wiki = get_context(query) if is_business_query else ""
-        return facts, (wiki or "")
+        brain = _get_brain_context_for_agent(query)
+        return facts, (wiki or ""), brain
     except Exception:
-        return "", ""
+        return "", "", ""
 
 
 def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
@@ -77,8 +83,8 @@ def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
 
 def think_friday(user_input: str) -> str:
     api_key = load_key()
-    facts, wiki = _build_memory_block(user_input)
-    system_instruction = _build_friday_system(facts=facts, wiki=wiki)
+    facts, wiki, brain = _build_memory_block(user_input)
+    system_instruction = _build_friday_system(facts=facts, wiki=(wiki + brain))
 
     if api_key:
         try:
@@ -91,7 +97,7 @@ def think_friday(user_input: str) -> str:
             }
             r = requests.post(url, json=payload, headers=headers, timeout=15)
             if r.status_code == 429:
-                return _groq_fallback(user_input, facts, wiki) or _haiku_fallback(user_input, facts, wiki)
+                return _groq_fallback(user_input, facts, wiki + brain) or _haiku_fallback(user_input, facts, wiki + brain)
             data = r.json()
             response = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             save_message("friday", response)
@@ -99,7 +105,7 @@ def think_friday(user_input: str) -> str:
         except Exception:
             pass
 
-    return _groq_fallback(user_input, facts, wiki) or _haiku_fallback(user_input, facts, wiki)
+    return _groq_fallback(user_input, facts, wiki + brain) or _haiku_fallback(user_input, facts, wiki + brain)
 
 
 def _groq_fallback(user_input: str, facts: str = "", wiki: str = "") -> str:
@@ -156,8 +162,8 @@ def think_friday_stream(user_input: str):
     """Streaming generator for FRIDAY. Gemini SSE → Groq stream → Haiku stream."""
     import json as _json
     api_key = load_key()
-    facts, wiki = _build_memory_block(user_input)
-    system_instruction = _build_friday_system(facts=facts, wiki=wiki)
+    facts, wiki, brain = _build_memory_block(user_input)
+    system_instruction = _build_friday_system(facts=facts, wiki=(wiki + brain))
 
     # ── 1. Gemini streaming ────────────────────────────────────────────────────
     if api_key:
