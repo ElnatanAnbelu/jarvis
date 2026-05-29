@@ -78,6 +78,18 @@ _DAILY_README_CONTENT = (
     "Create notes named `YYYY-MM-DD.md` for each day.\n"
 )
 
+# Central-hub backlink footer. Appended to every new note (create + propose)
+# so Obsidian's graph view shows the three identity hubs (Elnatan, JARVIS,
+# Claude Code) connected to everything.
+_BACKLINK_FOOTER = "\n\n---\n*Linked: [[Elnatan]] · [[JARVIS]] · [[Claude Code]]*\n"
+
+
+def _with_backlinks(body: str) -> str:
+    """Append the central-hub backlink footer if it isn't already present."""
+    if body and "[[Claude Code]]" in body:
+        return body
+    return body.rstrip() + _BACKLINK_FOOTER
+
 
 # ── VaultManager ───────────────────────────────────────────────────────────────
 
@@ -443,7 +455,9 @@ class VaultManager:
             "---",
         ]
         attribution = f"> *JARVIS: proposed from {source} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*"
-        body = "\n".join(fm_lines) + f"\n\n# Proposed Content\n\n{attribution}\n\n{proposed_content}\n"
+        body = "\n".join(fm_lines) + _with_backlinks(
+            f"\n\n# Proposed Content\n\n{attribution}\n\n{proposed_content}\n"
+        )
 
         # Descriptive filename in a subfolder by area. Collision-handled.
         proposal_path = self.vault_path / "_JARVIS" / "Proposals" / rel_path
@@ -604,7 +618,7 @@ class VaultManager:
         attribution = f"> *JARVIS: learned from {source}*"
         fm = self._build_frontmatter(title, area, source, sensitivity,
                                      created_by="jarvis", tags=tags or [])
-        body = f"# {title}\n\n{attribution}\n\n{content}"
+        body = _with_backlinks(f"# {title}\n\n{attribution}\n\n{content}")
         self._write_note(path, fm, body, source)
         self._log_activity("create", f"{area}/{safe}", source,
                            f"Created note: {title}", risk="low")

@@ -67,18 +67,28 @@ def _create_schema(conn: sqlite3.Connection):
 
 
 def score_observation_quality(obs: dict) -> bool:
-    """Apply 4-criterion quality filter. Returns True if observation is worth staging."""
+    """Apply the source-aware quality filter. Returns True if worth staging.
+
+    For source="email", the signal-word requirement is relaxed — real
+    personal emails are conversational ("Hey Elnatan, attached is...")
+    and don't use the same diction as journaled life observations. The
+    skip-list at the ingest layer already filters out newsletters and
+    no-reply addresses, so anything reaching the filter from an email
+    source is presumed to be from a real person.
+    """
     content = obs.get("content", "").strip()
     source  = obs.get("source", "")
+    is_email = source.lower() == "email"
 
     # 1. Length floor — at least 7 words
     if len(content.split()) < 7:
         return False
 
-    # 2. Information density — at least one signal word
-    words = set(content.lower().split())
-    if not words.intersection(_SIGNAL_WORDS):
-        return False
+    # 2. Information density — at least one signal word (relaxed for email)
+    if not is_email:
+        words = set(content.lower().split())
+        if not words.intersection(_SIGNAL_WORDS):
+            return False
 
     # 3. Personal relevance — contains a personal anchor
     lower = content.lower()

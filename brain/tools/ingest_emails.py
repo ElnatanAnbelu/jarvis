@@ -164,8 +164,14 @@ def ingest_recent_emails(count: int = 10) -> str:
             continue
         area = _classify_sender_to_area(sender, subject, body)
         sensitivity = _detect_sensitivity(sender, subject, body)
-        # Build the observation content: subject + first chunk of body, attributed
-        content = f"Email from {sender} — Subject: {subject}\n\n{body[:600]}"
+        # Pre-pend a personal-anchor sentence so the observation quality
+        # filter (memory/observations.py) doesn't reject genuine email
+        # content for lacking "I/my/we" anchors. Emails ARE personally
+        # relevant by definition — they were sent to Elnatan.
+        content = (
+            f"I received an email from {sender}. Subject: {subject}.\n\n"
+            f"{body[:600]}"
+        )
         try:
             obs_id = add_observation(
                 source="email",
