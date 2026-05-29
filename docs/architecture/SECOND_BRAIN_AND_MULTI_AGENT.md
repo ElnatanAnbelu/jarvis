@@ -216,6 +216,55 @@ just read it.
 
 ---
 
+## 9b. Ingestion Layer (Personal Information Loading)
+
+Three paths to get personal content into the vault:
+
+### Manual intake (interactive)
+**Script:** `scripts/personal_intake.py`
+
+Run once to seed the Personal Model + core vault notes. Walks through
+6 Personal Model sections (Interests, Energy Patterns, Decision-Making
+Style, Communication Preferences, Known Challenges, Relationship
+Patterns) plus 6 core areas (Goals, Daily Rhythm, Reading, Inner
+Circle, Active Ventures, Open Decisions). Everything you answer gets
+staged as proposals you review.
+
+Re-runnable safely. Empty input skips the question.
+
+### Email ingestion (manual trigger)
+**Tool:** `ingest_recent_emails(count)` — JARVIS-only
+
+Reads recent IMAP inbox via the existing `control/email.py` helper.
+Filters:
+- Hardcoded skip list (no-reply, newsletter, notifications, mailer-daemon)
+- Subject-line skip (receipts, invoices, password resets)
+- Optional allowlist via `EMAIL_INGEST_ALLOWLIST` env var
+
+Survivors are classified into a Second Brain area (Relationships,
+Business, Decisions, Personal, Daily) and assigned sensitivity (low/
+medium/high). Each becomes an observation in the staging layer (same
+quality filter as conversation-source observations). JARVIS surfaces
+them via `review_proposals` once synthesis runs.
+
+Not scheduled — invoke explicitly: "JARVIS, ingest recent emails."
+
+### Claude chat synthesis
+**Tool:** `synthesize_claude_chat(transcript_path, session_label)` — JARVIS-only
+
+Reads a transcript file (.md, .txt, or .json — Claude.ai JSON export
+format supported) and asks Haiku to extract structured insights:
+decisions, patterns, interests, goals, people, preferences. Each
+insight is staged as a Second Brain proposal with evidence.
+
+**The raw transcript is never copied into the vault** — only the
+distilled insights. This avoids the noise/dilution problem of dumping
+transcripts directly.
+
+Invoke explicitly: "JARVIS, synthesize the chat at ~/Desktop/chat.md."
+
+---
+
 ## 10. What's Deferred (Real Sub-Projects, Not Polish)
 
 These genuinely need their own brainstorming + planning rounds before
@@ -225,7 +274,7 @@ being responsibly built. Each could be a 1–2 week project.
 |---|---|
 | **B3** Real multi-agent pipeline | Wiring actual tool calls into Gemini/Groq/Mistral API paths + parallelism + arbitration |
 | **B9** Background synthesis worker | Scheduled batch worker that drains observations into vault notes; needs synthesis prompt design |
-| **B10** Email/calendar observation pipeline | Real-life signal ingestion; needs OAuth handling, rate limiting, signal selection |
+| **B10** Calendar ingestion + scheduled email pulls | Manual email ingestion shipped; scheduled cadence + calendar are next |
 
 ---
 

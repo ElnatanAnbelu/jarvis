@@ -13,6 +13,8 @@ import brain.tools.business
 import brain.tools.personal
 import brain.tools.strategy
 import brain.tools.second_brain
+import brain.tools.ingest_emails
+import brain.tools.ingest_chat
 
 # TOOLS in OpenAI/Groq format — compatible with the original brain/tools.py API
 TOOLS = [
