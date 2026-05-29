@@ -164,6 +164,7 @@ def stream():
     user_input = request.args.get("message", "").strip()
     if not user_input:
         return Response("data: {}\n\n", mimetype="text/event-stream")
+    image_b64 = request.args.get("image_b64", "").strip() or None
 
     def generate():
         try:
@@ -221,7 +222,7 @@ def stream():
             agent = "JARVIS"
             full = ""
             last_done_sent = False
-            for event_type, value in route_stream(user_input, active_agent=_active_agent["name"]):
+            for event_type, value in route_stream(user_input, active_agent=_active_agent["name"], image_b64=image_b64):
                 if event_type == "agent":
                     agent = value
                     yield f"data: {json.dumps({'type': 'speaker', 'name': agent})}\n\n"

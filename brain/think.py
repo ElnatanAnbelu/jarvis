@@ -1404,5 +1404,60 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS"):
         yield think(user_input, model=chosen_model, agent=agent)
 
 
+def think_vision_stream(user_input: str, image_b64: str):
+    """Route a vision request: send image + question to Claude vision model and stream the reply."""
+    _load_env()
+    import anthropic, base64
+
+    api_key = (os.environ.get("ANTHROPIC_API_KEY") or
+               os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip()
+    if not api_key:
+        yield "I can see the camera feed, but I don't have an API key configured, sir."
+        return
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        img_bytes = base64.b64decode(image_b64)
+        clean_b64 = base64.b64encode(img_bytes).decode()
+
+        prompt = user_input or "Describe what you see in this image concisely and naturally, as if speaking aloud."
+
+        with client.messages.stream(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": clean_b64,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            prompt + "\n\n"
+                            "Reply in 1-3 short spoken sentences. No markdown. "
+                            "Write for the ear, not the eye."
+                        ),
+                    },
+                ],
+            }],
+            system=(
+                "You are JARVIS, a personal AI assistant. Describe what you see naturally and concisely. "
+                "Write as if speaking aloud — short sentences, no bullet points, no markdown."
+            ),
+        ) as stream:
+            for chunk in stream.text_stream:
+                if chunk:
+                    yield expand_abbreviations(chunk)
+    except Exception as e:
+        print(f"[Vision] think_vision_stream error: {e}", flush=True)
+        yield "I couldn't process the camera feed, sir. Check the logs."
+
+
 if __name__ == "__main__":
     print(think("Hello, are you online?"))

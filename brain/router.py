@@ -187,7 +187,7 @@ def _is_file_request(text: str):
     return None, None
 
 
-def route_stream(user_input: str, active_agent: str = None):
+def route_stream(user_input: str, active_agent: str = None, image_b64: str = None):
     """
     Streaming generator. Yields:
       ('agent', name)     — who is speaking, emitted immediately
@@ -197,6 +197,17 @@ def route_stream(user_input: str, active_agent: str = None):
     """
     from brain.think import think_stream
     from memory.wiki import learn
+
+    # If an image was captured, route to vision model immediately
+    if image_b64:
+        from brain.think import think_vision_stream
+        yield ('agent', 'JARVIS')
+        full = ''
+        for chunk in think_vision_stream(user_input, image_b64):
+            yield ('chunk', chunk)
+            full += chunk
+        yield ('done', full)
+        return
 
     lower = user_input.lower().strip()
 
