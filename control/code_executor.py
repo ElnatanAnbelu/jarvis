@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import shutil
 from pathlib import Path
+from typing import Optional
 
 LANGUAGE_CONFIG = {
     "python":     {"ext": ".py",    "cmd": ["python3"],           "compile": False},
@@ -179,7 +180,7 @@ def run_shell(command: str, cwd: str = None, timeout: int = 30) -> dict:
         return {"stdout": "", "stderr": "", "exit_code": -1, "success": False, "error": str(e)}
 
 
-def _self_heal(language: str, code: str, error: str, attempt: int) -> str | None:
+def _self_heal(language: str, code: str, error: str, attempt: int) -> Optional[str]:
     """Ask Groq Llama (free/fast) to fix failing code. Returns fixed code or None."""
     import os
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
