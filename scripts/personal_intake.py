@@ -125,7 +125,7 @@ def main():
         return 1
 
     vm = VaultManager()
-    print(f"  Vault confirmed at: {vm.vault}")
+    print(f"  Vault confirmed at: {vm.vault_path}")
     print()
     print("  Ready? Press Enter to start.")
     try:

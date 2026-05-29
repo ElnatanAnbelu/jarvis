@@ -274,17 +274,29 @@ def test_proposal_ids_are_sequential(vault, tmp_path):
     vault.propose_change("A", "c", "create", "Business", "conv", "r")
     vault.propose_change("B", "c", "create", "Business", "conv", "r")
     proposals = sorted((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
-    assert proposals[0].stem.endswith("-001")
-    assert proposals[1].stem.endswith("-002")
+    # Descriptive names — both files exist with their target-derived names
+    stems = {p.stem for p in proposals}
+    assert "Business — A" in stems
+    assert "Business — B" in stems
 
 
 def test_propose_change_returns_proposal_id_in_result(vault):
-    from datetime import datetime, timezone
     result = vault.propose_change("X", "c", "create", "Business", "conv", "r")
     assert "proposal" in result.lower()
-    # Proposal IDs are generated in UTC; compare against UTC date
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    assert today in result
+    # New ID format is descriptive: "Area — Title"
+    assert "Business — X" in result
+
+
+def test_proposal_collision_appends_counter(vault, tmp_path):
+    """Two proposals targeting the same note get unique filenames."""
+    vault.propose_change("Same Target", "c1", "create", "Business", "conv", "r1")
+    vault.propose_change("Same Target", "c2", "create", "Business", "conv", "r2")
+    proposals = sorted(
+        (tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md")
+    )
+    stems = {p.stem for p in proposals}
+    assert "Business — Same Target" in stems
+    assert "Business — Same Target (2)" in stems
 
 
 # ── Task 6: Proposal Review Flow tests ────────────────────────────────────────
@@ -293,8 +305,8 @@ def test_get_pending_proposals_lists_pending_only(vault, tmp_path):
     vault.propose_change("A", "c1", "create", "Business", "conv", "r1")
     vault.propose_change("B", "c2", "create", "Decisions", "conv", "r2")
     result = vault.get_pending_proposals()
-    assert "001" in result
-    assert "002" in result
+    assert "Business — A" in result
+    assert "Decisions — B" in result
 
 
 def test_approve_proposal_writes_note(vault, tmp_path):

@@ -302,17 +302,71 @@ class VaultManager:
 
     # ── Proposal system ────────────────────────────────────────────────────────
 
-    def _next_proposal_id(self) -> str:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def _build_proposal_id(self, area: str, title: str) -> tuple:
+        """Build a descriptive proposal ID + filename from area + title.
+
+        Returns (proposal_id, filename). Format: '{Area} — {Title}'.
+        On filename collision, appends ' (N)' to disambiguate but the
+        proposal_id stays clean and matches what's shown to the user.
+        """
+        safe_title = self._safe_title(title)
+        safe_area = re.sub(r'[<>:"/\\|?*]', '', area).strip()
+        proposal_id = f"{safe_area} — {safe_title}"
         proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
-        existing = list(proposals_dir.glob(f"{today}-*.md"))
-        return f"{today}-{len(existing) + 1:03d}"
+        base = proposal_id
+        filename = f"{base}.md"
+        # Collision handling: only add a counter if a file with this name
+        # already exists (rare — same target with multiple open proposals)
+        n = 2
+        while (proposals_dir / filename).exists():
+            filename = f"{base} ({n}).md"
+            n += 1
+        return proposal_id, filename
+
+    def _find_proposal_path(self, proposal_id: str) -> Optional[Path]:
+        """Look up a proposal file by its ID. The ID is the descriptive name
+        (e.g. 'Personal — Income & Finances'). We also tolerate legacy
+        date-counter IDs ('2026-05-29-001') and direct filename matches."""
+        proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
+        if not proposals_dir.exists():
+            return None
+        # Exact filename match (new format)
+        exact = proposals_dir / f"{proposal_id}.md"
+        if exact.exists():
+            return exact
+        # Match with collision counter suffix
+        matches = list(proposals_dir.glob(f"{proposal_id} (*).md"))
+        if matches:
+            return matches[0]
+        # Legacy: bare date-counter filename
+        legacy = proposals_dir / f"{proposal_id}.md"
+        if legacy.exists():
+            return legacy
+        # Legacy: search by proposal_id frontmatter field
+        for p in proposals_dir.glob("*.md"):
+            fm = self._parse_frontmatter(p)
+            if fm.get("proposal_id") == proposal_id:
+                return p
+        return None
 
     def propose_change(self, title: str, proposed_content: str, action: str,
                        area: str, source: str, reason: str,
-                       sensitivity: str = "low") -> str:
-        proposal_id = self._next_proposal_id()
-        target = f"{area}/{self._safe_title(title)}"
+                       sensitivity: str = "low",
+                       target_note_override: Optional[str] = None,
+                       display_title: Optional[str] = None) -> str:
+        """Stage a change as a proposal.
+
+        target_note_override: If set, this string becomes the target_note
+            frontmatter field (used at approval time to find the note to
+            update). Defaults to "{area}/{title}".
+        display_title: If set, this is what shows up in the filename and
+            proposal_id. Defaults to title. Use when you want a more
+            descriptive filename than the actual target title (e.g.
+            Personal Model section updates).
+        """
+        title_for_display = display_title or title
+        proposal_id, filename = self._build_proposal_id(area, title_for_display)
+        target = target_note_override or f"{area}/{self._safe_title(title)}"
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
         # Capture current note hash for stale detection at approval time
@@ -339,7 +393,8 @@ class VaultManager:
         attribution = f"> *JARVIS: proposed from {source} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*"
         body = "\n".join(fm_lines) + f"\n\n# Proposed Content\n\n{attribution}\n\n{proposed_content}\n"
 
-        proposal_path = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
+        # Descriptive filename — name only, no dates. Collision-handled.
+        proposal_path = self.vault_path / "_JARVIS" / "Proposals" / filename
         proposal_path.write_text(body, encoding="utf-8")
         self._log_activity("propose", target, source,
                            f"Proposed {action}: {title}", risk=AREA_RISK.get(area, "medium"))
@@ -366,8 +421,8 @@ class VaultManager:
         return "Pending proposals:\n\n" + "\n\n".join(pending)
 
     def approve_proposal(self, proposal_id: str) -> str:
-        p = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
-        if not p.exists():
+        p = self._find_proposal_path(proposal_id)
+        if p is None:
             return f"Proposal not found: {proposal_id}"
 
         fm = self._parse_frontmatter(p)
@@ -427,8 +482,8 @@ class VaultManager:
         return f"Approved and applied: {proposal_id} → {target}"
 
     def reject_proposal(self, proposal_id: str) -> str:
-        p = self.vault_path / "_JARVIS" / "Proposals" / f"{proposal_id}.md"
-        if not p.exists():
+        p = self._find_proposal_path(proposal_id)
+        if p is None:
             return f"Proposal not found: {proposal_id}"
         self._update_proposal_status(p, "rejected")
         self._log_activity("reject", proposal_id, "human", f"Rejected proposal {proposal_id}")
@@ -643,6 +698,7 @@ class VaultManager:
         )
         return self.propose_change(
             title="_PersonalModel",
+            display_title=f"Personal Model — {section}",
             proposed_content=full_content,
             action="update",
             area="_JARVIS",
