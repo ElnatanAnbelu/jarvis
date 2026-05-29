@@ -364,29 +364,38 @@ class VaultManager:
         return proposal_id, rel_path
 
     def _find_proposal_path(self, proposal_id: str) -> Optional[Path]:
-        """Look up a proposal file by its ID. The ID is the clean title.
-
-        Searches across all subfolders under Proposals/. Also tolerates
-        legacy formats (date-counter IDs, flat-folder filenames) for
-        backward compatibility.
+        """Look up an *active* proposal file by its ID. The ID is the
+        clean title. Searches all subfolders under Proposals/ but
+        SKIPS the _Archive folder — archived proposals are finalized
+        and shouldn't show up as if they were live.
         """
         proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
         if not proposals_dir.exists():
             return None
-        # New format: search recursively for the filename
-        matches = list(proposals_dir.rglob(f"{proposal_id}.md"))
-        if matches:
-            return matches[0]
-        # Match with collision suffix
-        matches = list(proposals_dir.rglob(f"{proposal_id} (*).md"))
-        if matches:
-            return matches[0]
+
+        def _is_archived(path: Path) -> bool:
+            try:
+                rel = path.relative_to(proposals_dir).parts
+                return len(rel) > 0 and rel[0] == "_Archive"
+            except Exception:
+                return False
+
+        # Exact filename match (recursive, excluding archive)
+        for p in proposals_dir.rglob(f"{proposal_id}.md"):
+            if not _is_archived(p):
+                return p
+        # Collision suffix match
+        for p in proposals_dir.rglob(f"{proposal_id} (*).md"):
+            if not _is_archived(p):
+                return p
         # Legacy: bare flat-folder filename
         legacy = proposals_dir / f"{proposal_id}.md"
         if legacy.exists():
             return legacy
         # Legacy: search by proposal_id frontmatter field
         for p in proposals_dir.rglob("*.md"):
+            if _is_archived(p):
+                continue
             fm = self._parse_frontmatter(p)
             if fm.get("proposal_id") == proposal_id:
                 return p
@@ -537,11 +546,47 @@ class VaultManager:
         self._log_activity("reject", proposal_id, "human", f"Rejected proposal {proposal_id}")
         return f"Rejected: {proposal_id} (file preserved in Proposals/)"
 
-    def _update_proposal_status(self, proposal_path: Path, status: str):
+    def _update_proposal_status(self, proposal_path: Path, status: str) -> Path:
+        """Update the status field; if not pending, move to _Archive/{status}/...
+
+        Keeps the active Proposals/ folder clean — only pending shows up
+        when browsing in Obsidian. Returns the (possibly new) path.
+        """
         text = proposal_path.read_text(encoding="utf-8")
         updated = re.sub(r'^(status:\s*).*$', rf'\g<1>{status}',
                          text, count=1, flags=re.MULTILINE)
         proposal_path.write_text(updated, encoding="utf-8")
+        if status in ("approved", "rejected", "stale"):
+            return self._archive_proposal(proposal_path, status)
+        return proposal_path
+
+    def _archive_proposal(self, proposal_path: Path, status: str) -> Path:
+        """Move a finalized proposal to _Archive/{status}/{Area}/{filename}.
+
+        Preserves the per-area subfolder structure inside the archive so
+        an old approved proposal lives at e.g.
+            _JARVIS/Proposals/_Archive/approved/Goals/Long-Term Goals.md
+        """
+        try:
+            proposals_root = self.vault_path / "_JARVIS" / "Proposals"
+            # The proposal's subfolder relative to Proposals/ (e.g. 'Goals')
+            try:
+                rel_subfolder = proposal_path.parent.relative_to(proposals_root)
+            except ValueError:
+                rel_subfolder = Path(".")
+            archive_dir = proposals_root / "_Archive" / status / rel_subfolder
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            new_path = archive_dir / proposal_path.name
+            # Collision in the archive — append counter
+            n = 2
+            while new_path.exists():
+                new_path = archive_dir / f"{proposal_path.stem} ({n}){proposal_path.suffix}"
+                n += 1
+            proposal_path.rename(new_path)
+            return new_path
+        except Exception:
+            # If archive fails for any reason, leave the file where it was
+            return proposal_path
 
     # ── Note write operations ──────────────────────────────────────────────────
 

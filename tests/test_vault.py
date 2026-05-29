@@ -324,11 +324,13 @@ def test_approve_proposal_writes_note(vault, tmp_path):
 
 def test_approve_proposal_marks_status_approved(vault, tmp_path):
     vault.propose_change("X", "content", "create", "Learning", "conv", "r")
-    proposal_files = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
+    proposals_root = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals"
+    proposal_files = list(proposals_root.rglob("*.md"))
     pid = proposal_files[0].stem
     vault.approve_proposal(pid)
-    proposal_text = proposal_files[0].read_text()
-    assert "status: approved" in proposal_text
+    # After approval the file moves to _Archive/approved/...
+    archived = list((proposals_root / "_Archive" / "approved").rglob("*.md"))
+    assert any("status: approved" in p.read_text() for p in archived)
 
 
 def test_approve_proposal_stale_when_note_changed(vault, tmp_path):
@@ -389,12 +391,14 @@ def test_approve_proposal_still_stale_on_real_human_content(vault, tmp_path):
 
 def test_reject_proposal_preserves_file(vault, tmp_path):
     vault.propose_change("Sensitive", "data", "create", "Decisions", "conv", "reason")
-    proposal_files = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
+    proposals_root = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals"
+    proposal_files = list(proposals_root.rglob("*.md"))
     pid = proposal_files[0].stem
     vault.reject_proposal(pid)
-    # File is preserved (in its subfolder) with status updated
-    assert proposal_files[0].exists()
-    assert "status: rejected" in proposal_files[0].read_text()
+    # File is preserved (moved to _Archive/rejected/) with status updated
+    rejected = list((proposals_root / "_Archive" / "rejected").rglob("*.md"))
+    assert len(rejected) == 1
+    assert "status: rejected" in rejected[0].read_text()
 
 
 def test_get_pending_proposals_empty(vault):
