@@ -134,124 +134,294 @@ body.active #orb{--c:var(--orange);--c-rgb:var(--orange-rgb);animation:attn .8s 
 
 <script>
 'use strict';
-const API_BASE='http://127.0.0.1:8080';
-let _state='calm';
-let _micTimer=null;
-let _tts=null;
-let _capTimer=null;
-let _apiReady=false;
+const API_BASE = 'http://127.0.0.1:8080';
 
-function api(){ return (window.pywebview && window.pywebview.api) || null; }
-window.addEventListener('pywebviewready', ()=>{ _apiReady=true; });
+let _state          = 'calm';
+let _micTimer       = null;
+let _tts            = null;
+let _capTimer       = null;
+let _apiReady       = false;
+let _inConversation = false;   // true = hands-free mode, auto re-arm
+let _convTimer      = null;    // auto-close after silence
 
-function setState(s){
-  _state=s;
-  document.body.className=s;
+const CONV_SILENCE_MS = 22000; // close conversation after 22 s of silence
+
+function api() { return (window.pywebview && window.pywebview.api) || null; }
+
+window.addEventListener('pywebviewready', () => {
+  _apiReady = true;
+  const a = api();
+  if (a) {
+    // Start wake-word listener as soon as the native bridge is ready
+    try { a.start_wake_listener(); } catch(_) {}
+  }
+});
+
+function setState(s) {
+  _state = s;
+  document.body.className = s;
 }
 
-function showCap(text){
-  const el=document.getElementById('cap');
-  el.textContent=text.length>42?text.slice(0,40)+'…':text;
+function showCap(text) {
+  const el = document.getElementById('cap');
+  el.textContent = text.length > 42 ? text.slice(0, 40) + '…' : text;
   el.classList.add('show');
   clearTimeout(_capTimer);
-  _capTimer=setTimeout(()=>el.classList.remove('show'), 6000);
+  _capTimer = setTimeout(() => el.classList.remove('show'), 6000);
 }
 
-/* ── TALK (native mic via pywebview bridge) ─────────────────────────── */
-async function talk(){
-  const a=api();
-  if(!a){ return; }              // bridge not ready — no browser mic in WKWebView
-  // barge-in: tapping while speaking stops playback
-  if(_state==='speaking'){ stopTTS(); setState('calm'); return; }
-  if(_state==='listening'){
-    setState('thinking');
-    clearTimeout(_micTimer);
-    let text='';
-    try{ text=await a.stop_recording(); }catch(_){}
-    if(text && text.trim()){ streamReply(text.trim()); }
-    else { setState('calm'); }
-    return;
+/* ── ECHO GUARD helpers ────────────────────────────────────────────────────────── */
+function muteWake() {
+  const a = api();
+  if (a) { try { a.mute_wake(); } catch(_) {} }
+}
+function unmuteWake() {
+  const a = api();
+  if (a) { try { a.unmute_wake(); } catch(_) {} }
+}
+
+/* ── CONVERSATION MODE ─────────────────────────────────────────────────────────────────── */
+function enterConversation() {
+  _inConversation = true;
+  resetConvTimer();
+}
+
+function exitConversation() {
+  _inConversation = false;
+  clearTimeout(_convTimer);
+  _convTimer = null;
+}
+
+function resetConvTimer() {
+  clearTimeout(_convTimer);
+  _convTimer = setTimeout(() => {
+    exitConversation();
+    if (_state === 'listening' || _state === 'thinking') {
+      setState('calm');
+    }
+  }, CONV_SILENCE_MS);
+}
+
+/* ── WAKE WORD CALLBACK (called by Python via evaluate_js) ──────────────────────────────────── */
+function wakeWordFired() {
+  if (_state === 'calm' || _state === 'has') {
+    enterConversation();
+    talk();
   }
-  // start listening (clears any pending "has something")
-  let ok=false;
-  try{ ok=await a.start_recording(); }catch(_){}
-  if(ok===true){
+}
+
+/* ── TALK (native mic via pywebview bridge) ─────────────────────────────────────────────── */
+async function talk() {
+  const a = api();
+  if (!a) { return; }
+
+  // Barge-in: tapping while speaking stops playback and starts new turn
+  if (_state === 'speaking') {
+    stopTTS();
+    unmuteWake();
     setState('listening');
     clearTimeout(_micTimer);
-    _micTimer=setTimeout(()=>{ if(_state==='listening') talk(); }, 10000); // auto-stop
+    let ok = false;
+    try { ok = await a.start_recording(); } catch(_) {}
+    if (ok === true) {
+      _micTimer = setTimeout(() => { if (_state === 'listening') talk(); }, 10000);
+    } else {
+      setState('calm');
+    }
+    return;
+  }
+
+  if (_state === 'listening') {
+    setState('thinking');
+    clearTimeout(_micTimer);
+    let text = '';
+    try { text = await a.stop_recording(); } catch(_) {}
+    if (text && text.trim()) {
+      resetConvTimer();
+      // Vision intent detection
+      const VISION_RE = /\b(see|look|show you|what'?s this|what is this|inspect|room|camera|what am i holding|what do you see|describe what|look at this|what'?s in front|can you see)\b/i;
+      let imageB64 = null;
+      if (VISION_RE.test(text)) {
+        const a2 = api();
+        if (a2) {
+          try { imageB64 = await a2.capture_frame(); } catch(_) {}
+        }
+      }
+      streamReply(text.trim(), imageB64 || undefined);
+    } else {
+      setState('calm');
+      if (!_inConversation) exitConversation();
+    }
+    return;
+  }
+
+  // Start listening
+  let ok = false;
+  try { ok = await a.start_recording(); } catch(_) {}
+  if (ok === true) {
+    setState('listening');
+    clearTimeout(_micTimer);
+    _micTimer = setTimeout(() => { if (_state === 'listening') talk(); }, 10000);
   } else {
     setState('calm');
+    exitConversation();
   }
 }
 
-/* ── STREAM a reply from the same backend the HUD uses ──────────────── */
-async function streamReply(text){
+/* ── STREAM a reply ────────────────────────────────────────────────────────────────────────── */
+async function streamReply(text, imageB64) {
   setState('thinking');
-  let full='', agent='JARVIS';
-  try{
-    const res=await fetch(`${API_BASE}/api/stream?message=`+encodeURIComponent(text));
-    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
-    while(true){
-      const {done,value}=await reader.read(); if(done) break;
-      buf+=dec.decode(value,{stream:true});
-      const lines=buf.split('\n'); buf=lines.pop()||'';
-      for(const line of lines){
-        const t=line.trim(); if(!t.startsWith('data: ')) continue;
-        let evt; try{ evt=JSON.parse(t.slice(6)); }catch(_){ continue; }
-        if(evt.type==='speaker'){ agent=evt.name||agent; }
-        else if(evt.type==='text'){ full+=evt.chunk||''; }
-        else if(evt.type==='done'){ full=evt.full||full; agent=evt.agent||agent; }
+  let full = '', agent = 'JARVIS';
+  try {
+    let url = API_BASE + '/api/stream?message=' + encodeURIComponent(text);
+    if (imageB64) url += '&image_b64=' + encodeURIComponent(imageB64);
+    const res = await fetch(url);
+    const reader = res.body.getReader();
+    const dec    = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data: ')) continue;
+        let evt;
+        try { evt = JSON.parse(t.slice(6)); } catch(_) { continue; }
+        if (evt.type === 'speaker') { agent = evt.name || agent; }
+        else if (evt.type === 'text') { full += evt.chunk || ''; }
+        else if (evt.type === 'done') {
+          full  = evt.full  || full;
+          agent = evt.agent || agent;
+        }
       }
     }
-  }catch(_){}
-  const clean=(full||'').replace(/\[SHOW:[^\]]*\]/gi,'').replace(/\s{2,}/g,' ').trim();
-  if(clean){ speak(clean, agent); } else { setState('calm'); }
+  } catch(_) {}
+
+  // Extract [SHOW:...] payload before speaking
+  const showMatch = full.match(/\[SHOW:([^\]]*)\]/i);
+  const showPayload = showMatch ? showMatch[1].trim() : null;
+
+  // Strip all [SHOW:...] tags from spoken text
+  const clean = (full || '').replace(/\[SHOW:[^\]]*\]/gi, '').replace(/\s{2,}/g, ' ').trim();
+
+  if (showPayload) handleShow(showPayload);
+
+  if (clean) {
+    speak(clean, agent);
+  } else {
+    setState('calm');
+    if (_inConversation) {
+      resetConvTimer();
+      talk();
+    }
+  }
 }
 
-/* ── TTS — JARVIS talks to you from the corner ──────────────────────── */
-function stopTTS(){ if(_tts){ _tts.pause(); _tts.src=''; _tts=null; } }
-function speak(text, agent){
+/* ── SHOW directive handler ──────────────────────────────────────────────────────────────────────── */
+function handleShow(payload) {
+  // Use show_content() — calls evaluate_js on the HUD window directly.
+  // DO NOT use localStorage: each WKWebView has its own isolated localStorage.
+  const a = api();
+  if (a) { try { a.show_content(payload); } catch(_) {} }
+}
+
+/* ── TTS ──────────────────────────────────────────────────────────────────────────────────────── */
+function stopTTS() {
+  if (_tts) { _tts.pause(); _tts.src = ''; _tts = null; }
+}
+
+function speak(text, agent) {
   stopTTS();
   setState('speaking');
   showCap(text);
-  try{
-    _tts=new Audio(`${API_BASE}/api/tts?text=`+encodeURIComponent(text.slice(0,800))+`&agent=`+encodeURIComponent(agent||'JARVIS'));
-    _tts.onended=()=>{ _tts=null; if(_state==='speaking') setState('calm'); };
-    _tts.onerror=()=>{ _tts=null; if(_state==='speaking') setState('calm'); };
-    _tts.play().catch(()=>{ _tts=null; if(_state==='speaking') setState('calm'); });
-  }catch(_){ setState('calm'); }
+  muteWake();  // Echo guard: suppress wake while JARVIS speaks
+  try {
+    _tts = new Audio(
+      API_BASE + '/api/tts?text=' + encodeURIComponent(text.slice(0, 800)) +
+      '&agent=' + encodeURIComponent(agent || 'JARVIS')
+    );
+    _tts.onended = () => {
+      _tts = null;
+      if (_state === 'speaking') setState('calm');
+      // Echo guard: small cooldown before unmuting
+      setTimeout(() => {
+        unmuteWake();
+        // Conversation mode: auto-re-arm mic for next turn
+        if (_inConversation) {
+          resetConvTimer();
+          talk();
+        }
+      }, 400);
+    };
+    _tts.onerror = () => {
+      _tts = null;
+      if (_state === 'speaking') setState('calm');
+      unmuteWake();
+      if (_inConversation) { resetConvTimer(); talk(); }
+    };
+    _tts.play().catch(() => {
+      _tts = null;
+      if (_state === 'speaking') setState('calm');
+      unmuteWake();
+      if (_inConversation) { resetConvTimer(); talk(); }
+    });
+  } catch(_) {
+    setState('calm');
+    unmuteWake();
+  }
 }
 
-/* ── PROACTIVE — "I have something important" ───────────────────────── */
-(function poll(){
-  async function tick(){
-    try{
-      const res=await fetch(`${API_BASE}/api/proactive`);
-      if(res.ok){
-        const {messages=[]}=await res.json();
-        for(const m of messages){
-          if(m.visibility==='surface'){
-            if(_state==='calm'){ setState('has'); }
-            const txt=(m.text||'').trim();
-            if(txt){ showCap(txt); speak(txt, m.agent||'JARVIS'); }
+/* ── PROACTIVE POLL ───────────────────────────────────────────────────────────────────────── */
+(function poll() {
+  async function tick() {
+    try {
+      const res = await fetch(API_BASE + '/api/proactive');
+      if (res.ok) {
+        const { messages = [] } = await res.json();
+        for (const m of messages) {
+          if (m.visibility === 'surface') {
+            if (_state === 'calm') setState('has');
+            const txt = (m.text || '').trim();
+            if (txt) { showCap(txt); speak(txt, m.agent || 'JARVIS'); }
           }
         }
       }
-    }catch(_){}
+    } catch(_) {}
     setTimeout(tick, 10000);
   }
   setTimeout(tick, 4000);
 })();
 
-/* ── WIRING ─────────────────────────────────────────────────────────── */
-document.getElementById('orb').addEventListener('click', (e)=>{ e.stopPropagation(); talk(); });
-document.getElementById('expand').addEventListener('click', (e)=>{
+/* ── WIRING ────────────────────────────────────────────────────────────────────────────────────────── */
+document.getElementById('orb').addEventListener('click', e => {
   e.stopPropagation();
-  const a=api(); if(a){ try{ a.toggle_hud(); }catch(_){} }
+  if (_state === 'calm' || _state === 'has') enterConversation();
+  talk();
 });
-document.getElementById('quit').addEventListener('click', (e)=>{
+
+// Long-press expand (500ms) = open text chat; short click = no-op
+let _expandPressTimer = null;
+const expandBtn = document.getElementById('expand');
+expandBtn.title = 'Hold to open text chat';
+expandBtn.addEventListener('mousedown', e => {
   e.stopPropagation();
-  const a=api(); if(a){ try{ a.quit_app(); }catch(_){} }
+  _expandPressTimer = setTimeout(() => {
+    const a = api();
+    if (a) { try { a.toggle_hud(); } catch(_) {} }
+    _expandPressTimer = null;
+  }, 500);
+});
+expandBtn.addEventListener('mouseup',    () => { clearTimeout(_expandPressTimer); });
+expandBtn.addEventListener('mouseleave', () => { clearTimeout(_expandPressTimer); });
+expandBtn.addEventListener('click',      e => { e.stopPropagation(); });
+
+document.getElementById('quit').addEventListener('click', e => {
+  e.stopPropagation();
+  const a = api();
+  if (a) { try { a.quit_app(); } catch(_) {} }
 });
 </script>
 </body>
