@@ -8,8 +8,30 @@ import os
 import subprocess
 import threading
 import time
+import signal
+import platform
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ── ARM64 GUARD ──────────────────────────────────────────────────────────────
+# When launched from JARVIS.app via LaunchServices, the CommandLineTools Python
+# can start as x86_64. But the venv's native libs (sounddevice/cffi, pydantic_core)
+# are arm64 — a mismatch that makes the mic (and other native modules) fail to load
+# with "incompatible architecture". If we're not arm64, re-exec ourselves as arm64.
+if (not getattr(sys, "frozen", False) and
+        platform.machine() != "arm64" and
+        os.environ.get("JARVIS_ARCH_REEXEC") != "1"):
+    os.environ["JARVIS_ARCH_REEXEC"] = "1"
+    try:
+        os.execvp("arch", ["arch", "-arm64", sys.executable] + sys.argv)
+    except Exception:
+        pass
+
+# ── FROZEN-AWARE PROJECT ROOT ────────────────────────────────────────────────
+# When frozen (PyInstaller .app), __file__ points inside the bundle — useless.
+# JARVIS_HOME env var (default ~/jarvis) locates the project directory.
+if getattr(sys, "frozen", False):
+    ROOT = os.path.expanduser(os.environ.get("JARVIS_HOME", "~/jarvis"))
+else:
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
@@ -19,38 +41,412 @@ ICON_PATH   = os.path.join(ROOT, "app", "icon.icns")
 FLASK_PORT  = 8080
 VENV_SITE   = os.path.join(ROOT, "venv", "lib", "python3.9", "site-packages")
 VENV_PYTHON = os.path.join(ROOT, "venv", "bin", "python3")
+FFMPEG      = "/opt/homebrew/bin/ffmpeg"  # installed via Homebrew
 
 _flask_proc = None
 _window     = None
+_bubble     = None
+_js_api     = None
 _loaded_once = False
 _session_summarizer = None  # joined in main() after webview closes
 
 
-def _request_camera_permission():
-    """Ask macOS for camera access for this Python process so WKWebView can use it."""
+def _load_groq_key():
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if key:
+        return key
+    env_path = os.path.join(ROOT, ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                if line.startswith("GROQ_API_KEY="):
+                    return line.split("=", 1)[1].strip()
+    return ""
+
+
+class JsApi:
+    """Native audio/camera for the pywebview desktop app.
+    Bypasses WKWebView media APIs (which require extra config) entirely.
+    Exposed to JS as window.pywebview.api.*
+    """
+
+    def __init__(self):
+        self._recording = False
+        self._stream    = None
+        self._chunks    = []
+        self._hud       = None     # full HUD window (shown when bubble expands)
+        self._bubble    = None     # the always-on bubble window
+        self._hud_visible = False
+
+    # ── BUBBLE ↔ HUD WINDOW CONTROL ─────────────────────────────────────────
+    def show_hud(self):
+        try:
+            if self._hud:
+                self._hud.show()
+                self._hud_visible = True
+                return True
+        except Exception as e:
+            print(f"[JsApi.show_hud] {e}", flush=True)
+        return False
+
+    def hide_hud(self):
+        try:
+            if self._hud:
+                self._hud.hide()
+                self._hud_visible = False
+                return True
+        except Exception as e:
+            print(f"[JsApi.hide_hud] {e}", flush=True)
+        return False
+
+    def toggle_hud(self):
+        return self.hide_hud() if self._hud_visible else self.show_hud()
+
+    def quit_app(self):
+        """Clean shutdown from the bubble (frameless windows have no close button)."""
+        try:
+            import webview as _wv
+            for w in list(_wv.windows):
+                try:
+                    w.destroy()
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[JsApi.quit_app] {e}", flush=True)
+        return True
+
+    # ── PERMISSION DIAGNOSTICS (callable from JS) ───────────────────────────
+
+    def check_mic_permission(self):
+        """Try to open the mic briefly. Returns 'granted', 'denied', or error string."""
+        try:
+            import sounddevice as sd
+            st = sd.InputStream(samplerate=16000, channels=1, dtype="int16", blocksize=256)
+            st.start()
+            time.sleep(0.1)
+            st.stop()
+            st.close()
+            return "granted"
+        except Exception as e:
+            msg = str(e).lower()
+            if "permission" in msg or "denied" in msg or "not authorized" in msg:
+                return "denied"
+            return f"error: {e}"
+
+    def request_mic_permission(self):
+        """
+        Aggressively force the macOS microphone permission prompt.
+        This version opens the mic stream for a longer period and retries briefly.
+        Call this explicitly from the UI when the user wants to fix mic permissions.
+        """
+        import sounddevice as sd
+        import time
+
+        for attempt in range(3):  # Try up to 3 times
+            try:
+                st = sd.InputStream(
+                    samplerate=16000, 
+                    channels=1, 
+                    dtype="int16", 
+                    blocksize=512
+                )
+                st.start()
+                # Keep it open longer on later attempts to force the dialog
+                time.sleep(0.8 if attempt == 0 else 1.5)
+                st.stop()
+                st.close()
+                return "granted"
+            except Exception as e:
+                msg = str(e).lower()
+                if "permission" in msg or "denied" in msg or "not authorized" in msg:
+                    if attempt == 2:  # Last attempt
+                        return "denied"
+                    time.sleep(0.5)  # Wait a bit before retry
+                    continue
+                return f"error: {e}"
+        return "denied"
+
+    def check_camera_permission(self):
+        """Try a quick camera frame. Returns 'granted', 'denied', or error string."""
+        try:
+            import subprocess
+            import tempfile
+            import os
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+                tmp = f.name
+            cmd = [
+                FFMPEG if os.path.exists(FFMPEG) else "ffmpeg",
+                "-f", "avfoundation", "-video_size", "320x240", "-framerate", "10",
+                "-i", "0", "-frames:v", "1", "-y", tmp
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=5)
+            try:
+                os.unlink(tmp)
+            except:
+                pass
+            if result.returncode == 0:
+                return "granted"
+            else:
+                return "denied"
+        except Exception as e:
+            return f"error: {e}"
+
+    # ── MICROPHONE ──────────────────────────────────────────────────────────
+
+    def start_recording(self):
+        """Start mic capture via sounddevice. Returns True or an error string."""
+        try:
+            import sounddevice as sd
+            self._chunks    = []
+            self._recording = True
+
+            def _cb(indata, frames, t, status):
+                if self._recording:
+                    self._chunks.append(indata.copy())
+
+            self._stream = sd.InputStream(
+                samplerate=16000, channels=1, dtype="int16",
+                blocksize=1024, callback=_cb,
+            )
+            self._stream.start()
+            return True
+        except Exception as e:
+            print(f"[JsApi.start_recording] {e}", flush=True)
+            return str(e)
+
+    def stop_recording(self):
+        """Stop mic, transcribe via Groq Whisper. Returns transcript string."""
+        self._recording = False
+        if self._stream:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+
+        chunks = self._chunks[:]
+        self._chunks = []
+        if not chunks:
+            return ""
+
+        tmp_path = None
+        try:
+            import numpy as np
+            import scipy.io.wavfile as wavfile
+            import tempfile as tf
+
+            audio = np.concatenate(chunks, axis=0)
+            with tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                tmp_path = f.name
+            wavfile.write(tmp_path, 16000, audio)
+
+            groq_key = _load_groq_key()
+            if not groq_key:
+                return ""
+
+            from groq import Groq
+            client = Groq(api_key=groq_key)
+            with open(tmp_path, "rb") as f:
+                result = client.audio.transcriptions.create(
+                    model="whisper-large-v3-turbo",
+                    file=("audio.wav", f, "audio/wav"),
+                    response_format="text",
+                )
+            return (result or "").strip()
+        except Exception as e:
+            print(f"[JsApi.stop_recording] {e}", flush=True)
+            return ""
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
+
+    # ── CAMERA ──────────────────────────────────────────────────────────────
+
+    def capture_frame(self):
+        """Capture one frame from the default camera.
+        Tries OpenCV first (clean permission attribution), then robust ffmpeg fallback.
+        Returns base64 JPEG or empty string on total failure.
+        Prints detailed diagnostics to terminal."""
+        import base64
+
+        # ── 1. OpenCV (preferred) ─────────────────────────────────────────────
+        try:
+            import cv2
+            # Try explicit AVFoundation backend on macOS for better reliability
+            cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+            if not cap.isOpened():
+                cap.release()
+                cap = cv2.VideoCapture(0)  # fallback to default
+
+            try:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                frame = None
+                for _ in range(15):
+                    ok, f = cap.read()
+                    if ok and f is not None:
+                        frame = f
+                        break
+                    time.sleep(0.08)
+                if frame is not None:
+                    ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                    if ok:
+                        print("[Camera] OpenCV capture succeeded", flush=True)
+                        return base64.b64encode(buf.tobytes()).decode()
+            finally:
+                cap.release()
+            print("[Camera] OpenCV opened but returned no usable frame", flush=True)
+        except Exception as e:
+            print(f"[Camera] OpenCV failed: {e}", flush=True)
+
+        # ── 2. More robust ffmpeg fallback ────────────────────────────────────
+        import tempfile
+        import os as _os
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            tmp_path = f.name
+
+        ffmpeg_bin = FFMPEG if _os.path.exists(FFMPEG) else "ffmpeg"
+
+        # Try a couple of common avfoundation inputs
+        for dev in ["0", "default", "1"]:
+            try:
+                result = subprocess.run(
+                    [ffmpeg_bin,
+                     "-f", "avfoundation",
+                     "-video_size", "1280x720",
+                     "-framerate", "15",
+                     "-i", dev,
+                     "-frames:v", "1",
+                     "-f", "image2",
+                     "-vcodec", "mjpeg",
+                     "-y", tmp_path],
+                    capture_output=True,
+                    timeout=8
+                )
+                if result.returncode == 0 and _os.path.getsize(tmp_path) > 0:
+                    with open(tmp_path, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode()
+                    print(f"[Camera] ffmpeg succeeded on device {dev}", flush=True)
+                    try:
+                        _os.unlink(tmp_path)
+                    except:
+                        pass
+                    return b64
+                else:
+                    err = result.stderr.decode(errors='ignore')[:400]
+                    print(f"[Camera] ffmpeg failed on device '{dev}' (code {result.returncode}): {err}", flush=True)
+            except Exception as e:
+                print(f"[Camera] ffmpeg exception on device '{dev}': {e}", flush=True)
+            # clean for next try
+            try:
+                _os.unlink(tmp_path)
+            except:
+                pass
+
+        print("[Camera] All capture methods failed. Check permissions for 'ffmpeg' and 'Terminal' in System Settings > Camera, then fully restart the app.", flush=True)
+        return ""
+
+
+def _request_mic_permission():
+    """
+    Trigger the macOS Microphone permission prompt early by briefly opening the mic.
+    On macOS, if you run from Terminal, the prompt will be for "Terminal".
+    If you run a bundled .app, it will be for the app name.
+    """
     try:
-        import objc as _objc
-        _objc.loadBundle(
-            'AVFoundation',
-            bundle_path='/System/Library/Frameworks/AVFoundation.framework',
-            module_globals={},
-        )
-        AVCaptureDevice = _objc.lookUpClass('AVCaptureDevice')
-        status = AVCaptureDevice.authorizationStatusForMediaType_('vide')
-        print(f"Camera TCC status: {status} (0=unset,1=restricted,2=denied,3=ok)", flush=True)
-        if status == 3:
-            return
-        if status != 0:
-            print("Camera denied — grant in System Settings > Privacy > Camera", flush=True)
-            return
-        done = threading.Event()
-        def _cb(granted):
-            print(f"Camera permission: {'granted' if granted else 'denied'}", flush=True)
-            done.set()
-        AVCaptureDevice.requestAccessForMediaType_completionHandler_('vide', _cb)
-        done.wait(timeout=15)
+        import sounddevice as sd
+        st = sd.InputStream(samplerate=16000, channels=1, dtype="int16", blocksize=512)
+        st.start()
+        time.sleep(0.2)
+        st.stop()
+        st.close()
+        print("[Permission] Microphone access ready (or prompt was shown).", flush=True)
     except Exception as e:
-        print(f"Camera permission check: {e}", flush=True)
+        print(f"[Permission] Microphone trigger failed: {e}", flush=True)
+        print("→ If you don't see a permission popup, go to:", flush=True)
+        print("   System Settings → Privacy & Security → Microphone", flush=True)
+        print("   and manually enable it for Terminal / Python / JARVIS.", flush=True)
+
+
+def _request_camera_permission():
+    """
+    Force the macOS Camera permission prompt early.
+    We do a very quick, silent capture using ffmpeg (avfoundation) so the
+    permission dialog appears for "Python" / Terminal / JARVIS on first launch.
+    This is better UX than waiting until the user clicks Room Scan.
+    """
+    try:
+        import subprocess
+        import tempfile
+        import os
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            tmp = f.name
+
+        # Very short capture (1 frame) just to trigger TCC prompt
+        cmd = [
+            FFMPEG if os.path.exists(FFMPEG) else "ffmpeg",
+            "-f", "avfoundation",
+            "-video_size", "640x480",
+            "-framerate", "15",
+            "-i", "0",
+            "-frames:v", "1",
+            "-f", "image2",
+            "-y", tmp
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=6
+        )
+        # Clean up temp file immediately
+        try:
+            os.unlink(tmp)
+        except:
+            pass
+
+        if result.returncode != 0:
+            # Permission not yet granted or no camera — this is expected on first run
+            print("[Permission] Camera prompt should have appeared (or will on first Room Scan).", flush=True)
+        else:
+            print("[Permission] Camera access OK.", flush=True)
+
+    except Exception as e:
+        # Non-fatal — we'll try again properly when user actually uses Room Scan
+        print(f"[Permission] Camera pre-check: {e}", flush=True)
+
+
+def _free_port(port=FLASK_PORT):
+    """Kill any stale JARVIS instance holding the port so launches are reliable.
+    Gated to JARVIS's own processes (server.py / main.py) — never touches others."""
+    try:
+        out = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True, text=True, timeout=5,
+        )
+        pids = [p for p in out.stdout.split() if p.strip().isdigit()]
+        killed = False
+        for pid in pids:
+            try:
+                cmd = subprocess.run(["ps", "-p", pid, "-o", "command="],
+                                     capture_output=True, text=True, timeout=3).stdout.lower()
+            except Exception:
+                cmd = ""
+            if "server.py" in cmd or "jarvis" in cmd or "app/main.py" in cmd:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    killed = True
+                    print(f"Freed port {port}: terminated stale JARVIS pid {pid}", flush=True)
+                except Exception:
+                    pass
+        if killed:
+            time.sleep(1.2)
+    except Exception as e:
+        print(f"_free_port: {e}", flush=True)
 
 
 def _start_flask():
@@ -61,7 +457,7 @@ def _start_flask():
     env["PYTHONPATH"] = f"{VENV_SITE}:{ROOT}:{existing}" if existing else f"{VENV_SITE}:{ROOT}"
     # Force arm64 so pydantic_core (arm64 binary) loads correctly
     _flask_proc = subprocess.Popen(
-        ["arch", "-arm64", VENV_PYTHON, os.path.join(ROOT, "ui", "server.py")],
+        [VENV_PYTHON, os.path.join(ROOT, "ui", "server.py")],
         env=env,
         cwd=ROOT,
         stdout=open(os.path.join(ROOT, "flask.log"), "w"),
@@ -90,68 +486,24 @@ def _greet():
     return
 
 
-def _summarize_session():
-    """Haiku call on close: summarize session and save for next startup injection."""
-    try:
-        sys.path.insert(0, ROOT)
-        from memory.memory import get_recent_history, save_session_summary
-        history = get_recent_history(limit=40)
-        if not history or len(history) < 4:
-            return
-        lines = []
-        for role, content in history:
-            label = "Elnatan" if role == "user" else "JARVIS"
-            lines.append("{}: {}".format(label, content[:400]))
-        convo = "\n".join(lines[-24:])
-
-        env_path = os.path.join(ROOT, ".env")
-        if os.path.exists(env_path):
-            with open(env_path) as f:
-                for line in f.read().splitlines():
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        if v.strip() and k.strip() not in os.environ:
-                            os.environ[k.strip()] = v.strip()
-
-        api_key = (
-            os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-            os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-        )
-        if not api_key:
-            return
-
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=180,
-            messages=[{
-                "role": "user",
-                "content": (
-                    "Summarize this JARVIS session in 2-3 short sentences so JARVIS can pick up "
-                    "next session without re-explaining context. Focus on: what was worked on, key "
-                    "decisions made, current status of ongoing tasks. Start with 'Last session,' "
-                    "and be specific — name actual projects, files, or topics discussed.\n\n"
-                    "SESSION:\n{}".format(convo)
-                )
-            }]
-        )
-        summary = (resp.content[0].text or "").strip()
-        if summary:
-            save_session_summary(summary)
-    except Exception:
-        pass
-
-
 def _on_closed():
+    """Fire POST /api/end_session to the backend so it can summarize and save
+    the session. Runs in a non-daemon thread so it survives webview shutdown."""
     global _session_summarizer
-    try:
-        from voice.speak import stop_speaking
-        stop_speaking()
-    except Exception:
-        pass
-    # Non-daemon so it survives the webview shutdown; joined in main() with timeout
-    _session_summarizer = threading.Thread(target=_summarize_session, daemon=False)
+
+    def _request_end_session():
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{FLASK_PORT}/api/end_session",
+                data=b"",
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            pass
+
+    _session_summarizer = threading.Thread(target=_request_end_session, daemon=False)
     _session_summarizer.start()
 
 
@@ -167,10 +519,38 @@ def _on_loaded():
     threading.Thread(target=_greet, daemon=True).start()
 
 
+def _screen_size():
+    try:
+        from AppKit import NSScreen
+        fr = NSScreen.mainScreen().frame()
+        return int(fr.size.width), int(fr.size.height)
+    except Exception:
+        return 1440, 900
+
+
 def main():
-    global _window
+    global _window, _bubble, _js_api
+
+    print("\n" + "="*60)
+    print("JARVIS — macOS Permission Notes")
+    print("="*60)
+    print("If microphone or camera doesn't work:")
+    print("  1. Go to System Settings → Privacy & Security")
+    print("  2. Enable Microphone + Camera for:")
+    print("     - Terminal (if running from terminal)")
+    print("     - Python")
+    print("     - Or the JARVIS app if you built it as a .app")
+    print("  3. Restart this app after changing permissions.")
+    print()
+    print("Still no microphone entry?")
+    print("  → Run this dedicated fixer script:")
+    print("     ./venv/bin/python3 fix_mic_permission.py")
+    print("  (Keep the Microphone settings page open while it runs)")
+    print("="*60 + "\n")
 
     _request_camera_permission()
+    _request_mic_permission()
+    _free_port()
     _start_flask()
 
     if not _wait_for_flask(timeout=30):
@@ -182,16 +562,42 @@ def main():
         print("ERROR: Flask did not start", file=sys.stderr)
         sys.exit(1)
 
+    _js_api = JsApi()
+
+    # ── Full HUD window — starts hidden; the bubble expands into it ──────────
     _window = webview.create_window(
         title="J.A.R.V.I.S",
         url=f"http://127.0.0.1:{FLASK_PORT}/",
-        width=820,
-        height=680,
+        width=900,
+        height=720,
         min_size=(600, 500),
         resizable=True,
         frameless=False,
         on_top=False,
+        hidden=True,
+        js_api=_js_api,
     )
+
+    # ── Always-on bubble — small, frameless, transparent, on top, draggable ──
+    SW, SH = _screen_size()
+    BUBBLE = 150
+    _bubble = webview.create_window(
+        title="JARVIS Bubble",
+        url=f"http://127.0.0.1:{FLASK_PORT}/bubble",
+        width=BUBBLE,
+        height=BUBBLE,
+        x=24,
+        y=max(40, SH - BUBBLE - 90),   # bottom-left, above the Dock
+        frameless=True,
+        easy_drag=True,
+        on_top=True,
+        transparent=True,
+        resizable=False,
+        js_api=_js_api,
+    )
+
+    _js_api._hud    = _window
+    _js_api._bubble = _bubble
 
     if os.path.exists(ICON_PATH):
         try:
@@ -203,8 +609,18 @@ def main():
         except Exception:
             pass
 
-    _window.events.loaded += _on_loaded
-    _window.events.closed += _on_closed
+    # Closing the HUD hides it (bubble stays always-on); quit is via the bubble.
+    def _on_hud_closing():
+        try:
+            _window.hide()
+            _js_api._hud_visible = False
+        except Exception:
+            pass
+        return False  # cancel the destroy
+
+    _window.events.loaded  += _on_loaded
+    _window.events.closing += _on_hud_closing
+    _bubble.events.closed  += _on_closed
     webview.start(debug=False)
 
     # webview.start() returned — window is closed.
