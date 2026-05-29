@@ -77,6 +77,7 @@ class JsApi:
         self._hud       = None     # full HUD window (shown when bubble expands)
         self._bubble    = None     # the always-on bubble window
         self._hud_visible = False
+        self._wake_listener = None  # WakeWordListener, started after windows load
 
     # ── BUBBLE ↔ HUD WINDOW CONTROL ─────────────────────────────────────────
     def show_hud(self):
@@ -114,6 +115,55 @@ class JsApi:
         except Exception as e:
             print(f"[JsApi.quit_app] {e}", flush=True)
         return True
+
+    # ── WAKE WORD ────────────────────────────────────────────────────────────
+
+    def start_wake_listener(self):
+        """Start the continuous background wake-word listener.
+        Called once from bubble.html on pywebviewready.
+        Returns True on success, error string on failure."""
+        if self._wake_listener is not None:
+            return True
+        try:
+            from voice.wake import WakeWordListener
+
+            def _on_wake():
+                """Fire JS wakeWordFired() in the bubble window."""
+                try:
+                    if self._bubble:
+                        self._bubble.evaluate_js("wakeWordFired()")
+                except Exception as e:
+                    print(f"[Wake] evaluate_js error: {e}", flush=True)
+
+            self._wake_listener = WakeWordListener(on_wake=_on_wake)
+            self._wake_listener.start()
+            print("[Wake] listener started", flush=True)
+            return True
+        except Exception as e:
+            print(f"[Wake] start failed: {e}", flush=True)
+            return str(e)
+
+    def mute_wake(self):
+        """Echo guard — suppress wake detection while TTS is playing."""
+        if self._wake_listener:
+            self._wake_listener.mute()
+
+    def unmute_wake(self):
+        """Re-enable wake detection after TTS ends."""
+        if self._wake_listener:
+            self._wake_listener.unmute()
+
+    def show_content(self, payload: str):
+        """Called by bubble.html to push a [SHOW:...] payload to the HUD window.
+        Avoids localStorage cross-window isolation issue in WKWebView."""
+        import json
+        try:
+            if self._hud:
+                self._hud.show()
+                self._hud_visible = True
+                self._hud.evaluate_js(f"showSurface({json.dumps(payload)})")
+        except Exception as e:
+            print(f"[JsApi.show_content] {e}", flush=True)
 
     # ── PERMISSION DIAGNOSTICS (callable from JS) ───────────────────────────
 
