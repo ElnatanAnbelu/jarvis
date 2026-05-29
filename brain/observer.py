@@ -58,11 +58,24 @@ def _can_push():
     return True
 
 
-def _push(message):
+def _push(text, visibility=None, tags=None):
+    """Push a classified item onto the HUD queue.
+
+    Emits a dict so proactive_poll receives pre-classified data without
+    re-running the classifier. Legacy plain-string producers elsewhere
+    are still handled by the drain site in ui/server.py.
+    """
     global _last_push_at, _push_count_this_hour
     if _hud_queue is not None:
         try:
-            _hud_queue.put_nowait("[OBS] " + message)
+            item = {
+                "text": text,
+                "visibility": visibility or "surface",
+                "tags": tags or [],
+                "agent": "JARVIS",
+                "source": "observer",
+            }
+            _hud_queue.put_nowait(item)
             _last_push_at = datetime.now()
             _push_count_this_hour += 1
         except Exception:
@@ -280,7 +293,15 @@ def _observer_tick():
         # (B6) routes appropriately.
         if has_brain_grounding:
             insight = insight.rstrip() + " [BRAIN: GROUNDED]"
-        _push(insight)
+        full_text = "[OBS] " + insight
+        # Classify before pushing so the HUD receives enriched data without
+        # needing a second pass at the drain site.
+        try:
+            from brain.visibility import classify as _classify
+            vis = _classify(full_text, agent="JARVIS", source="observer")
+        except Exception:
+            vis = {"visibility": "surface", "tags": ["OBSERVER"]}
+        _push(full_text, vis["visibility"], vis["tags"])
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

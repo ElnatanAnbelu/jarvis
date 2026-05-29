@@ -40,7 +40,20 @@ def main():
     print(f"Synthesizing {len(pending)} observations into {len(groups)} groups...")
     synthesized = []
 
+    skipped_empty = 0
     for (area, day), obs_list in groups.items():
+        # REQUIRE REAL SOURCES: only synthesize observations that carry real,
+        # non-trivial source content. Empty/garbage observations are dropped so
+        # the worker can never fabricate a proposal out of nothing.
+        real_obs = [o for o in obs_list if len((o.get("content") or "").strip()) >= 15]
+        if not real_obs:
+            skipped_empty += len(obs_list)
+            # Mark them synthesized so they don't pile up and get re-scanned forever.
+            for o in obs_list:
+                mark_synthesized(o["id"])
+            continue
+        obs_list = real_obs
+
         # Build a daily synthesis note for that area+day
         lines = [f"## {area} — {day}", ""]
         for o in obs_list:
@@ -74,6 +87,8 @@ def main():
             print(f"  ✗ {title}: {e}")
 
     print(f"\nSynthesized {len(synthesized)} observations into the vault.")
+    if skipped_empty:
+        print(f"Skipped {skipped_empty} empty/unsourced observation(s) — no proposal fabricated.")
     return 0
 
 

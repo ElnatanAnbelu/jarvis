@@ -15,12 +15,12 @@
   --cyan-soft: rgba(0, 245, 255, 0.15);
   --friday:    #ff6a00;
   --friday-glow: rgba(255, 106, 0, 0.45);
-  --veronica:  #b040ff;
-  --veronica-glow: rgba(176, 64, 255, 0.45);
-  --karen:     #cc44ff;
-  --karen-glow: rgba(204, 68, 255, 0.45);
-  --jarvis:    #00f5ff;
-  --jarvis-glow: rgba(0, 245, 255, 0.45);
+  --veronica:  #00ff9f;
+  --veronica-glow: rgba(0, 255, 159, 0.45);
+  --karen:     #ffb450;
+  --karen-glow: rgba(255, 180, 80, 0.45);
+  --jarvis:    #00e5ff;
+  --jarvis-glow: rgba(0, 229, 255, 0.45);
   --bg-void:   #000208;
   --glass:     rgba(2, 8, 22, 0.55);
   --glass-border: rgba(0, 245, 255, 0.14);
@@ -203,12 +203,16 @@ html, body {
   flex-shrink: 0;
 }
 
-/* Stacked column for two agent panels on each side */
+/* SPATIAL MODEL: agents live in Home Zone by default (spec §5.1).
+   Legacy sidebar panels contradict the spatial model and are hidden here.
+   4-corner collaboration mode (spec §5.4) will restore them via .hz-corner-mode on #viewport. */
 .agent-stack {
-  display: flex; flex-direction: column;
+  display: none;
+  flex-direction: column;
   gap: 10px;
   flex-shrink: 0;
 }
+#viewport.hz-corner-mode .agent-stack { display: flex; }
 
 /* ── CURVED METALLIC CONSOLE BASE (cockpit dashboard) ── */
 #bottom-console {
@@ -458,8 +462,8 @@ html, body {
   vertical-align: 1px;
   text-transform: uppercase;
 }
-.voice-pill.karen     { background: rgba(255,206,84,0.15); color: #ffce54; border: 1px solid rgba(255,206,84,0.4); }
-.voice-pill.veronica  { background: rgba(255,78,98,0.15);  color: #ff4e62; border: 1px solid rgba(255,78,98,0.4);  }
+.voice-pill.karen     { background: rgba(255,180,80,0.15);  color: var(--karen);    border: 1px solid rgba(255,180,80,0.4);  }
+.voice-pill.veronica  { background: rgba(0,255,159,0.15);  color: var(--veronica); border: 1px solid rgba(0,255,159,0.4);  }
 .voice-pill.friday    { background: rgba(255,106,0,0.15);  color: #ff6a00; border: 1px solid rgba(255,106,0,0.4);  }
 .voice-pill.jarvis    { background: rgba(0,245,255,0.15);  color: #00f5ff; border: 1px solid rgba(0,245,255,0.4);  }
 .voice-segment {
@@ -820,6 +824,63 @@ html, body {
   vertical-align: text-bottom;
 }
 @keyframes cursorBlink { 0%, 100% { opacity: 0.7; } 50% { opacity: 0; } }
+
+/* ═══════════════════════════════════════════════════════════
+   HOME ZONE — Phase 2 Spatial Canvas (hz-canvas)
+═══════════════════════════════════════════════════════════ */
+
+/* Full-viewport drawing canvas — pointer-events off; bloom via CSS drop-shadow */
+#hz-canvas {
+  position: fixed; inset: 0; z-index: 50;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 0 18px rgba(0,229,255,0.48))
+    drop-shadow(0 0 48px rgba(0,229,255,0.16));
+}
+
+/* Invisible circular hitbox — positioned/sized by JS each frame */
+#hz-hitbox {
+  position: fixed; z-index: 51;
+  border-radius: 50%;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+  /* a11y: focus ring that doesn't fight the visual design */
+  box-shadow: none;
+}
+#hz-hitbox:focus-visible {
+  box-shadow: 0 0 0 2px rgba(0,229,255,0.8);
+}
+
+/* Ritual fade-out / fade-in — applied by JS in Milestone 3 */
+.hz-ritual-hide {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.hz-ritual-show {
+  opacity: 1 !important;
+}
+
+/* Smooth transitions ready for ritual (Milestone 3) */
+/* Covers EVERY element the ritual hides, so the final settle fades in
+   as a calm exhale rather than snapping. 0.6s matches spec §4 settle feel. */
+#ring-canvas, #wave-canvas, #core-orb,
+#ring-label-top, #ring-label-bot,
+#ring-zone, #lower-section, #bottom-orb-zone,
+#active-agent-label, #ticker, #top-bar, #input-strip {
+  transition: opacity 0.6s ease;
+}
+
+/* Respect reduced motion — suppress decorative continuous animations */
+@media (prefers-reduced-motion: reduce) {
+  .god-ray, .light-burst::after { animation: none !important; }
+  .panel-scan, .panel-avatar::after { animation: none !important; }
+  @keyframes dotBlink  { 0%, 100% { opacity: 1; } }
+  @keyframes orbPulse  { 0%, 100% { transform: scale(1); opacity: 0.85; } }
+  #hz-canvas {
+    filter: drop-shadow(0 0 12px rgba(0,229,255,0.40));
+  }
+}
 </style>
 </head>
 <body>
@@ -962,12 +1023,10 @@ html, body {
           </div>
           <div class="chat-corner-br"></div>
         </div>
-        <div id="msgs">
-          <div class="msg agent">
-            <div class="msg-agent-tag">JARVIS</div>
-            Systems online, sir. All four agents standing by. High-fidelity holographic protocols engaged.
-          </div>
-        </div>
+        <!-- Chat starts empty: ritual appends greeting at 2.1s; non-ritual loads
+             stream the dynamic __init__ greeting. No static placeholder (avoids
+             duplicate-greeting feel flagged in M3 hardening). -->
+        <div id="msgs"></div>
       </div>
 
       <!-- RIGHT STACK: KAREN (top) + JARVIS (bottom) -->
@@ -1070,6 +1129,13 @@ html, body {
   <div id="img-popup-left"  class="img-popup left"  style="display:none"></div>
   <div id="img-popup-right" class="img-popup right" style="display:none"></div>
 
+  <!-- HOME ZONE — Phase 2 spatial canvas (drawing layer + transparent hitbox) -->
+  <canvas id="hz-canvas"></canvas>
+  <div id="hz-hitbox"
+       role="button"
+       aria-label="Home Zone — click to expand agent cluster"
+       tabindex="0"></div>
+
 </div><!-- /viewport -->
 
 <script>
@@ -1079,10 +1145,10 @@ html, body {
    CORE STATE
 ═══════════════════════════════════════════════════════════ */
 const AGENT_COLORS = {
-  JARVIS:   { hex: '#00f5ff', rgb: '0,245,255',   glow: 'rgba(0,245,255,0.5)' },
+  JARVIS:   { hex: '#00e5ff', rgb: '0,229,255',   glow: 'rgba(0,229,255,0.5)' },
   FRIDAY:   { hex: '#ff6a00', rgb: '255,106,0',   glow: 'rgba(255,106,0,0.5)' },
-  VERONICA: { hex: '#b040ff', rgb: '176,64,255',  glow: 'rgba(176,64,255,0.5)' },
-  KAREN:    { hex: '#cc44ff', rgb: '204,68,255',  glow: 'rgba(204,68,255,0.5)' }
+  VERONICA: { hex: '#00ff9f', rgb: '0,255,159',   glow: 'rgba(0,255,159,0.5)' },
+  KAREN:    { hex: '#ffb450', rgb: '255,180,80',  glow: 'rgba(255,180,80,0.5)' }
 };
 
 let curAgent      = 'JARVIS';
@@ -1159,6 +1225,8 @@ function maybeBumpBrainBadge(visibility, tags, messageId) {
   if (messageId) _brainBadgeState.anchors.push(messageId);
   _saveBrainBadge();
   _renderBrainBadge();
+  // Signal Home Zone — brain activity triggers the activity pulse
+  if (typeof window._hzPulse === 'function') window._hzPulse();
 }
 
 function clearBrainBadge() {
@@ -1435,13 +1503,13 @@ updateClock();
 ═══════════════════════════════════════════════════════════ */
 const bgCanvas = document.getElementById('bg-canvas');
 const bgCtx    = bgCanvas.getContext('2d');
-let stars = [], streaks = [];
+let stars = [], streaks = [], _bgLastT = 0;
 
 function initBg() {
   bgCanvas.width  = window.innerWidth;
   bgCanvas.height = window.innerHeight;
   stars = [];
-  for (let i = 0; i < 220; i++) {
+  for (let i = 0; i < 80; i++) {  // was 220 — reduced 63% for perf
     stars.push({
       x:  Math.random() * bgCanvas.width,
       y:  Math.random() * bgCanvas.height,
@@ -1454,7 +1522,7 @@ function initBg() {
     });
   }
   streaks = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 5; i++) {  // was 8
     streaks.push({
       x: Math.random() * bgCanvas.width,
       y: Math.random() * bgCanvas.height,
@@ -1467,6 +1535,16 @@ function initBg() {
 }
 
 function drawBg() {
+  // Cap background to 24fps in normal state, 18fps when team is deployed.
+  // Background stars don't need 60fps — this alone saves ~60% of bg CPU.
+  const _now = performance.now();
+  const _bgMinGap = document.getElementById('viewport').classList.contains('hz-corner-mode') ? 56 : 42;
+  if (_now - _bgLastT < _bgMinGap) { requestAnimationFrame(drawBg); return; }
+  _bgLastT = _now;
+
+  // In heavy state (team deployed or RA active), skip expensive cross-flares
+  const _bgHeavy = document.getElementById('viewport').classList.contains('hz-corner-mode');
+
   bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
 
   // Light streaks (energy fields)
@@ -1501,8 +1579,8 @@ function drawBg() {
     bgCtx.fillStyle = `rgba(160,230,255,${alpha})`;
     bgCtx.fill();
 
-    // Occasional bright data point with cross flare
-    if (p.r > 1.5) {
+    // Cross-flare on bright stars — skipped in heavy state (saves ~70 extra draw calls/frame)
+    if (!_bgHeavy && p.r > 1.5) {
       bgCtx.strokeStyle = `rgba(0,245,255,${alpha * 0.4})`;
       bgCtx.lineWidth = 0.5;
       bgCtx.beginPath(); bgCtx.moveTo(p.x - 4, p.y); bgCtx.lineTo(p.x + 4, p.y); bgCtx.stroke();
@@ -1865,6 +1943,8 @@ function appendMsg(role, text, agentName) {
    SEND / CHAT — SSE Streaming via /api/stream
 ═══════════════════════════════════════════════════════════ */
 async function doSend() {
+  // Advance ritual if user sends during conversation phase (spec §4: user can act early)
+  if (typeof window._hzRitualUserAction === 'function') window._hzRitualUserAction();
   const inp  = document.getElementById('inp');
   const text = inp.value.trim();
   if (!text) return;
@@ -2071,41 +2151,50 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener(ev, unlockAudio, { once: true });
   });
 
-  setTimeout(async () => {
-    let msgEl = null;
-    let full  = '';
-    try {
-      const res = await fetch('http://127.0.0.1:8080/api/stream?message=__init__');
-      if (!res.ok) return;
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t.startsWith('data: ')) continue;
-          let evt;
-          try { evt = JSON.parse(t.slice(6)); } catch (_) { continue; }
-          if (evt.type === 'speaker') {
-            msgEl = appendMsgLive('JARVIS');
-          } else if (evt.type === 'text') {
-            full += evt.chunk || '';
-            if (msgEl) updateMsgLive(msgEl, full);
-          } else if (evt.type === 'done') {
-            full = evt.full || full;
-            if (msgEl) { updateMsgLive(msgEl, full); finishMsgLive(msgEl); }
-            // Try TTS — works if audio already unlocked (pywebview usually allows it)
-            if (full.trim()) playTTS(full, 'JARVIS');
+  // ── GREETING / RITUAL ──────────────────────────────────────────────────────
+  // Fresh session (sessionStorage cleared on tab close) → play the cinematic ritual.
+  // The ritual fires its own JARVIS greeting at 2.1 s via _hzStartRitual().
+  // Subsequent visits → normal dynamic time-based greeting at 900 ms.
+  if (!sessionStorage.getItem('jarvis_ritual_played')) {
+    setTimeout(() => {
+      if (typeof window._hzStartRitual === 'function') window._hzStartRitual();
+    }, 80);
+  } else {
+    setTimeout(async () => {
+      let msgEl = null;
+      let full  = '';
+      try {
+        const res = await fetch('http://127.0.0.1:8080/api/stream?message=__init__');
+        if (!res.ok) return;
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith('data: ')) continue;
+            let evt;
+            try { evt = JSON.parse(t.slice(6)); } catch (_) { continue; }
+            if (evt.type === 'speaker') {
+              msgEl = appendMsgLive('JARVIS');
+            } else if (evt.type === 'text') {
+              full += evt.chunk || '';
+              if (msgEl) updateMsgLive(msgEl, full);
+            } else if (evt.type === 'done') {
+              full = evt.full || full;
+              if (msgEl) { updateMsgLive(msgEl, full); finishMsgLive(msgEl); }
+              if (full.trim()) playTTS(full, 'JARVIS');
+            }
           }
         }
-      }
-    } catch (_) { /* server not up yet */ }
-  }, 900);
+      } catch (_) { /* server not up yet */ }
+    }, 900);
+  }
 
   // Keyboard
   document.getElementById('inp').addEventListener('keydown', e => {
@@ -2126,6 +2215,2078 @@ setInterval(() => {
     if (el) el.textContent = fn();
   });
 }, 2000);
+
+/* ── PROACTIVE PUSH WIRE (Part B) ──────────────────────────────────────────────────────────
+   Closes the last-meter gap: backend observer + visibility classifier already queues events
+   at /api/proactive. This poll loop makes the spatial layer react to them.
+
+   Current state vs spec §7.3 escalation ladder:
+     • Level 1 (quiet work)   → Home Zone pulse only
+     • Level 2 (noteworthy)   → pulse + brain badge + chat message
+     • Level 3 (needs input)  → pulse + badge + chat + TTS + summoned-orb pulse if agent matches
+     Full "Really Active" visual state (spec §5.3) is the next phase after summon ships.
+*/
+(function startProactivePoll(){
+  async function poll(){
+    try {
+      const res = await fetch('http://127.0.0.1:8080/api/proactive');
+      if(!res.ok) return;
+      const { messages=[] } = await res.json();
+      for(const msg of messages){
+        // Always pulse the Home Zone — makes background work visible (spec §7.3 level 1)
+        if(typeof window._hzPulse==='function') window._hzPulse();
+
+        // Bump brain badge (already classifies visibility)
+        if(typeof maybeBumpBrainBadge==='function')
+          maybeBumpBrainBadge(msg.visibility, msg.tags, null);
+
+        // Surface events → Really Active spatial state + chat log + TTS (spec §7.3 level 3)
+        if(msg.visibility==='surface'){
+          const agentName = msg.agent || 'JARVIS';
+          const short = (msg.text||'').trim();
+          const calloutText = short.length > 90
+            ? short.slice(0,44).trim()+'…\n'+short.slice(44,88).trim()+'…'
+            : short;
+          if(typeof window._hzTriggerReallyActive==='function')
+            window._hzTriggerReallyActive(agentName, {text: calloutText, actionLabel: 'Got it'});
+          appendMsg('agent', msg.text, agentName);
+          playTTS(msg.text, agentName);
+        }
+      }
+    } catch(_){ /* server not reachable — fail silently */ }
+    setTimeout(poll, 10000); // 10s cadence — enough for observer events, not spammy
+  }
+  setTimeout(poll, 3500); // 3.5s startup delay: let ritual settle first
+})();
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   HOME ZONE — Phase 2 Spatial Interface
+   Milestone 2: Cloud Expansion · Agent Orbs · Collapse
+
+   Timeline (spec §3.2, delta-accum, no setTimeout):
+     0–80ms     anticipation scale + brighten
+     80–220ms   membrane unfurl + mote particle burst (60–90 particles)
+     220–520ms  cloud volume resolves above bubble
+     520–920ms  4 agent orbs arc into cloud formation
+     920–1100ms name labels fade up (12 px settle)
+     1100–1400ms status text fades in
+     1400ms+    fully interactive
+   Collapse: 480ms total (exit faster than enter — ui-ux rule)
+
+   Per-agent easing (spec §2.5 + ui-ux-pro-max spring/ease rules):
+     JARVIS   easeMeasured (cubic ease-out, deliberate)
+     VERONICA easePrecise  (power-2.6, controlled stop)
+     KAREN    easeWarm     (ease-in-out, smooth unfolding)
+     FRIDAY   easeSnap     (quadratic, fast exit feel)
+
+   Rendering: Canvas 2D — upgrade path documented in
+              docs/architecture/PHASE2_RENDERING_STRATEGY.md
+
+   UI/UX compliance (ui-ux-pro-max):
+   • transform/opacity only — no layout-triggering props.
+   • Ease-out for entering, ease-in for exiting (rule: easing).
+   • Exit animation 480ms < enter 1400ms (rule: exit-faster-than-enter).
+   • Animations interruptible: collapse cancels mid-expansion (rule: interruptible).
+   • cursor:pointer on orbs; cursor:default elsewhere in cloud (rule: hover states).
+   • Click + keyboard (Enter/Space) both activate (rule: hover-vs-tap).
+   • Orb tap targets ≥44px: ORB_R=20 → 40px dia + 6px margin = 52px (rule: touch-target-size).
+   • prefers-reduced-motion: instant state, no particles, no breathing.
+   • Auto-dim + overlap-transparency inherited from M1.
+═══════════════════════════════════════════════════════════ */
+(function() {
+'use strict';
+
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ── Per-frame performance scalars (recomputed at start of every frame) ──────────────────
+// _perfBloom:     multiplier for shadowBlur — drops to 0.3 when 4+ orbs are active
+// _doParticles:   false every other frame when team is deployed (halves particle CPU)
+let _perfBloom     = 1.0;
+let _particleFrame = 0;
+let _doParticles   = true;
+let _heavyOrbs     = 0;  // active orb count, visible to _particleCount()
+
+// ── Refs ──────────────────────────────────────────────────────
+const cvs = document.getElementById('hz-canvas');
+const ctx  = cvs.getContext('2d');
+const hb   = document.getElementById('hz-hitbox');
+
+function resizeCvs() { cvs.width = window.innerWidth; cvs.height = window.innerHeight; }
+resizeCvs();
+
+// ── Cloud geometry ────────────────────────────────────────────
+const CLOUD_W     = 204;   // cloud panel width px (≈3.3× bubble dia)
+const CLOUD_H     = 118;   // cloud panel height px
+const CLOUD_ABOVE = 126;   // px from bubble centre → cloud centre
+const ORB_R       = 20;    // expanded orb radius (40px dia + 6px touch margin = 52px)
+const SUMMON_SCALE        = 1.4;   // scale at center when summoned (spec §5.2: 1.35–1.55×)
+const REALLY_ACTIVE_SCALE = 1.95;  // spec §5.3: "1.9–2.15× — noticeably louder than summon"
+const RA_ARRIVE_MS        = 360;   // fast aggressive arrival (spec: "accelerates toward center")
+const RA_CALM_MS          = 560;   // calm is slower than arrival (spec §5.3: "520–680ms")
+
+// 4-corner collaboration mode constants (spec §5.4 + §6.2)
+const CORNER_TRAVEL_MS  = 640;   // bubble → corner (longer arc, personality easing)
+const CORNER_RETURN_MS  = 400;   // corner → bubble (exit faster than enter — ui-ux rule)
+const CORNER_STAGGER_MS = 95;    // ms between each agent's departure/return
+const CORNER_SCALE_BASE = 1.22;  // corner orb scale (≈0.87× summoned, spec §5.4: 68–78px dia)
+const CORNER_SCALE_JARVIS = 1.34; // JARVIS slightly more prominent (spec §5.4 "orchestration")
+// Viewport-relative positions for each agent corner (spec §6.2)
+const CORNER_POS = {
+  VERONICA: { rx:0.075, ry:0.09 },  // top-left:     precision / analysis
+  JARVIS:   { rx:0.925, ry:0.09 },  // top-right:    orchestration (primary)
+  KAREN:    { rx:0.075, ry:0.91 },  // bottom-left:  support / research
+  FRIDAY:   { rx:0.925, ry:0.91 },  // bottom-right: execution / speed
+};
+// Deploy order: JARVIS first (lead), then others staggered (spec §5.4: "staggered 80–120ms")
+const CORNER_DEPLOY_ORDER = [2, 0, 1, 3]; // cfgIdx sequence
+// Orb horizontal slots in cloud L→R: VERONICA–KAREN–JARVIS–FRIDAY
+const ORB_X = [-74, -25, 25, 74];
+
+// ── Orb configuration (data-driven, slot = cloud L→R index) ──
+// emitMs: when this orb starts travelling (ms into expansion)
+// durMs:  travel animation duration in ms
+const ORB_CFG = [
+  { name:'VERONICA', r:0,   g:255, b:159, slot:0, emitMs:640, durMs:220, ease:'precise'  },
+  { name:'KAREN',    r:255, g:180, b:80,  slot:1, emitMs:720, durMs:260, ease:'warm'     },
+  { name:'JARVIS',   r:0,   g:229, b:255, slot:2, emitMs:520, durMs:280, ease:'measured' },
+  { name:'FRIDAY',   r:255, g:106, b:0,   slot:3, emitMs:800, durMs:200, ease:'snap'     },
+];
+// Collapse return order: last-out first (FRIDAY → KAREN → VERONICA → JARVIS)
+const COLL_ORDER   = [3, 1, 0, 2];  // indices into ORB_CFG
+const COLL_STAGGER = 32;            // ms between each return start
+const COLL_DUR_MS  = 480;           // total collapse window (exit < enter per ui-ux rule)
+const COLL_TRAVEL  = 200;           // each orb's return travel duration
+
+// Status text shown under each orb label when cloud is expanded
+const ORB_STATUS = { JARVIS:'Online', FRIDAY:'Ready', VERONICA:'Standby', KAREN:'Standby' };
+
+// ── Per-agent easing (spec §2.5 + ui-ux ease-out/in-out rules) ──
+function easeMeasured(t) { return 1 - Math.pow(1-t, 3);   }  // JARVIS  — cubic ease-out
+function easePrecise(t)  { return 1 - Math.pow(1-t, 2.6); }  // VERONICA — controlled stop
+function easeWarm(t)     { return t<.5?2*t*t:1-2*(1-t)*(1-t); } // KAREN — smooth in-out
+function easeSnap(t)     { return 1-(1-t)*(1-t); }            // FRIDAY  — fast quadratic
+function applyEase(e,t)  {
+  if(e==='measured') return easeMeasured(t);
+  if(e==='precise')  return easePrecise(t);
+  if(e==='warm')     return easeWarm(t);
+  if(e==='snap')     return easeSnap(t);
+  return 1-Math.pow(1-t,3);
+}
+function easeOutCubic(t) { return 1-Math.pow(1-t,3); }
+
+// Quadratic bezier helper
+function bq(t,p0,p1,p2){const m=1-t;return m*m*p0+2*m*t*p1+t*t*p2;}
+
+// ── Session Start Ritual state (Milestone 3 — spec §4) ───────────────────────
+// Peak scale for JARVIS at centre during the ritual. Spec §4 says 1.45× (the
+// cloud-orb ratio), but per M3 hardening that reads modest as the centrepiece
+// of the opening. We use a larger ritual-only factor for genuine presence —
+// the 1.45× contract still governs the cloud/summon orb sizes elsewhere.
+const RITUAL_J_SCALE = 2.45;
+// Single source of truth for the 0–14.5 s cinematic ceremony.
+const ritual = {
+  active:        false,
+  phase:         'void', // void|materializing|jarvis-detach|greeting|conversation|returning|migrating|settling|done
+  totalMs:       0,
+  bubbleAlpha:   0,    // bubble opacity override (0→1 during materialising)
+  bubbleScale:   1,    // bubble radius multiplier (0.6→1 during materialising)
+  jx: 0, jy: 0,        // JARVIS orb centre (canvas px)
+  jScale:        0,    // 0 → 1.45
+  jPower:        -1,   // departure power-wave progress (-1 = inactive)
+  jOrb:          null, // synthetic orb state object (mirrors cloud orb format)
+  greetAlpha:    0,    // holographic greeting text opacity
+  greetingPlayed:false,
+  greetingLine:  null,
+  retStart:      0,    // totalMs when 'returning' phase started
+  retOriginX:    null,
+  retOriginY:    null,
+  userAdvanced:  false,
+  migStart:      0,
+  migStartX: 0, migStartY: 0,
+  migEndX:   0, migEndY:   0,
+  trailMotes:    [],   // cyan particle trail during corner migration
+};
+
+// ── State ─────────────────────────────────────────────────────
+const hz = {
+  px: window.innerWidth  * 0.935,
+  py: window.innerHeight * 0.07,
+  r:  31,
+
+  opacity:    1.0,
+  minOpacity: 0.14,
+
+  bPhase: 0,
+  bHz:    REDUCED ? 0 : (Math.PI*2/5),
+
+  pulse:  0,
+  count:  4,
+
+  // Drag
+  dragging:false, dOx:0,dOy:0, vx:0,vy:0, px0:0,py0:0,pt0:0,
+  lastTouch: Date.now(),
+
+  // Phase machine
+  phase:     'minimized', // minimized | expanding | expanded | collapsing
+  expandMs:  0,
+  collapseMs:0,
+
+  // Cloud opacity (resolves during expansion)
+  cloudA: 0,
+
+  // Hover tracking (orb index or null)
+  hoveredOrb: null,
+
+  // Per-orb runtime state (parallel to ORB_CFG)
+  orbs: ORB_CFG.map(()=>({ x:0,y:0, scale:0, labelA:0, statusA:0, arrived:false, retStart:0, pulse:0, particles:null, particleFadeIn:0 })),
+
+  // Membrane unfurl particles
+  motes: [],
+
+  t: 0,
+  powerWave:   0,      // JARVIS departure ring progress 0→1
+  fridayWake:  [],     // FRIDAY trailing wake trail [{x,y,life,max}]
+  colMotes:    [],     // collapse cloud dissolve particles
+
+  // Summoned-to-center orb (spec §5.2). null when no agent is summoned.
+  // Phases: 'arriving' | 'present' | 'returning'
+  // Spec: agent stays at center until EXPLICITLY dismissed — never auto-returns.
+  summoned: null,
+
+  // Really Active agents (spec §5.3). Array so multiple can overlap.
+  // Each entry: { name, cfg, phase, slot, ms, x, y, scale, pulse, bPhase,
+  //               startX/Y, prevX/Y, retX/Y, text, actionLabel, onAction,
+  //               callout, cornerRef, orbState }
+  // Phases: 'arriving' | 'present' | 'calming' | 'done'
+  reallyActive: [],
+
+  // 4-corner collaboration mode (spec §5.4).
+  // cornerOrbs is a 4-element sparse array indexed by ORB_CFG index.
+  // Phases: 'off' | 'deploying' | 'active' | 'returning'
+  cornerMode: {
+    active: false,
+    phase: 'off',
+    deployMs: 0,
+    returnMs: 0,
+    cornerOrbs: [],
+  },
+};
+
+// ── Value noise (3 octaves) ───────────────────────────────────
+function vn(x,y,t){
+  return(Math.sin(x*2.31+t*.72)*Math.cos(y*1.73-t*.41)*.50+
+         Math.sin(x*4.17-t*1.13)*Math.cos(y*3.29+t*.63)*.31+
+         Math.sin(x*7.61+t*1.87)*Math.cos(y*6.23-t*1.19)*.19)*0.5+0.5;
+}
+
+// ── Position persistence ──────────────────────────────────────
+;(function load(){
+  try{const s=JSON.parse(localStorage.getItem('jarvis_hz_pos')||'null');
+    if(s&&isFinite(s.rx)&&isFinite(s.ry)){hz.px=s.rx*window.innerWidth;hz.py=s.ry*window.innerHeight;}}catch(_){}
+})();
+function persist(){try{localStorage.setItem('jarvis_hz_pos',JSON.stringify({rx:hz.px/window.innerWidth,ry:hz.py/window.innerHeight}));}catch(_){}}
+function clamp(){
+  const p=hz.r+10,tp=hz.r+36,bp=hz.r+22;
+  hz.px=Math.max(p,Math.min(window.innerWidth-p,hz.px));
+  hz.py=Math.max(tp,Math.min(window.innerHeight-bp,hz.py));
+}
+clamp();
+
+// ── Cloud helpers ─────────────────────────────────────────────
+function cloudCx(){ return hz.px; }
+function cloudCy(){ return hz.py - CLOUD_ABOVE; }
+function orbTX(slot){ return cloudCx()+ORB_X[slot]; }
+function orbTY()    { return cloudCy(); }
+
+// ── Orb init / reset ──────────────────────────────────────────
+function resetOrbs(){
+  hz.orbs.forEach(o=>{o.x=hz.px;o.y=hz.py;o.scale=0;o.labelA=0;o.statusA=0;o.arrived=false;o.pulse=0;o.particles=null;o.particleFadeIn=0;});
+  hz.cloudA=0; hz.motes=[];
+}
+resetOrbs();
+
+// ── Membrane mote particles ───────────────────────────────────
+function spawnMotes(){
+  if(REDUCED) return;
+  hz.motes=[];
+  const cnt=60+Math.floor(Math.random()*30); // spec: 60–90 particles
+  for(let i=0;i<cnt;i++){
+    const a=-Math.PI/2+(Math.random()-.5)*Math.PI*.85; // fan upward
+    const sp=1.4+Math.random()*2.8;
+    hz.motes.push({x:hz.px,y:hz.py-hz.r, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-0.6,
+                   life:0, max:80+Math.random()*80, r:.8+Math.random()*1.5,
+                   cyan:Math.random()>.28});
+  }
+}
+
+// ── Hitbox sync ───────────────────────────────────────────────
+function syncHb(){
+  if(hz.phase==='minimized'){
+    hb.style.borderRadius='50%';
+    hb.style.cursor='pointer';
+    const d=hz.r*2;
+    hb.style.left=(hz.px-hz.r)+'px'; hb.style.top=(hz.py-hz.r)+'px';
+    hb.style.width=d+'px'; hb.style.height=d+'px';
+  } else {
+    // Cover entire cloud + bubble region
+    const mg=18;
+    const l=cloudCx()-CLOUD_W/2-mg, t=cloudCy()-CLOUD_H/2-mg;
+    const r=cloudCx()+CLOUD_W/2+mg, b=hz.py+hz.r+mg;
+    hb.style.borderRadius='14px';
+    hb.style.left=l+'px'; hb.style.top=t+'px';
+    hb.style.width=(r-l)+'px'; hb.style.height=(b-t)+'px';
+    hb.style.cursor=hz.hoveredOrb!==null?'pointer':'default';
+  }
+}
+syncHb();
+
+// ── Orb hit-test (expanded only) ──────────────────────────────
+function getOrbAt(mx,my){
+  if(hz.phase!=='expanded') return null;
+  for(let i=0;i<hz.orbs.length;i++){
+    const o=hz.orbs[i];
+    if(!o.arrived) continue;
+    if(Math.hypot(mx-o.x,my-o.y)<ORB_R+6) return i; // +6px extra tap area
+  }
+  return null;
+}
+
+// ── Drag ──────────────────────────────────────────────────────
+let _dm=false; // drag moved flag
+
+hb.addEventListener('pointerdown',e=>{
+  if(ritual.active) return;                                  // no drag during ritual
+  if(hz.phase==='expanded'||hz.phase==='expanding') return; // no drag when cloud is open
+  e.preventDefault();
+  hz.dragging=true; _dm=false;
+  hz.dOx=e.clientX-hz.px; hz.dOy=e.clientY-hz.py;
+  hz.vx=0; hz.vy=0; hz.px0=e.clientX; hz.py0=e.clientY; hz.pt0=performance.now();
+  hz.lastTouch=Date.now();
+  hb.setPointerCapture(e.pointerId);
+  hb.style.cursor='grabbing';
+});
+
+hb.addEventListener('pointermove',e=>{
+  if(!hz.dragging){
+    // Hover detection in expanded state (ui-ux: hover states + cursor feedback)
+    if(hz.phase==='expanded'){
+      hz.hoveredOrb=getOrbAt(e.clientX,e.clientY);
+      hb.style.cursor=hz.hoveredOrb!==null?'pointer':'default';
+    }
+    return;
+  }
+  _dm=true;
+  const now=performance.now(), dt=Math.max(1,now-hz.pt0);
+  hz.vx=(e.clientX-hz.px0)/dt*16; hz.vy=(e.clientY-hz.py0)/dt*16;
+  hz.px0=e.clientX; hz.py0=e.clientY; hz.pt0=now;
+  hz.px=e.clientX-hz.dOx; hz.py=e.clientY-hz.dOy;
+  clamp(); syncHb();
+});
+
+hb.addEventListener('pointerup',()=>{ if(!hz.dragging)return; hz.dragging=false; hb.style.cursor='pointer'; persist(); });
+hb.addEventListener('pointercancel',()=>{ hz.dragging=false; hb.style.cursor='pointer'; });
+hb.addEventListener('pointerleave',()=>{ hz.hoveredOrb=null; });
+hb.addEventListener('pointerenter',()=>{ hz.lastTouch=Date.now(); });
+
+// Keyboard (a11y — ui-ux: hover-vs-tap + keyboard-nav)
+hb.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); onTap(null,null); }});
+
+// Click / tap — interruptible at any phase (ui-ux: interruptible rule)
+hb.addEventListener('click',e=>{ if(_dm){_dm=false;return;} hz.lastTouch=Date.now(); onTap(e.clientX,e.clientY); });
+
+function onTap(mx,my){
+  if(hz.phase==='minimized'){
+    // Start expansion
+    hz.phase='expanding'; hz.expandMs=0;
+    resetOrbs(); spawnMotes(); syncHb();
+  } else if(hz.phase==='expanded'){
+    const idx=(mx!==null)?getOrbAt(mx,my):null;
+    if(idx!==null){
+      // Orb tapped — visual pulse now, summon stub
+      hz.orbs[idx].pulse=1.0;
+      if(typeof window._hzSummon==='function') window._hzSummon(ORB_CFG[idx].name);
+    } else {
+      // Tap outside orbs → collapse (ui-ux: interruptible)
+      startCollapse();
+    }
+  } else if(hz.phase==='expanding'){
+    startCollapse(); // allow early collapse
+  }
+}
+
+function startCollapse(){
+  hz.phase='collapsing'; hz.collapseMs=0;
+  COLL_ORDER.forEach((cfgIdx,i)=>{ hz.orbs[cfgIdx].retStart=i*COLL_STAGGER; });
+  // Snapshot current positions — prevents arc-position jump on mid-expansion interrupt
+  hz.orbs.forEach(o=>{ o.csX=o.x; o.csY=o.y; });
+  // Spawn cloud dissolve particles (spec §3.2: "dissolves into upward-drifting particles")
+  spawnCollapseMotes();
+}
+
+// ── Computed opacity (M1 code, unchanged) ─────────────────────
+function computeAlpha(){
+  const idle=(Date.now()-hz.lastTouch)/1000;
+  let base=1;
+  if(idle>45) base=Math.max(hz.minOpacity,1-Math.min(1,(idle-45)/15)*(1-hz.minOpacity));
+  const panel=document.getElementById('chat-panel');
+  if(panel){
+    const r=panel.getBoundingClientRect();
+    const nx=Math.max(r.left,Math.min(hz.px,r.right)),ny=Math.max(r.top,Math.min(hz.py,r.bottom));
+    if(Math.hypot(hz.px-nx,hz.py-ny)<hz.r) base=Math.max(hz.minOpacity,base-.22);
+  }
+  // Spec §3.4: Home Zone stays more visible while the team is deployed in 4-corner mode —
+  // "slightly more visible (+12–18 opacity points)". Floor raised from 0.14 to 0.29.
+  const floor = hz.cornerMode.active ? hz.minOpacity+0.15 : hz.minOpacity;
+  return Math.max(floor,base);
+}
+
+// ── Expansion tick ────────────────────────────────────────────
+function tickExpand(dtMs){
+  const ms=hz.expandMs;
+
+  // Mote particle physics (80–320ms)
+  if(ms>=80&&ms<=320){
+    hz.motes.forEach(m=>{ m.life+=dtMs; m.x+=m.vx; m.y+=m.vy; m.vy+=0.045; });
+    hz.motes=hz.motes.filter(m=>m.life<m.max);
+  }
+
+  // Cloud resolve (220→520ms) — spec §3.2: 35–48% opaque so content behind stays readable
+  if(ms>=220) hz.cloudA=Math.min(0.47,easeOutCubic(Math.min(1,(ms-220)/300))*0.47);
+
+  // JARVIS power wave — single deep ring expanding centre→surface on departure (spec §2.5)
+  if(ms>=520&&ms<=720) hz.powerWave=(ms-520)/200;
+  else if(ms>720&&hz.powerWave<1) hz.powerWave=1;
+
+  // FRIDAY trailing energy wake — accumulate trail during her travel (spec §2.5: "trailing energy wake")
+  if(ms>=ORB_CFG[3].emitMs){
+    const fri=hz.orbs[3];
+    if(!fri.arrived&&fri.scale>.08)
+      hz.fridayWake.push({x:fri.x,y:fri.y,life:0,max:90+Math.random()*80});
+    hz.fridayWake.forEach(w=>{w.life+=dtMs;});
+    hz.fridayWake=hz.fridayWake.filter(w=>w.life<w.max);
+  }
+
+  // Per-orb travel (staggered 520→~1000ms)
+  ORB_CFG.forEach((cfg,i)=>{
+    const o=hz.orbs[i];
+    if(ms<cfg.emitMs) return;
+    const raw=Math.min(1,(ms-cfg.emitMs)/cfg.durMs);
+    const t=applyEase(cfg.ease,raw);
+    // Quadratic bezier arc from bubble centre to cloud slot
+    const tx=orbTX(cfg.slot), ty=orbTY();
+    const cpx=(hz.px+tx)/2, cpy=(hz.py+ty)/2-52;
+    o.x=bq(t,hz.px,cpx,tx); o.y=bq(t,hz.py,cpy,ty);
+    o.scale=0.35+t*0.65;  // spec: 0.35× → 1.0×
+    if(raw>=1){ o.arrived=true; o.scale=1; }
+    if(o.pulse>0) o.pulse=Math.max(0,o.pulse-dtMs/800);
+  });
+
+  // Label fade-in (920–1100ms, 12px upward settle)
+  if(ms>=920) hz.orbs.forEach(o=>{ o.labelA=easeOutCubic(Math.min(1,(ms-920)/180)); });
+
+  // Status text (1100–1400ms)
+  if(ms>=1100) hz.orbs.forEach(o=>{ o.statusA=easeOutCubic(Math.min(1,(ms-1100)/300))*.72; });
+
+  // Snap to fully-expanded state
+  if(ms>=1400){
+    hz.phase='expanded';
+    hz.orbs.forEach(o=>{ o.scale=1; o.labelA=1; o.statusA=.72; o.arrived=true; });
+  }
+}
+
+// ── Collapse tick ─────────────────────────────────────────────
+function tickCollapse(dtMs){
+  const ms=hz.collapseMs;
+
+  // Fade cloud and labels (ease-in on exit per ui-ux rule)
+  hz.cloudA=Math.max(0,.95*(1-ms/380));
+  const fa=1-Math.min(1,ms/160);
+  hz.orbs.forEach(o=>{ o.labelA=Math.max(0,fa); o.statusA=Math.max(0,fa*.72); });
+
+  // Per-orb return arcs — travel from stored position → bubble centre
+  ORB_CFG.forEach((cfg,i)=>{
+    const o=hz.orbs[i];
+    if(ms<o.retStart) return;
+    const raw=Math.min(1,(ms-o.retStart)/COLL_TRAVEL);
+    const t=applyEase(cfg.ease,raw);
+    // Use csX/csY (snapshot at collapse-trigger) so mid-arc interrupt never jumps
+    const sx=o.csX!==undefined?o.csX:orbTX(cfg.slot);
+    const sy=o.csY!==undefined?o.csY:orbTY();
+    const cpx=(hz.px+sx)/2, cpy=(hz.py+sy)/2-28;
+    o.x=bq(t,sx,cpx,hz.px); o.y=bq(t,sy,cpy,hz.py);
+    o.scale=Math.max(0,1-easeOutCubic(raw));
+  });
+
+  // Collapse dissolve motes physics
+  if(hz.colMotes.length){
+    hz.colMotes.forEach(m=>{m.life+=dtMs;m.x+=m.vx;m.y+=m.vy;});
+    hz.colMotes=hz.colMotes.filter(m=>m.life<m.max);
+  }
+
+  if(ms>=COLL_DUR_MS){ hz.phase='minimized'; resetOrbs(); hz.colMotes=[]; hz.fridayWake=[]; hz.powerWave=0; syncHb(); }
+}
+
+// ── Main frame loop ───────────────────────────────────────────
+let _prev=performance.now();
+
+function frame(ts){
+  const dt=Math.min(.032,(ts-_prev)/1000); _prev=ts; hz.t+=dt;
+  const dtMs=dt*1000;
+
+  // Count active rendered orbs to scale effects proportionally (module-level so _particleCount can read it)
+  _heavyOrbs=(hz.cornerMode.active?hz.cornerMode.cornerOrbs.filter(co=>co&&co.phase==='onstation').length:0)
+    +(hz.summoned&&hz.summoned.phase!=='returning'?1:0)
+    +hz.reallyActive.filter(r=>r.phase==='present'||r.phase==='arriving').length;
+  _perfBloom   = _heavyOrbs>=4 ? 0.28 : _heavyOrbs>=2 ? 0.55 : 1.0;
+  _particleFrame = (_particleFrame+1)&1;
+  _doParticles   = _heavyOrbs<4 || _particleFrame===0; // throttle at 30fps when 4+ orbs active
+
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+
+  // Inertia (suppressed during ritual — bubble position is driven by tickRitual)
+  if(!ritual.active&&!hz.dragging&&(Math.abs(hz.vx)>.05||Math.abs(hz.vy)>.05)){
+    hz.px+=hz.vx; hz.py+=hz.vy; hz.vx*=.88; hz.vy*=.88;
+    clamp(); syncHb(); persist();
+  }
+
+  if(!REDUCED) hz.bPhase=(hz.bPhase+hz.bHz*dt)%(Math.PI*2);
+  if(hz.pulse>0) hz.pulse=Math.max(0,hz.pulse-dt/1.5);
+
+  // Phase ticks (cloud expansion / collapse)
+  if(hz.phase==='expanding') { hz.expandMs+=dtMs;   tickExpand(dtMs);  }
+  if(hz.phase==='collapsing'){ hz.collapseMs+=dtMs; tickCollapse(dtMs); }
+
+  // Summoned orb tick (runs independently of cloud phase — spec §5.2)
+  if(hz.summoned) tickSummoned(dt, dtMs);
+
+  // Really Active tick (spec §5.3 — may run alongside summoned)
+  if(hz.reallyActive.length) tickAllRA(dt, dtMs);
+
+  // 4-corner mode tick (spec §5.4)
+  if(hz.cornerMode.phase!=='off') tickCornerMode(dt, dtMs);
+
+  // Ritual tick (Milestone 3 — session start ceremony)
+  if(ritual.active){
+    // Safety net: a throw inside the ritual must never leave the HUD hidden.
+    try {
+      tickRitual(dt);
+    } catch(err){
+      console.error('[HZ ritual] aborted on error — restoring HUD:', err);
+      ritual.active=false; ritual.phase='done';
+      ritual.jScale=0;
+      _ritualRevealAll();
+    }
+  }
+
+  // Orb particle update — runs when orbs are visible (expanded + late expansion)
+  if(hz.phase==='expanded'||(hz.phase==='expanding'&&hz.expandMs>900)){
+    hz.orbs.forEach(o=>{
+      if(!o.arrived) return;
+      if(!o.particles) initOrbParticles(o);
+      o.particleFadeIn=Math.min(1, o.particleFadeIn+dt/0.40);
+      if(_doParticles) updateOrbParticles(o);
+    });
+  }
+
+  ctx.save();
+  // Ritual controls bubble alpha during the ceremony; normal computeAlpha() otherwise
+  ctx.globalAlpha = ritual.active ? ritual.bubbleAlpha : computeAlpha();
+
+  drawBubble(hz.px, hz.py);
+
+  if(hz.phase!=='minimized'){
+    // Camera aperture membrane 80–340ms (spec §3.2: "like a camera aperture made of light")
+    if(hz.phase==='expanding'&&hz.expandMs>=80){
+      const aT=(hz.expandMs-80)/140;
+      if(aT<=1.25) drawAperture(Math.min(aT,1));
+    }
+    // Mote particles during unfurl
+    if(hz.motes.length) drawMotes();
+    // JARVIS power wave (expanding departure ring)
+    if(hz.powerWave>0&&hz.powerWave<1.05) drawPowerWave();
+    // Cloud glass panel
+    if(hz.cloudA>.01) drawCloud();
+    // Agent orbs
+    drawAllOrbs();
+    // FRIDAY trailing energy wake
+    if(hz.fridayWake.length) drawFridayWake();
+    // Collapse cloud dissolve motes
+    if(hz.colMotes.length) drawCollapseMotes();
+  }
+
+  // Corner orbs drawn before summoned/RA (spatially in corners, not center)
+  if(hz.cornerMode.cornerOrbs.length) drawCornerOrbs();
+
+  // Summoned orb draws above cloud layer but below ritual (spec §5.2)
+  if(hz.summoned) drawSummoned();
+
+  // Really Active orbs + callouts (spec §5.3) — above summoned, below ritual
+  if(hz.reallyActive.length) drawAllRA();
+
+  // Ritual overlay — JARVIS centre orb, trail, greeting text (drawn on top)
+  if(ritual.active) drawRitual();
+
+  ctx.restore();
+  syncHb();
+  requestAnimationFrame(frame);
+}
+
+// ── Bubble ─────────────────────────────────────────────────────
+function drawBubble(cx,cy){
+  const br=REDUCED?1:(1+.06*Math.sin(hz.bPhase));
+  // ritual.bubbleScale: 0.6→1.0 during materialisation (spec §4: "soft 0.6× → 1.0× arrival")
+  const rMul=ritual.active?ritual.bubbleScale:1;
+  const rs=hz.r*rMul*(br+hz.pulse*.09);
+  const t=hz.t;
+
+  // L1 outer bloom
+  const bA=REDUCED?.10:(.12+hz.pulse*.07);
+  const lb=ctx.createRadialGradient(cx,cy,rs*.15,cx,cy,rs*1.40);
+  lb.addColorStop(0,`rgba(0,229,255,${bA})`);
+  lb.addColorStop(.42,`rgba(0,180,220,${bA*.52})`);
+  lb.addColorStop(1,'rgba(0,150,200,0)');
+  ctx.fillStyle=lb; ctx.beginPath(); ctx.arc(cx,cy,rs*1.40,0,Math.PI*2); ctx.fill();
+
+  // L2 glass shell
+  const lg=ctx.createRadialGradient(cx-rs*.12,cy-rs*.14,rs*.04,cx,cy,rs);
+  lg.addColorStop(0,'rgba(0,55,88,.74)'); lg.addColorStop(.42,'rgba(0,28,54,.66)');
+  lg.addColorStop(.85,'rgba(0,14,36,.61)'); lg.addColorStop(1,'rgba(0,8,24,.56)');
+  ctx.fillStyle=lg; ctx.beginPath(); ctx.arc(cx,cy,rs,0,Math.PI*2); ctx.fill();
+
+  // L3 soul motes (fade out as orbs leave during expansion)
+  const mA=hz.phase==='minimized'?1:hz.phase==='expanding'?Math.max(0,1-hz.expandMs/420):
+           hz.phase==='collapsing'?Math.min(1,hz.collapseMs/220):0;
+  if(mA>.02){
+    const souls=[{r:0,g:229,b:255,bx:-.28,by:-.21},{r:255,g:106,b:0,bx:.25,by:-.17},
+                 {r:0,g:255,b:159,bx:-.20,by:.25},{r:255,g:180,b:80,bx:.23,by:.23}];
+    for(let i=0;i<Math.min(4,hz.count);i++){
+      const s=souls[i];
+      const nx=vn(i*3.17,i*2.73,t*.28),ny=vn(i*1.89,i*4.41,t*.22);
+      const mx=cx+(s.bx+(nx-.5)*.22)*rs, my=cy+(s.by+(ny-.5)*.22)*rs, mr=rs*.34;
+      const lm=ctx.createRadialGradient(mx,my,0,mx,my,mr);
+      lm.addColorStop(0,`rgba(${s.r},${s.g},${s.b},${.58*mA})`);
+      lm.addColorStop(.5,`rgba(${s.r},${s.g},${s.b},${.18*mA})`);
+      lm.addColorStop(1,`rgba(${s.r},${s.g},${s.b},0)`);
+      ctx.fillStyle=lm; ctx.beginPath(); ctx.arc(mx,my,mr,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // L4 Fresnel rim
+  const rs2=REDUCED?0:(.20+.05*Math.sin(hz.bPhase));
+  const lr=ctx.createRadialGradient(cx-rs*.38,cy-rs*.36,rs*.52,cx,cy,rs*1.06);
+  lr.addColorStop(0,'rgba(0,0,0,0)'); lr.addColorStop(.72,'rgba(0,229,255,0)');
+  lr.addColorStop(1,`rgba(0,229,255,${rs2})`);
+  ctx.fillStyle=lr; ctx.beginPath(); ctx.arc(cx,cy,rs,0,Math.PI*2); ctx.fill();
+
+  // L5 border
+  ctx.save();
+  ctx.strokeStyle=`rgba(0,229,255,${.30+hz.pulse*.32})`; ctx.lineWidth=1.5;
+  ctx.shadowBlur=REDUCED?4:(6+hz.pulse*16); ctx.shadowColor=`rgba(0,229,255,${.65+hz.pulse*.25})`;
+  ctx.beginPath(); ctx.arc(cx,cy,rs,0,Math.PI*2); ctx.stroke(); ctx.restore();
+
+  // L6 count numeral (hidden when fully expanded)
+  if(hz.phase==='minimized'||(hz.phase==='expanding'&&hz.expandMs<380)||(hz.phase==='collapsing'&&hz.collapseMs>100)){
+    drawCount(cx,cy,hz.count,rs);
+  }
+}
+
+function drawCount(cx,cy,n,rs){
+  const base=(n>=4)?.40:.71, mod=REDUCED?0:(.05*Math.sin(hz.bPhase));
+  const alpha=Math.max(hz.minOpacity,base+mod), fs=Math.round(rs*.72);
+  ctx.save();
+  ctx.font=`600 ${fs}px "Consolas","Monaco","Courier New",monospace`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle=`rgba(0,229,255,${alpha})`;
+  ctx.shadowBlur=5; ctx.shadowColor=`rgba(0,229,255,${alpha*.48})`;
+  ctx.fillText(String(Math.max(0,n)),cx,cy); ctx.restore();
+}
+
+// ── Cloud glass panel ─────────────────────────────────────────
+function drawCloud(){
+  const cx=cloudCx(), cy=cloudCy();
+  const hw=CLOUD_W/2, hh=CLOUD_H/2, r2=13;
+  ctx.save();
+  ctx.globalAlpha*=hz.cloudA;
+
+  function rrect(x,y,w,h,r){
+    ctx.beginPath(); ctx.moveTo(x+r,y);
+    ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath();
+  }
+
+  // Diffuse glass fill — cloudA 0.47 × fill ~0.82 ≈ 38% net (spec §3.2: 35–48% opaque)
+  const fg=ctx.createLinearGradient(cx,cy-hh,cx,cy+hh);
+  fg.addColorStop(0,'rgba(0,20,50,.84)'); fg.addColorStop(.5,'rgba(0,14,38,.78)');
+  fg.addColorStop(1,'rgba(0,10,28,.82)');
+  rrect(cx-hw,cy-hh,CLOUD_W,CLOUD_H,r2); ctx.fillStyle=fg; ctx.fill();
+
+  // Scanlines (spec §2.3: very fine horizontal, 8–12% opacity)
+  if(!REDUCED){
+    ctx.save(); ctx.globalAlpha*=.09;
+    for(let sy=cy-hh+4;sy<cy+hh;sy+=4){
+      ctx.fillStyle='rgba(0,229,255,1)'; ctx.fillRect(cx-hw+r2,sy,CLOUD_W-r2*2,.7);
+    }
+    ctx.restore();
+  }
+
+  // Top-edge rim light
+  const rl=ctx.createLinearGradient(cx,cy-hh,cx,cy-hh+20);
+  rl.addColorStop(0,'rgba(0,229,255,.16)'); rl.addColorStop(1,'rgba(0,229,255,0)');
+  rrect(cx-hw,cy-hh,CLOUD_W,CLOUD_H,r2); ctx.fillStyle=rl; ctx.fill();
+
+  // Border glow
+  rrect(cx-hw,cy-hh,CLOUD_W,CLOUD_H,r2);
+  ctx.strokeStyle='rgba(0,229,255,.15)'; ctx.lineWidth=1;
+  ctx.shadowBlur=9; ctx.shadowColor='rgba(0,229,255,.22)'; ctx.stroke();
+
+  // Connecting thread: cloud bottom → bubble top
+  ctx.beginPath(); ctx.moveTo(cx,cy+hh); ctx.lineTo(hz.px,hz.py-hz.r*.9);
+  ctx.strokeStyle='rgba(0,229,255,.09)'; ctx.lineWidth=1; ctx.shadowBlur=0; ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── All orbs (iterates ORB_CFG) ───────────────────────────────
+function drawAllOrbs(){
+  ORB_CFG.forEach((cfg,i)=>{
+    const o=hz.orbs[i];
+    if(o.scale<.04) return;
+    const hov=(hz.hoveredOrb===i);
+    // Hover: +8% scale + boosted bloom (ui-ux rule: cursor change + visual feedback)
+    drawOrb(o,cfg,ORB_R*o.scale*(hov?1.08:1.0),hov);
+    if(o.labelA>.02) drawOrbLabel(o,cfg);
+  });
+}
+
+// ── Individual orb (6 layers matching spec §2.6) ──────────────
+function drawOrb(o,cfg,r,hovered){
+  const{r:cr,g:cg,b:cb}=cfg;
+  const cx=o.x, cy=o.y, hp=o.pulse, t=hz.t;
+
+  // L1 outer bloom (30–40% opacity, 1.35× dia) — brightens on hover
+  const bA=(.20+hp*.18)*(hovered?1.55:1.0);
+  const lb=ctx.createRadialGradient(cx,cy,r*.08,cx,cy,r*1.35);
+  lb.addColorStop(0,`rgba(${cr},${cg},${cb},${bA})`);
+  lb.addColorStop(.5,`rgba(${cr},${cg},${cb},${bA*.4})`);
+  lb.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=lb; ctx.beginPath(); ctx.arc(cx,cy,r*1.35,0,Math.PI*2); ctx.fill();
+
+  // L2 glass shell with agent tint
+  const lg=ctx.createRadialGradient(cx-r*.14,cy-r*.16,r*.04,cx,cy,r);
+  const tr=Math.floor(cr*.07)+4, tg=Math.floor(cg*.07)+18, tb=Math.floor(cb*.07)+32;
+  lg.addColorStop(0,`rgba(${tr},${tg},${tb},.78)`);
+  lg.addColorStop(.5,`rgba(${Math.floor(tr*.6)},${Math.floor(tg*.6)},${Math.floor(tb*.6)},.68)`);
+  lg.addColorStop(1,'rgba(0,8,22,.62)');
+  ctx.fillStyle=lg; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+
+  // L3 (JARVIS only): Deeper indigo inner core — rotates slowly (spec §2.5: "deeper indigo inner core")
+  // Distinct from the cyan surface; creates visual depth and marks JARVIS as primary agent
+  if(cfg.name==='JARVIS'){
+    const ia=hz.t*0.008;         // 0.008 rad/s ≈ 0.46°/s — within spec §2.5 calm range
+    const iox=r*0.08*Math.cos(ia), ioy=r*0.08*Math.sin(ia);  // slowly orbiting origin
+    const indigo=ctx.createRadialGradient(cx+iox,cy+ioy,0,cx,cy,r*0.52);
+    indigo.addColorStop(0,  'rgba(0,40,140,0.55)');
+    indigo.addColorStop(0.4,'rgba(0,28,120,0.28)');
+    indigo.addColorStop(1,  'rgba(0,18,100,0)');
+    ctx.fillStyle=indigo; ctx.beginPath(); ctx.arc(cx,cy,r*0.52,0,Math.PI*2); ctx.fill();
+  }
+
+  // L4 personality surface detail
+  drawPersonality(cfg,cx,cy,r,t);
+
+  // L5 ambient micro-particles (spec §2.6 layer 5: "60–220 micro-particles, density by state")
+  // Drawn with zero shadowBlur — canvas-level CSS drop-shadow handles collective bloom
+  if(o.particles&&o.particleFadeIn>0.01){
+    const pBase=o.particleFadeIn*o.scale;
+    ctx.save();
+    o.particles.forEach(p=>{
+      const pA=p.a*(0.45+0.55*Math.sin(p.phase))*pBase;
+      if(pA<0.006) return;
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${pA.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(cx+p.ox*o.scale,cy+p.oy*o.scale,p.r*o.scale,0,Math.PI*2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  // L6 central soul point (brightest element per spec §2.6)
+  const soul=ctx.createRadialGradient(cx,cy,0,cx,cy,r*.55);
+  soul.addColorStop(0,'rgba(255,255,255,.92)');
+  soul.addColorStop(.3,`rgba(${cr},${cg},${cb},.82)`);
+  soul.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=soul; ctx.beginPath(); ctx.arc(cx,cy,r*.55,0,Math.PI*2); ctx.fill();
+
+  // L5 Fresnel rim
+  const fr=ctx.createRadialGradient(cx-r*.36,cy-r*.34,r*.5,cx,cy,r*1.04);
+  fr.addColorStop(0,'rgba(0,0,0,0)'); fr.addColorStop(.7,`rgba(${cr},${cg},${cb},0)`);
+  fr.addColorStop(1,`rgba(${cr},${cg},${cb},.22)`);
+  ctx.fillStyle=fr; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+
+  // L6 border stroke
+  ctx.save();
+  ctx.strokeStyle=`rgba(${cr},${cg},${cb},${(.38+hp*.32)*(hovered?1.6:1.0)})`; ctx.lineWidth=hovered?1.9:1.2;
+  ctx.shadowBlur=REDUCED?2:((5+hp*10)*(hovered?1.8:1.0)*_perfBloom); ctx.shadowColor=`rgba(${cr},${cg},${cb},.7)`;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); ctx.restore();
+
+  if(o.pulse>0) o.pulse=Math.max(0,o.pulse-.016/.8);
+}
+
+// ── Agent personality surface details ─────────────────────────
+function drawPersonality(cfg,cx,cy,r,t){
+  ctx.save(); ctx.globalAlpha*=.32;
+  const{name,r:cr,g:cg,b:cb}=cfg;
+
+  if(name==='JARVIS'){
+    // Horizontal energy bands — composed, measured (spec §2.5)
+    for(let j=-1;j<=1;j++){
+      const yy=cy+j*r*.30, bw=r*(.9-Math.abs(j)*.22);
+      ctx.strokeStyle=`rgba(${cr},${cg},${cb},.65)`; ctx.lineWidth=.8;
+      ctx.beginPath(); ctx.moveTo(cx-bw,yy); ctx.lineTo(cx+bw,yy); ctx.stroke();
+    }
+  } else if(name==='FRIDAY'){
+    // Scattered sparks — fast live-wire energy (spec §2.5)
+    for(let p=0;p<7;p++){
+      const a=vn(p*1.7,p*2.3,t*2.2)*Math.PI*2;
+      const pr=r*(.28+vn(p*3.1,p*.9,t*1.9)*.55);
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},.88)`;
+      ctx.beginPath(); ctx.arc(cx+Math.cos(a)*pr,cy+Math.sin(a)*pr,1.3,0,Math.PI*2); ctx.fill();
+    }
+  } else if(name==='VERONICA'){
+    // Precise angular facets — structural, surgical (spec §2.5)
+    ctx.strokeStyle=`rgba(${cr},${cg},${cb},.60)`; ctx.lineWidth=.75;
+    const an=t*0.01658;  // spec §2.5: 0.8–1.1°/s → 0.95°/s = 0.01658 rad/s
+    for(let f=0;f<3;f++){
+      const fa=an+f*Math.PI*2/3;
+      ctx.beginPath();
+      ctx.moveTo(cx+Math.cos(fa)*r*.48,cy+Math.sin(fa)*r*.48);
+      ctx.lineTo(cx+Math.cos(fa+Math.PI*.62)*r*.72,cy+Math.sin(fa+Math.PI*.62)*r*.72);
+      ctx.stroke();
+    }
+  } else if(name==='KAREN'){
+    // Soft golden cloud — warm drift (spec §2.5)
+    for(let k=0;k<3;k++){
+      const ka=vn(k*2.3,k*1.7,t*.19)*Math.PI*2;
+      const kr=r*(.18+vn(k*1.1,k*3.7,t*.15)*.42);
+      const gw=ctx.createRadialGradient(cx+Math.cos(ka)*kr,cy+Math.sin(ka)*kr,0,cx,cy,r);
+      gw.addColorStop(0,`rgba(${cr},${cg},${cb},.45)`);
+      gw.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+      ctx.fillStyle=gw; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ── Orb label + status (spec §3.2: 9–10px monospaced, 12px settle) ──
+function drawOrbLabel(o,cfg){
+  const{name,r:cr,g:cg,b:cb}=cfg;
+  const orbR=ORB_R*o.scale;
+  // 12px upward settle during fade-in (spec §3.2)
+  const settleY=o.y+orbR+11+(1-o.labelA)*12;
+
+  ctx.save();
+  ctx.globalAlpha*=o.labelA;
+  ctx.font='700 9px "Consolas","Monaco","Courier New",monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillStyle=`rgba(${cr},${cg},${cb},.92)`;
+  ctx.shadowBlur=4; ctx.shadowColor=`rgba(${cr},${cg},${cb},.50)`;
+  ctx.fillText(name,o.x,settleY);
+
+  if(o.statusA>.02){
+    ctx.globalAlpha=o.statusA;
+    ctx.font='500 7px "Consolas","Monaco","Courier New",monospace';
+    ctx.fillStyle=`rgba(${cr},${cg},${cb},.62)`;
+    ctx.shadowBlur=0;
+    ctx.fillText(ORB_STATUS[name]||'Standby',o.x,settleY+13);
+  }
+  ctx.restore();
+}
+
+// ── Membrane mote particles (80–320ms unfurl burst) ───────────
+function drawMotes(){
+  hz.motes.forEach(m=>{
+    const lt=m.life/m.max;
+    const a=(1-lt)*(m.cyan?.72:.50);
+    ctx.fillStyle=m.cyan?`rgba(0,229,255,${a})`:`rgba(210,242,255,${a})`;
+    ctx.beginPath(); ctx.arc(m.x,m.y,m.r*(1-lt*.5),0,Math.PI*2); ctx.fill();
+  });
+}
+
+// ── Orb ambient micro-particles (spec §2.6 layer 5) ──────────────────────────────────────────
+// Dynamic particle count: fewer particles when many orbs are on screen.
+// Solo orb: 18–34 (full spec). 4+ orbs: 5–8 (lean, still alive-looking).
+function _particleCount(){
+  const n=_heavyOrbs; // computed at frame start; fallback to 0 if called before first frame
+  if(n>=6) return 5 +Math.floor(Math.random()*4);   // 5–8   (4 corners + summoned + RA)
+  if(n>=4) return 8 +Math.floor(Math.random()*6);   // 8–13  (full 4-corner deployment)
+  if(n>=2) return 12+Math.floor(Math.random()*8);   // 12–19 (2 orbs out)
+  return 18+Math.floor(Math.random()*16);            // 18–33 (solo — full spec density)
+}
+
+function initOrbParticles(o){
+  const N=_particleCount();
+  o.particles=[];
+  for(let i=0;i<N;i++){
+    const angle=Math.random()*Math.PI*2;
+    const dist=ORB_R*(0.28+Math.random()*0.98);  // scatter 0.28–1.26× ORB_R from centre
+    o.particles.push({
+      ox:Math.cos(angle)*dist,
+      oy:Math.sin(angle)*dist,
+      vx:(Math.random()-.5)*0.14,
+      vy:(Math.random()-.5)*0.14,
+      r:  0.65+Math.random()*1.05,               // 0.65–1.7px radius
+      a:  0.040+Math.random()*0.055,              // 0.04–0.095 base alpha — barely visible
+      phase:Math.random()*Math.PI*2,              // individual alpha phase for slow modulation
+    });
+  }
+}
+
+function updateOrbParticles(o){
+  if(!o.particles) return;
+  const maxD=ORB_R*1.30;
+  o.particles.forEach(p=>{
+    // Brownian: tiny random velocity nudge + exponential damping
+    p.vx+=(Math.random()-.5)*0.048; p.vy+=(Math.random()-.5)*0.048;
+    p.vx*=0.945; p.vy*=0.945;
+    p.ox+=p.vx; p.oy+=p.vy;
+    // Soft boundary — reflect inward gently if past orbital zone
+    const d=Math.hypot(p.ox,p.oy);
+    if(d>maxD){ const f=maxD/d; p.ox*=f; p.oy*=f; p.vx*=-0.32; p.vy*=-0.32; }
+    p.phase+=0.011;  // slow alpha modulation — full cycle ≈ 9 minutes
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MILESTONE 3 — SESSION START RITUAL (spec §4, 0.0 s → 14.5 s)
+// ═══════════════════════════════════════════════════════════════
+
+// ── DOM helpers ───────────────────────────────────────────────
+// Single source of truth: every element the ritual ever hides. The safety
+// net (_ritualRevealAll) reveals exactly this set, guaranteeing the HUD can
+// never be left hidden even if tickRitual throws mid-sequence.
+const RITUAL_HIDDEN_IDS = ['ring-zone','lower-section','bottom-orb-zone',
+                           'active-agent-label','ticker','top-bar','input-strip'];
+function _ritualHide(ids){ ids.forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.add('hz-ritual-hide'); }); }
+function _ritualShow(ids){ ids.forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.remove('hz-ritual-hide'); }); }
+// Guaranteed full reveal — used by the error path and the watchdog timer.
+function _ritualRevealAll(){ _ritualShow(RITUAL_HIDDEN_IDS); }
+
+// ── Ritual tick — advances the state machine each frame ───────
+function tickRitual(dt){
+  ritual.totalMs += dt * 1000;
+  const T = ritual.totalMs;
+
+  // ── VOID (0–600ms): empty screen per spec §4 ─────────────────────────
+  if(ritual.phase==='void'){
+    ritual.bubbleAlpha=0; ritual.bubbleScale=0.6;
+    if(T>=600) ritual.phase='materializing';
+    return;
+  }
+
+  // ── MATERIALIZING (600–1400ms): bubble resolves at screen centre ──────
+  if(ritual.phase==='materializing'){
+    const t=Math.min(1,(T-600)/800), e=easeOutCubic(t);
+    ritual.bubbleAlpha=e;
+    ritual.bubbleScale=0.6+e*0.4;   // spec: "soft 0.6× → 1.0× arrival"
+    hz.count=4;
+    if(T>=1400){
+      ritual.phase='jarvis-detach';
+      hz.count=3;
+      // Synthetic JARVIS orb — starts at bubble centre
+      ritual.jOrb={x:hz.px,y:hz.py,scale:0,arrived:false,particles:null,particleFadeIn:0,pulse:0};
+      ritual.jx=hz.px; ritual.jy=hz.py;
+    }
+    return;
+  }
+
+  // ── JARVIS DETACH (1400–2100ms): JARVIS rises from bubble ────────────
+  if(ritual.phase==='jarvis-detach'){
+    const t=Math.min(1,(T-1400)/420), e=easeMeasured(t); // spec §2.5: 420ms measured
+    ritual.jScale=e;
+    ritual.jx=hz.px;
+    ritual.jy=hz.py-100*e;          // rises 100px above bubble centre
+    ritual.jOrb.x=ritual.jx; ritual.jOrb.y=ritual.jy; ritual.jOrb.scale=e;
+    ritual.jOrb.arrived=(e>0.85);
+    if(!ritual.jOrb.particles&&e>0.5) initOrbParticles(ritual.jOrb);
+    if(ritual.jOrb.particles){
+      ritual.jOrb.particleFadeIn=Math.min(1,ritual.jOrb.particleFadeIn+dt/0.4);
+      updateOrbParticles(ritual.jOrb);
+    }
+    if(T>=2100){ ritual.phase='greeting'; ritual.jPower=0; }
+    return;
+  }
+
+  // ── GREETING (2100–2800ms): 1.45×, power wave, canonical greeting ────
+  if(ritual.phase==='greeting'){
+    const t=Math.min(1,(T-2100)/700), e=easeMeasured(t);
+    ritual.jScale=1.0+e*(RITUAL_J_SCALE-1.0);   // 1.0 → peak (M3 hardening presence)
+    ritual.jPower=Math.min(1,(T-2100)/300);
+    ritual.greetAlpha=easeOutCubic(Math.min(1,(T-2100)/420));
+    ritual.jOrb.x=ritual.jx; ritual.jOrb.y=ritual.jy;
+    ritual.jOrb.scale=ritual.jScale; ritual.jOrb.arrived=true;
+    // Spec §4: exact canonical greeting line, TTS fires once.
+    // Append to chat at the moment it is spoken (2.1s) so audio + log align.
+    if(!ritual.greetingPlayed){
+      ritual.greetingPlayed=true;
+      ritual.greetingLine='Welcome back. The team is here.';
+      if(typeof playTTS==='function') playTTS(ritual.greetingLine,'JARVIS');
+      if(typeof appendMsg==='function') appendMsg('agent',ritual.greetingLine,'JARVIS');
+    }
+    if(ritual.jOrb.particles){
+      ritual.jOrb.particleFadeIn=Math.min(1,ritual.jOrb.particleFadeIn+dt/0.4);
+      updateOrbParticles(ritual.jOrb);
+    }
+    if(T>=2800){
+      ritual.phase='conversation'; ritual.jScale=RITUAL_J_SCALE;
+      _ritualShow(['input-strip','top-bar']); // user can now interact
+    }
+    return;
+  }
+
+  // ── CONVERSATION (2800ms–9000ms or user): JARVIS at 1.45× ───────────
+  if(ritual.phase==='conversation'){
+    ritual.greetAlpha=Math.max(0,1-(T-7000)/800); // text fades at 7 s
+    if(ritual.jOrb.particles){
+      ritual.jOrb.particleFadeIn=Math.min(1,ritual.jOrb.particleFadeIn+dt/0.4);
+      updateOrbParticles(ritual.jOrb);
+    }
+    if(ritual.userAdvanced||T>=9000){
+      ritual.phase='returning'; ritual.retStart=T;
+      ritual.retOriginX=ritual.jx; ritual.retOriginY=ritual.jy;
+      // Auto-advance closing line (spec §4: "I'll get the team situated. Standing by.")
+      if(!ritual.userAdvanced&&typeof playTTS==='function')
+        playTTS("I'll get the team situated. Standing by.",'JARVIS');
+    }
+    return;
+  }
+
+  // ── RETURNING (420ms): JARVIS arcs back to bubble ─────────────────────
+  if(ritual.phase==='returning'){
+    const t=Math.min(1,(T-ritual.retStart)/420), e=easeOutCubic(t);
+    ritual.jScale=RITUAL_J_SCALE*(1-e);
+    ritual.jx=ritual.retOriginX+(hz.px-ritual.retOriginX)*e;
+    ritual.jy=ritual.retOriginY+(hz.py-ritual.retOriginY)*e;
+    ritual.jOrb.x=ritual.jx; ritual.jOrb.y=ritual.jy; ritual.jOrb.scale=ritual.jScale;
+    ritual.greetAlpha=Math.max(0,1-e*2.5);
+    if(ritual.jOrb.particles){
+      ritual.jOrb.particleFadeIn=Math.max(0,ritual.jOrb.particleFadeIn-dt/0.3);
+      updateOrbParticles(ritual.jOrb);
+    }
+    if(T>=ritual.retStart+420){
+      hz.count=4; ritual.jScale=0; ritual.greetAlpha=0;
+      ritual.phase='migrating'; ritual.migStart=T;
+      ritual.migStartX=hz.px; ritual.migStartY=hz.py;
+      // Target: persisted corner position or default top-right (spec §3.1)
+      try{
+        const sp=JSON.parse(localStorage.getItem('jarvis_hz_pos')||'{"rx":0.935,"ry":0.07}');
+        ritual.migEndX=Math.max(hz.r+10,Math.min(window.innerWidth-hz.r-10,  sp.rx*window.innerWidth));
+        ritual.migEndY=Math.max(hz.r+36,Math.min(window.innerHeight-hz.r-22, sp.ry*window.innerHeight));
+      }catch(_){
+        ritual.migEndX=window.innerWidth*0.935; ritual.migEndY=window.innerHeight*0.07;
+      }
+    }
+    return;
+  }
+
+  // ── MIGRATING (1900ms): bubble travels centre → corner ────────────────
+  if(ritual.phase==='migrating'){
+    const t=Math.min(1,(T-ritual.migStart)/1900), e=easeOutCubic(t);
+    // Spec §4: "12–18 px of gentle overshoot on arrival"
+    const ov=Math.sin(Math.min(t,1)*Math.PI*1.1)*14*(1-t);
+    hz.px=ritual.migStartX+(ritual.migEndX-ritual.migStartX)*e + ov*Math.sign(ritual.migEndX-ritual.migStartX);
+    hz.py=ritual.migStartY+(ritual.migEndY-ritual.migStartY)*e + ov*Math.sign(ritual.migEndY-ritual.migStartY);
+    ritual.bubbleAlpha=1; ritual.bubbleScale=1;
+    // Cyan particle trail (spec §4: "faint motion trail of cyan particles")
+    if(!REDUCED){
+      ritual.trailMotes.push({x:hz.px+(Math.random()-.5)*6,y:hz.py+(Math.random()-.5)*6,
+                              life:0,max:200+Math.random()*160});
+    }
+    ritual.trailMotes.forEach(m=>{m.life+=dt*1000;});
+    ritual.trailMotes=ritual.trailMotes.filter(m=>m.life<m.max);
+    if(T>=ritual.migStart+1900){
+      hz.px=ritual.migEndX; hz.py=ritual.migEndY;
+      ritual.phase='settling';
+      // Fade the main HUD back in with CSS transition (already set in CSS)
+      _ritualShow(['ring-zone','lower-section','bottom-orb-zone','active-agent-label','ticker']);
+      persist();
+    }
+    return;
+  }
+
+  // ── SETTLING (11.1s → 14.5s): HUD fades back, breathing resumes ───────
+  if(ritual.phase==='settling'){
+    ritual.trailMotes.forEach(m=>{m.life+=dt*1000;});
+    ritual.trailMotes=ritual.trailMotes.filter(m=>m.life<m.max);
+    ritual.bubbleAlpha=1; ritual.bubbleScale=1;
+    if(T>=14500){
+      ritual.phase='done'; ritual.active=false;
+      // Greeting already appended at 2.1s; just guarantee full HUD is visible.
+      _ritualRevealAll();
+    }
+    return;
+  }
+}
+
+// ── Ritual rendering — drawn on top of all other hz-canvas elements ───────
+function drawRitual(){
+  // Trail motes (active during migrating + settling phases)
+  ritual.trailMotes.forEach(m=>{
+    const lt=m.life/m.max, a=(1-lt)*0.52;
+    if(a<0.02) return;
+    ctx.fillStyle=`rgba(0,229,255,${a})`;
+    ctx.beginPath(); ctx.arc(m.x,m.y,2*(1-lt*0.5),0,Math.PI*2); ctx.fill();
+  });
+
+  // JARVIS vertical light column (spec §2.5 "Really Active": "strong vertical
+  // light column" — his commanding cue while at centre). Drawn BEHIND the orb.
+  // Ramps in with scale beyond 1.3×; absent during tiny detach + after return.
+  if(ritual.jScale>1.3){
+    const colA=Math.min(1,(ritual.jScale-1.3)/(RITUAL_J_SCALE-1.3));
+    const halfW=ORB_R*ritual.jScale*1.05;
+    const colH=Math.min(ritual.jy, window.innerHeight-ritual.jy)*1.6;
+    ctx.save();
+    const col=ctx.createLinearGradient(ritual.jx-halfW,ritual.jy,ritual.jx+halfW,ritual.jy);
+    col.addColorStop(0,   'rgba(0,229,255,0)');
+    col.addColorStop(0.5,`rgba(0,150,255,${0.10*colA})`);
+    col.addColorStop(1,   'rgba(0,229,255,0)');
+    ctx.fillStyle=col;
+    ctx.fillRect(ritual.jx-halfW, ritual.jy-colH, halfW*2, colH*2);
+    // Bright vertical core line
+    const core=ctx.createLinearGradient(ritual.jx,ritual.jy-colH,ritual.jx,ritual.jy+colH);
+    core.addColorStop(0,    'rgba(0,229,255,0)');
+    core.addColorStop(0.5, `rgba(120,235,255,${0.16*colA})`);
+    core.addColorStop(1,    'rgba(0,229,255,0)');
+    ctx.fillStyle=core;
+    ctx.fillRect(ritual.jx-1.4, ritual.jy-colH, 2.8, colH*2);
+    ctx.restore();
+  }
+
+  // JARVIS centre orb (detach → greeting → conversation → returning)
+  if(ritual.jScale>0.04&&ritual.jOrb){
+    ritual.jOrb.x=ritual.jx; ritual.jOrb.y=ritual.jy; ritual.jOrb.scale=ritual.jScale;
+    drawOrb(ritual.jOrb, ORB_CFG[2], ORB_R*ritual.jScale, false);
+  }
+
+  // JARVIS departure power wave (greeting phase, spec §4)
+  if(ritual.jPower>=0&&ritual.jPower<1){
+    const p=ritual.jPower;
+    const wR=ORB_R*ritual.jScale*(0.12+1.88*p);
+    const wA=(1-p)*0.88;
+    ctx.save();
+    ctx.strokeStyle=`rgba(0,80,200,${wA})`; // deeper indigo per spec §2.5
+    ctx.lineWidth=3.8*(1-p)+0.7;
+    ctx.shadowBlur=22*(1-p)+4; ctx.shadowColor=`rgba(0,120,235,${wA*0.9})`;
+    ctx.beginPath(); ctx.arc(ritual.jx,ritual.jy,wR,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Holographic greeting text (spec §4: "subtle holographic text that fades in near him")
+  if(ritual.greetAlpha>0.02) drawRitualText(ritual.jx, ritual.jy+ORB_R*ritual.jScale+32, ritual.greetAlpha);
+}
+
+// ── Ritual greeting text — monospaced typewriter reveal ───────────────────
+function drawRitualText(cx, cy, alpha){
+  if(!ritual.greetingLine) return;
+  // Typewriter: characters appear as alpha ramps up
+  const chars=Math.min(ritual.greetingLine.length,Math.floor(ritual.greetingLine.length*(alpha*1.6)));
+  const visible=ritual.greetingLine.slice(0,chars);
+  ctx.save();
+  ctx.font='600 11px "Consolas","Monaco","Courier New",monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillStyle=`rgba(0,229,255,${alpha*0.82})`;
+  ctx.shadowBlur=7; ctx.shadowColor=`rgba(0,229,255,0.50)`;
+  ctx.fillText(visible, cx, cy);
+  ctx.restore();
+}
+
+// ── Camera aperture membrane (spec §3.2: "like a camera aperture made of light") ──────────
+// t: 0→1 over the 80–220ms unfurl window
+function drawAperture(t){
+  if(t<=0) return;
+  const eff=Math.min(t,1);
+  const cx=hz.px, cy=hz.py-hz.r;   // top pole of bubble
+  const maxR=hz.r*2.5;
+
+  // 1. Central bright "eye" — the pinhole that opens
+  const eyeR=maxR*Math.min(1,eff*3)*.16;
+  const eye=ctx.createRadialGradient(cx,cy,0,cx,cy,eyeR*2.8);
+  eye.addColorStop(0,`rgba(255,255,255,${.95*(1-eff*.45)})`);
+  eye.addColorStop(.22,`rgba(0,229,255,${.88*(1-eff*.35)})`);
+  eye.addColorStop(1,'rgba(0,180,255,0)');
+  ctx.fillStyle=eye;
+  ctx.beginPath(); ctx.arc(cx,cy,eyeR*2.8,0,Math.PI*2); ctx.fill();
+
+  // 2. Iris rings — 4 concentric arcs expanding upward from the top pole
+  for(let i=0;i<4;i++){
+    const delay=i*0.18;
+    const prog=Math.max(0,(eff-delay)/(1-delay*.55));
+    if(prog<=0) continue;
+    const eased=1-Math.pow(1-Math.min(prog,1),2);
+    const ringR=maxR*eased*(0.48+i*0.16);
+    const ringA=(1-eased)*(0.68-i*0.12);
+    if(ringA<.02) continue;
+    ctx.save();
+    ctx.strokeStyle=`rgba(0,229,255,${ringA})`;
+    ctx.lineWidth=2.4-i*.45;
+    ctx.shadowBlur=12-i*2;
+    ctx.shadowColor=`rgba(0,229,255,${ringA*.8})`;
+    ctx.beginPath();
+    ctx.arc(cx,cy,ringR,-Math.PI*.87,-Math.PI*.13); // upper semicircle arc only
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 3. Aperture blades — 7 radiating line segments fanning upward
+  const bladeLen=maxR*eff*.65;
+  const bladeA=(1-eff*.88)*.72;
+  if(bladeA>.02){
+    for(let i=0;i<7;i++){
+      const a=-Math.PI*.84+(i/6)*Math.PI*.68; // upper fan, ~122° spread
+      ctx.save();
+      ctx.strokeStyle=`rgba(0,229,255,${bladeA})`;
+      ctx.lineWidth=1.1;
+      ctx.shadowBlur=7;
+      ctx.shadowColor=`rgba(0,229,255,${bladeA*.65})`;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+Math.cos(a)*bladeLen, cy+Math.sin(a)*bladeLen);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
+// ── JARVIS power wave (spec §2.5: "single deep power wave from centre to surface") ──────────
+function drawPowerWave(){
+  const t=hz.powerWave;
+  if(t<=0||t>=1.05) return;
+  const eff=Math.min(t,1);
+  const wR=hz.r*0.12+(hz.r*1.9)*eff;
+  const a=(1-eff)*.90;
+  ctx.save();
+  ctx.strokeStyle=`rgba(0,80,200,${a})`;    // deeper indigo (spec §2.5 "deeper indigo")
+  ctx.lineWidth=3.8*(1-eff)+0.7;
+  ctx.shadowBlur=22*(1-eff)+4;
+  ctx.shadowColor=`rgba(0,120,235,${a*.9})`;
+  ctx.beginPath(); ctx.arc(hz.px,hz.py,wR,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+
+// ── FRIDAY trailing energy wake (spec §2.5: "quick trailing energy wake") ────────────────────
+function drawFridayWake(){
+  hz.fridayWake.forEach(w=>{
+    const lt=w.life/w.max;
+    const a=(1-lt)*.56;
+    const r=(ORB_R*.30)*(1-lt*.5);
+    if(r<.3||a<.02) return;
+    ctx.save();
+    ctx.fillStyle=`rgba(255,106,0,${a})`;
+    ctx.shadowBlur=5*(1-lt);
+    ctx.shadowColor='rgba(255,106,0,.65)';
+    ctx.beginPath(); ctx.arc(w.x,w.y,r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ── Collapse dissolve motes ───────────────────────────────────
+function spawnCollapseMotes(){
+  if(REDUCED) return;
+  hz.colMotes=[];
+  const cnt=26+Math.floor(Math.random()*18);
+  for(let i=0;i<cnt;i++){
+    hz.colMotes.push({
+      x:cloudCx()+(Math.random()-.5)*CLOUD_W*.88,
+      y:cloudCy()+(Math.random()-.5)*CLOUD_H*.72,
+      vx:(Math.random()-.5)*1.0,
+      vy:-(0.4+Math.random()*1.5),
+      life:0, max:110+Math.random()*130,
+      r:.7+Math.random()*1.4,
+      cyan:Math.random()>.28
+    });
+  }
+}
+
+function drawCollapseMotes(){
+  hz.colMotes.forEach(m=>{
+    const lt=m.life/m.max;
+    const a=(1-lt)*(m.cyan?.58:.40);
+    ctx.fillStyle=m.cyan?`rgba(0,229,255,${a})`:`rgba(180,235,255,${a})`;
+    ctx.beginPath(); ctx.arc(m.x,m.y,m.r*(1-lt*.4),0,Math.PI*2); ctx.fill();
+  });
+}
+
+// Mouse position shared by RA callout hit-testing (updated in viewport mousemove below)
+let _raMX=0, _raMY=0;
+
+// ── Summoned orb — tick & draw (spec §5.2) ────────────────────
+// State: hz.summoned = { cfg, phase, ms, startX, startY, x0, y0, x, y, scale,
+//                        pulse, bPhase, orbState:{x,y,scale,pulse,particles,particleFadeIn} }
+
+const SUMMON_ARRIVE_MS = 480;  // arrival travel (JARVIS timing feel)
+const SUMMON_RETURN_MS = 320;  // return faster than arrival (ui-ux exit-faster rule)
+
+function summonTargetXY(){
+  // Slightly above viewport centre — looks better than dead-centre
+  return { tx: window.innerWidth*0.5, ty: window.innerHeight*0.44 };
+}
+
+function tickSummoned(dt, dtMs){
+  const s = hz.summoned;
+  if(!s) return;
+  s.ms += dtMs;
+
+  if(s.phase==='arriving'){
+    const raw = Math.min(1, s.ms / SUMMON_ARRIVE_MS);
+    const e   = easeOutCubic(raw);
+    const{tx,ty} = summonTargetXY();
+    // Bezier arc: control point arcs upward between source and target
+    const cpx = (s.startX + tx)*0.5 + (s.startY - ty)*0.18;
+    const cpy = (s.startY + ty)*0.5 - Math.abs(s.startX - tx)*0.30 - 50;
+    s.x = bq(e, s.startX, cpx, tx);
+    s.y = bq(e, s.startY, cpy, ty);
+    s.scale = e * SUMMON_SCALE;
+    s.orbState.x=s.x; s.orbState.y=s.y; s.orbState.scale=s.scale;
+    if(raw>=1){
+      s.phase='present'; s.ms=0;
+      s.x=tx; s.y=ty; s.scale=SUMMON_SCALE;
+    }
+  } else if(s.phase==='present'){
+    s.bPhase += dt*1.85; // calm breathing cycle
+    s.scale = SUMMON_SCALE + 0.055*Math.sin(s.bPhase); // gentle swell
+    if(!s.orbState.particles) initOrbParticles(s.orbState);
+    s.orbState.particleFadeIn = Math.min(1, s.orbState.particleFadeIn + dt/0.45);
+    updateOrbParticles(s.orbState);
+    if(s.pulse>0) s.pulse=Math.max(0,s.pulse-dt/1.2);
+    s.orbState.x=s.x; s.orbState.y=s.y; s.orbState.scale=s.scale;
+    s.orbState.pulse=s.pulse;
+  } else if(s.phase==='returning'){
+    const raw = Math.min(1, s.ms / SUMMON_RETURN_MS);
+    const e   = easeOutCubic(raw);
+    // Corner mode: return to corner; otherwise return to Home Zone bubble
+    const retX = (s.returnX!==undefined) ? s.returnX : hz.px;
+    const retY = (s.returnY!==undefined) ? s.returnY : hz.py;
+    const cpx = (s.x0 + retX)*0.5;
+    const cpy = Math.min(s.y0, retY) - 60;
+    s.x = bq(e, s.x0, cpx, retX);
+    s.y = bq(e, s.y0, cpy, retY);
+    s.scale = SUMMON_SCALE*(1 - easeOutCubic(raw));
+    s.orbState.x=s.x; s.orbState.y=s.y; s.orbState.scale=s.scale;
+    if(s.orbState.particles){
+      s.orbState.particleFadeIn=Math.max(0,s.orbState.particleFadeIn-dt/0.3);
+      updateOrbParticles(s.orbState);
+    }
+    if(raw>=1){
+      if(!s.cornerRef) hz.count=Math.min(4,hz.count+1); // only if returning to HZ
+      if(s.cornerRef){ // restore corner orb agent was recalled from
+        const co=s.cornerRef;
+        // Guard: don't overwrite if exit is already in progress on this corner orb
+        if(co.phase!=='returning'&&co.phase!=='done'){
+          co.phase='onstation'; co.x=co.cornerX; co.y=co.cornerY; co.ms=0; co.bPhase=0;
+          co.scale=ORB_CFG[co.cfgIdx].name==='JARVIS'?CORNER_SCALE_JARVIS:CORNER_SCALE_BASE;
+          co.orbState.x=co.x; co.orbState.y=co.y; co.orbState.scale=co.scale;
+        }
+      }
+      hz.summoned=null;
+    }
+  }
+}
+
+function drawSummoned(){
+  const s=hz.summoned;
+  if(!s||s.scale<0.02) return;
+  const r=ORB_R*s.scale;
+  drawOrb(s.orbState, s.cfg, r, false);
+
+  // "Present" indicator: faint dashed outer ring showing orb is interactive/dismissible
+  if(s.phase==='present'&&!REDUCED){
+    const ringR=r*1.68;
+    const ringA=0.10+0.07*Math.sin(s.bPhase*0.55);
+    ctx.save();
+    ctx.strokeStyle=`rgba(${s.cfg.r},${s.cfg.g},${s.cfg.b},${ringA})`;
+    ctx.lineWidth=1;
+    ctx.setLineDash([3,7]);
+    ctx.lineDashOffset=-hz.t*6; // slowly rotating dashes
+    ctx.beginPath(); ctx.arc(s.x,s.y,ringR,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+
+  // Name label — fades in during arrival (after 55% of travel complete)
+  if(s.phase==='present'||(s.phase==='arriving'&&s.ms>SUMMON_ARRIVE_MS*0.55)){
+    const rawFadeA = s.phase==='present' ? 1
+                   : (s.ms - SUMMON_ARRIVE_MS*0.55)/(SUMMON_ARRIVE_MS*0.45);
+    const labelA=Math.min(1,rawFadeA);
+    const fakeO={...s.orbState, labelA, statusA:labelA*0.65};
+    drawOrbLabel(fakeO, s.cfg);
+  }
+}
+
+// ── 4-Corner Collaboration Mode (spec §5.4) ───────────────────────────────────────────────
+// Hardened per reflexion review 2026-05-29. Issues addressed:
+//   • Exit now animates summoned-from-corner agents back (no snap-null)
+//   • Exit calms active RA agents before returning the team
+//   • computeAlpha() raises HZ floor by +0.15 while team is deployed (spec §3.4)
+//   • _hzSetCornerStatus mirrors text to DOM sidebar panels
+//   • co.ms only accumulates during time-sensitive phases (no stale growth during 'recalled')
+//   • co.ms resets on every phase transition
+//
+// Current state vs spec:
+//   ✓ Entry choreography — staggered deployment with per-agent easing to exact corner positions
+//   ✓ On-station breathing, particles, name label, live status line
+//   ✓ Exit choreography — staggered group return to Home Zone
+//   ✓ Summon from corner → center, return to corner on dismiss
+//   ✓ Really Active from corner (triggered via existing _hzTriggerReallyActive)
+//   ✓ hz.count = 0 while deployed, 4 on exit
+//   ✗ Dynamic safe-area recalculation on resize — future polish
+
+function cornerOrbScale(co){ return ORB_CFG[co.cfgIdx].name==='JARVIS'?CORNER_SCALE_JARVIS:CORNER_SCALE_BASE; }
+
+function tickCornerOrb(co,dt,dtMs){
+  // Only accumulate ms for phases that use it for timing — prevents stale growth during 'recalled'
+  if(co.phase==='deploying'||co.phase==='returning') co.ms+=dtMs;
+  const cfg=ORB_CFG[co.cfgIdx];
+
+  if(co.phase==='deploying'){
+    const raw=Math.min(1,co.ms/CORNER_TRAVEL_MS);
+    const e=applyEase(cfg.ease,raw);
+    const cpx=(co.startX+co.cornerX)*0.5+(co.startY-co.cornerY)*0.12;
+    const cpy=(co.startY+co.cornerY)*0.5-Math.abs(co.startX-co.cornerX)*0.18-30;
+    co.x=bq(e,co.startX,cpx,co.cornerX); co.y=bq(e,co.startY,cpy,co.cornerY);
+    co.scale=e*cornerOrbScale(co);
+    co.orbState.x=co.x; co.orbState.y=co.y; co.orbState.scale=co.scale; co.orbState.pulse=co.pulse;
+    if(raw>=1){ co.x=co.cornerX; co.y=co.cornerY; co.scale=cornerOrbScale(co); co.phase='onstation'; co.ms=0; co.bPhase=0; }
+
+  } else if(co.phase==='onstation'){
+    const bFreq={JARVIS:1.55,VERONICA:1.62,KAREN:1.28,FRIDAY:2.18}[cfg.name]||1.6;
+    co.bPhase+=dt*bFreq;
+    co.scale=cornerOrbScale(co)+0.038*Math.sin(co.bPhase);
+    if(!co.orbState.particles) initOrbParticles(co.orbState);
+    co.orbState.particleFadeIn=Math.min(1,co.orbState.particleFadeIn+dt/0.5);
+    if(_doParticles) updateOrbParticles(co.orbState); // throttled to 30fps in heavy state
+    co.orbState.x=co.x; co.orbState.y=co.y; co.orbState.scale=co.scale; co.orbState.pulse=co.pulse;
+    if(co.pulse>0) co.pulse=Math.max(0,co.pulse-dt/1.2);
+    // Status text alpha decay: holds 5s then fades over 3s
+    if(co.status) co.statusMs+=dtMs;
+    if(co.status&&co.statusMs>5000&&co.statusAlpha>0)
+      co.statusAlpha=Math.max(0,co.statusAlpha-dt*0.33);
+
+  } else if(co.phase==='recalled'){
+    // Agent summoned to center — keep corner slot visually absent
+    co.scale=Math.max(0,co.scale-dt*4);
+    co.orbState.scale=co.scale;
+
+  } else if(co.phase==='returning'){
+    const raw=Math.min(1,co.ms/CORNER_RETURN_MS);
+    const e=easeOutCubic(raw);
+    const cpx=(co.retFromX+hz.px)*0.5, cpy=Math.min(co.retFromY,hz.py)-50;
+    co.x=bq(e,co.retFromX,cpx,hz.px); co.y=bq(e,co.retFromY,cpy,hz.py);
+    co.scale=cornerOrbScale(co)*(1-easeOutCubic(raw));
+    co.orbState.x=co.x; co.orbState.y=co.y; co.orbState.scale=co.scale;
+    if(co.orbState.particles){ co.orbState.particleFadeIn=Math.max(0,co.orbState.particleFadeIn-dt/0.35); updateOrbParticles(co.orbState); }
+    if(raw>=1){ co.phase='done'; co.ms=0; }
+  }
+}
+
+function tickCornerMode(dt,dtMs){
+  const cm=hz.cornerMode;
+  if(cm.phase==='deploying'){
+    cm.deployMs+=dtMs;
+    cm.cornerOrbs.forEach((co,i)=>{
+      if(!co||cm.deployMs<co.emitDelay) return;
+      tickCornerOrb(co,dt,dtMs);
+    });
+    if(cm.cornerOrbs.every(co=>!co||co.phase==='onstation'||co.phase==='recalled')) cm.phase='active';
+  } else if(cm.phase==='active'){
+    cm.cornerOrbs.forEach(co=>{ if(co&&(co.phase==='onstation'||co.phase==='recalled')) tickCornerOrb(co,dt,dtMs); });
+  } else if(cm.phase==='returning'){
+    cm.returnMs+=dtMs;
+    cm.cornerOrbs.forEach(co=>{
+      if(!co||co.phase==='done') return;
+      if(co.phase!=='returning'&&cm.returnMs>=(co.retStart||0)){ co.phase='returning'; co.ms=0; }
+      if(co.phase==='returning') tickCornerOrb(co,dt,dtMs);
+    });
+    if(cm.cornerOrbs.every(co=>!co||co.phase==='done')){
+      cm.phase='off'; cm.active=false; cm.cornerOrbs=[];
+      hz.count=4;
+      document.getElementById('viewport').classList.remove('hz-corner-mode');
+    }
+  }
+}
+
+function drawCornerOrbs(){
+  const cm=hz.cornerMode;
+  cm.cornerOrbs.forEach(co=>{
+    if(!co||co.scale<0.02) return;
+    const cfg=ORB_CFG[co.cfgIdx];
+    const r=ORB_R*co.scale;
+    drawOrb(co.orbState,cfg,r,false);
+    // Name label (fades in during deployment)
+    const lA=co.phase==='onstation'?1:Math.min(1,co.ms/CORNER_TRAVEL_MS*1.6);
+    if(lA>0.05) drawOrbLabel({...co.orbState,labelA:lA,statusA:0},cfg);
+    // Live status line (spec §7.1: "1-line micro status under the orb")
+    if(co.status&&co.statusAlpha>0.01){
+      const{r:cr,g:cg,b:cb}=cfg;
+      ctx.save(); ctx.globalAlpha*=co.statusAlpha;
+      ctx.font='500 8px "Consolas","Monaco","Courier New",monospace';
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},0.62)`;
+      ctx.shadowBlur=3; ctx.shadowColor=`rgba(${cr},${cg},${cb},0.35)`;
+      ctx.fillText(co.status.slice(0,22),co.x,co.y+r+22,160);
+      ctx.restore();
+    }
+  });
+}
+
+// ── Really Active — "The Only Loud Moment" (spec §5.3 + §7.3) ─────────────────────────────
+//
+// Current state vs full spec:
+//   ✓ Arrival from Home Zone with aggressive ease + corona
+//   ✓ Holographic glass callout with text + action button
+//   ✓ Auto-calm on acknowledge (click callout, Escape, API, click-outside)
+//   ✓ Multiple agents coordinated via slots (no overlap)
+//   ✓ Proactive polling loop wired to trigger this on surface events
+//   ✗ "Really Active from 4-corner / content-attached" — future phase
+//   ✗ Agent collision avoidance with content windows — future phase
+
+function raSlotXY(slot){
+  const cx=window.innerWidth*0.5, cy=window.innerHeight*0.42;
+  const gap=ORB_R*REALLY_ACTIVE_SCALE*2.75;
+  const dx=[0,gap,-gap,gap*2][Math.min(slot,3)];
+  return{tx:cx+dx, ty:cy};
+}
+
+function raInitCallout(ra){
+  const lines=(ra.text||'').split('\n').slice(0,3).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) lines.push('Agent notification');
+  const PAD=13, LH=17, W=210;
+  const textH=lines.length*LH+(lines.length>1?2:0);
+  const btnH=ra.actionLabel?28:0, btnGap=ra.actionLabel?10:0;
+  const H=PAD*2+textH+btnH+btnGap;
+  const r=ORB_R*ra.scale;
+  const goRight=(ra.x+r+26+W)<(window.innerWidth-16);
+  const bx=goRight?ra.x+r+22:ra.x-r-22-W, by=ra.y-H/2;
+  ra.callout={
+    alpha:0, x:bx, y:by, w:W, h:H, lines, PAD, LH,
+    btnH, btnGap, actionLabel:ra.actionLabel, onAction:ra.onAction,
+    btnX:bx+PAD, btnW:W-PAD*2, btnY:by+PAD+textH+btnGap, hovered:false, goRight,
+  };
+}
+
+function raUpdateCalloutPos(ra){
+  const cl=ra.callout; if(!cl) return;
+  const r=ORB_R*ra.scale, W=cl.w, H=cl.h;
+  const bx=cl.goRight?ra.x+r+22:ra.x-r-22-W, by=ra.y-H/2;
+  cl.x=bx; cl.y=by;
+  cl.btnX=bx+cl.PAD;
+  cl.btnY=by+cl.PAD+cl.lines.length*cl.LH+(cl.lines.length>1?2:0)+cl.btnGap;
+  if(cl.actionLabel)
+    cl.hovered=(_raMX>=cl.btnX&&_raMX<=cl.btnX+cl.btnW&&_raMY>=cl.btnY&&_raMY<=cl.btnY+cl.btnH);
+}
+
+function tickOneRA(ra,dt,dtMs){
+  ra.ms+=dtMs;
+  if(ra.phase==='arriving'){
+    const raw=Math.min(1,ra.ms/RA_ARRIVE_MS);
+    const e=1-Math.pow(1-raw,2.2); // aggressive ease-out (fast burst per spec)
+    const{tx,ty}=raSlotXY(ra.slot);
+    const cpx=(ra.startX+tx)*0.5+(ra.startY-ty)*0.15;
+    const cpy=(ra.startY+ty)*0.5-Math.abs(ra.startX-tx)*0.25-45;
+    ra.x=bq(e,ra.startX,cpx,tx); ra.y=bq(e,ra.startY,cpy,ty);
+    ra.scale=e*REALLY_ACTIVE_SCALE;
+    ra.orbState.x=ra.x; ra.orbState.y=ra.y; ra.orbState.scale=ra.scale; ra.orbState.pulse=1.0;
+    if(raw>=1){ ra.x=tx; ra.y=ty; ra.scale=REALLY_ACTIVE_SCALE; ra.phase='present'; ra.ms=0; raInitCallout(ra); }
+  } else if(ra.phase==='present'){
+    ra.bPhase+=dt*2.6;
+    ra.scale=REALLY_ACTIVE_SCALE+0.09*Math.sin(ra.bPhase);
+    if(!ra.orbState.particles) initOrbParticles(ra.orbState);
+    ra.orbState.particleFadeIn=Math.min(1,ra.orbState.particleFadeIn+dt/0.28);
+    updateOrbParticles(ra.orbState);
+    ra.orbState.pulse=0.60+0.40*Math.abs(Math.sin(ra.bPhase*0.7)); // constant elevated bloom
+    ra.orbState.x=ra.x; ra.orbState.y=ra.y; ra.orbState.scale=ra.scale;
+    if(ra.callout){ ra.callout.alpha=Math.min(1,ra.callout.alpha+dt*3.8); raUpdateCalloutPos(ra); }
+  } else if(ra.phase==='calming'){
+    if(ra.callout) ra.callout.alpha=Math.max(0,ra.callout.alpha-dt*6);
+    const raw=Math.min(1,ra.ms/RA_CALM_MS);
+    const e=easeOutCubic(raw);
+    const cpx=(ra.retX+ra.prevX)*0.5, cpy=Math.min(ra.retY,ra.prevY)-50;
+    ra.x=bq(e,ra.retX,cpx,ra.prevX); ra.y=bq(e,ra.retY,cpy,ra.prevY);
+    ra.scale=REALLY_ACTIVE_SCALE*(1-easeOutCubic(raw));
+    ra.orbState.x=ra.x; ra.orbState.y=ra.y; ra.orbState.scale=ra.scale;
+    if(ra.orbState.particles){ ra.orbState.particleFadeIn=Math.max(0,ra.orbState.particleFadeIn-dt/0.35); updateOrbParticles(ra.orbState); }
+    if(raw>=1){
+      ra.phase='done';
+      // Restore corner orb if RA was triggered from a corner (spec §5.3 "returns to where it was").
+      // Guard: don't overwrite if corner orb is already 'returning' or 'done' (exit in progress).
+      if(ra.cornerRef){
+        const co=ra.cornerRef;
+        if(co.phase!=='returning'&&co.phase!=='done'){
+          co.phase='onstation'; co.x=co.cornerX; co.y=co.cornerY; co.ms=0; co.bPhase=0;
+          co.scale=ORB_CFG[co.cfgIdx].name==='JARVIS'?CORNER_SCALE_JARVIS:CORNER_SCALE_BASE;
+          co.orbState.x=co.x; co.orbState.y=co.y; co.orbState.scale=co.scale;
+        }
+      }
+    }
+  }
+}
+
+function tickAllRA(dt,dtMs){
+  hz.reallyActive.forEach(ra=>tickOneRA(ra,dt,dtMs));
+  hz.reallyActive=hz.reallyActive.filter(r=>r.phase!=='done');
+  const anyHovered=hz.reallyActive.some(r=>r.callout&&r.callout.hovered);
+  const vp=document.getElementById('viewport');
+  if(vp) vp.style.cursor=anyHovered?'pointer':'';
+}
+
+function drawRAOrb(ra){
+  if(!ra||ra.scale<0.02) return;
+  const r=ORB_R*ra.scale, {r:cr,g:cg,b:cb}=ra.cfg;
+  // Extended corona (spec §5.3: "brighter corona + faster directed particles")
+  if(!REDUCED){
+    const cA=0.13+0.09*Math.sin(ra.bPhase*1.1);
+    const cg2=ctx.createRadialGradient(ra.x,ra.y,r*0.7,ra.x,ra.y,r*2.2);
+    cg2.addColorStop(0,`rgba(${cr},${cg},${cb},${cA})`);
+    cg2.addColorStop(0.45,`rgba(${cr},${cg},${cb},${cA*0.38})`);
+    cg2.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+    ctx.fillStyle=cg2; ctx.beginPath(); ctx.arc(ra.x,ra.y,r*2.2,0,Math.PI*2); ctx.fill();
+  }
+  drawOrb(ra.orbState,ra.cfg,r,false);
+  if(ra.phase==='present'&&!REDUCED){
+    const rA=0.22+0.14*Math.sin(ra.bPhase*0.75);
+    ctx.save();
+    ctx.strokeStyle=`rgba(${cr},${cg},${cb},${rA})`; ctx.lineWidth=1.5;
+    ctx.shadowBlur=14*_perfBloom; ctx.shadowColor=`rgba(${cr},${cg},${cb},0.55)`;
+    ctx.setLineDash([5,5]); ctx.lineDashOffset=-hz.t*14;
+    ctx.beginPath(); ctx.arc(ra.x,ra.y,r*1.72,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+  const fA=ra.phase==='present'?1:Math.min(1,ra.ms/RA_ARRIVE_MS*2);
+  if(fA>0.05) drawOrbLabel({...ra.orbState,labelA:fA,statusA:0},ra.cfg);
+}
+
+function drawRACallout(ra){
+  const cl=ra.callout; if(!cl||cl.alpha<0.01) return;
+  const{r:cr,g:cg,b:cb}=ra.cfg;
+  ctx.save(); ctx.globalAlpha*=cl.alpha;
+  function rr(px,py,pw,ph,pr){
+    ctx.beginPath(); ctx.moveTo(px+pr,py);
+    ctx.lineTo(px+pw-pr,py); ctx.quadraticCurveTo(px+pw,py,px+pw,py+pr);
+    ctx.lineTo(px+pw,py+ph-pr); ctx.quadraticCurveTo(px+pw,py+ph,px+pw-pr,py+ph);
+    ctx.lineTo(px+pr,py+ph); ctx.quadraticCurveTo(px,py+ph,px,py+ph-pr);
+    ctx.lineTo(px,py+pr); ctx.quadraticCurveTo(px,py,px+pr,py); ctx.closePath();
+  }
+  rr(cl.x,cl.y,cl.w,cl.h,8); ctx.fillStyle='rgba(0,10,26,0.92)'; ctx.fill();
+  const rim=ctx.createLinearGradient(cl.x,cl.y,cl.x,cl.y+18);
+  rim.addColorStop(0,`rgba(${cr},${cg},${cb},0.20)`); rim.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  rr(cl.x,cl.y,cl.w,cl.h,8); ctx.fillStyle=rim; ctx.fill();
+  rr(cl.x,cl.y,cl.w,cl.h,8);
+  ctx.strokeStyle=`rgba(${cr},${cg},${cb},0.42)`; ctx.lineWidth=1;
+  ctx.shadowBlur=10; ctx.shadowColor=`rgba(${cr},${cg},${cb},0.45)`; ctx.stroke(); ctx.shadowBlur=0;
+  // Connector line: orb edge → callout edge
+  const r=ORB_R*ra.scale;
+  const lx1=cl.goRight?ra.x+r+6:ra.x-r-6, lx2=cl.goRight?cl.x:cl.x+cl.w;
+  ctx.beginPath(); ctx.moveTo(lx1,ra.y); ctx.lineTo(lx2,cl.y+cl.h/2);
+  ctx.strokeStyle=`rgba(${cr},${cg},${cb},0.16)`; ctx.lineWidth=1; ctx.stroke();
+  // Text
+  ctx.font='500 10px "Consolas","Monaco","Courier New",monospace';
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillStyle='rgba(232,244,255,0.90)'; ctx.shadowBlur=0;
+  cl.lines.forEach((line,i)=>ctx.fillText(line,cl.x+cl.PAD,cl.y+cl.PAD+i*cl.LH,cl.w-cl.PAD*2));
+  // Action button
+  if(cl.actionLabel){
+    const{btnX:bx,btnY:by,btnW:bw,btnH:bh}=cl;
+    rr(bx,by,bw,bh,5);
+    ctx.fillStyle=cl.hovered?`rgba(${cr},${cg},${cb},0.30)`:`rgba(${cr},${cg},${cb},0.13)`; ctx.fill();
+    rr(bx,by,bw,bh,5);
+    ctx.strokeStyle=`rgba(${cr},${cg},${cb},${cl.hovered?0.80:0.38})`; ctx.lineWidth=1;
+    if(cl.hovered){ ctx.shadowBlur=8; ctx.shadowColor=`rgba(${cr},${cg},${cb},0.5)`; }
+    ctx.stroke(); ctx.shadowBlur=0;
+    ctx.font='700 9px "Consolas","Monaco","Courier New",monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle=`rgba(${cr},${cg},${cb},${cl.hovered?1.0:0.78})`;
+    ctx.fillText(cl.actionLabel,bx+bw/2,by+bh/2);
+  }
+  ctx.restore();
+}
+
+function drawAllRA(){
+  hz.reallyActive.forEach(ra=>{ drawRAOrb(ra); drawRACallout(ra); });
+}
+
+// ── Public API ────────────────────────────────────────────────
+window._hzPulse      = function(){ hz.pulse=1.0; hz.lastTouch=Date.now(); };
+window._hzSetCount   = function(n){ hz.count=Math.max(0,Math.min(4,n)); };
+// Pulse the summoned agent orb (if one is currently at centre and matches name)
+window._hzPulseAgent = function(name){ if(hz.summoned&&hz.summoned.cfg.name===name) hz.summoned.pulse=1.0; };
+// ── Summon: bring a named agent to the centre of the screen (spec §5.2) ──
+// The orb travels from the Home Zone to centre and STAYS there until _hzDismiss() is called.
+// Never auto-returns — dismissal is always explicit (voice, click-outside, Escape, or API).
+window._hzSummon = function(name){
+  const cfgIdx = ORB_CFG.findIndex(c=>c.name===name);
+  if(cfgIdx===-1){ console.warn('[HZ] Unknown agent:',name); return; }
+  if(ritual.active) return; // no summon during ritual
+
+  // If another agent is mid-travel, ignore (prevents animation pile-up)
+  if(hz.summoned && hz.summoned.phase!=='present') return;
+
+  // If same agent already present, just pulse it
+  if(hz.summoned && hz.summoned.cfg.name===name){ hz.summoned.pulse=1.0; return; }
+
+  // If a different agent is present, dismiss it first then re-summon
+  if(hz.summoned){
+    const pendingName=name;
+    window._hzDismiss();
+    // Re-summon after return animation completes
+    setTimeout(()=>window._hzSummon(pendingName), SUMMON_RETURN_MS+60);
+    return;
+  }
+
+  const cfg = ORB_CFG[cfgIdx];
+
+  const doSummon = function(){
+    // In corner mode: launch from corner position and return to corner on dismiss
+    let startX=hz.px, startY=hz.py, returnX, returnY, cornerRef=null;
+    if(hz.cornerMode.active){
+      const co=hz.cornerMode.cornerOrbs[cfgIdx];
+      if(co&&(co.phase==='onstation')){
+        startX=co.cornerX; startY=co.cornerY;
+        returnX=co.cornerX; returnY=co.cornerY;
+        cornerRef=co;
+        co.phase='recalled'; co.scale=0; co.ms=0; // hide corner orb while recalled
+      }
+    }
+    if(!cornerRef) hz.count=Math.max(0,hz.count-1); // count only changes for HZ agents
+    hz.summoned = {
+      cfg,
+      phase:   'arriving',
+      ms:      0,
+      startX, startY, x:startX, y:startY,
+      x0:      startX,  // set on dismiss → current position at that moment
+      y0:      startY,
+      scale:   0, pulse:0, bPhase:0,
+      returnX, returnY,   // where to send on dismiss (undefined = Home Zone default)
+      cornerRef,          // restore this corner orb when dismissed
+      orbState:{ x:startX, y:startY, scale:0, pulse:0, particles:null, particleFadeIn:0, arrived:false },
+    };
+  };
+
+  if(hz.phase==='expanded'||hz.phase==='expanding'){
+    startCollapse();
+    setTimeout(doSummon, SUMMON_ARRIVE_MS*0.45); // start travel while cloud collapses
+  } else {
+    doSummon();
+  }
+};
+
+// ── Dismiss: send summoned agent back to Home Zone (spec §5.2) ─────────────────────────────
+// Dismissal methods: voice ("you can go back"), Escape key, click-outside, direct API call.
+window._hzDismiss = function(name){
+  if(!hz.summoned) return;
+  if(name && hz.summoned.cfg.name!==name) return;
+  if(hz.summoned.phase!=='present') return;
+  // Snapshot current position as return origin
+  hz.summoned.x0 = hz.summoned.x;
+  hz.summoned.y0 = hz.summoned.y;
+  hz.summoned.phase = 'returning';
+  hz.summoned.ms    = 0;
+};
+
+// ── Really Active public API (spec §5.3) ─────────────────────────────────────────────────
+// Trigger: _hzTriggerReallyActive('VERONICA', { text: 'line1\nline2', actionLabel: 'Got it' })
+// Calm:    _hzCalmAgent('VERONICA')  — or Escape / click callout / click outside
+window._hzTriggerReallyActive = function(name, opts){
+  const{text='',actionLabel=null,onAction=null}=opts||{};
+  if(ritual.active) return;
+  const cfgIdx=ORB_CFG.findIndex(c=>c.name===name);
+  if(cfgIdx===-1){ console.warn('[HZ] Unknown agent:',name); return; }
+  // Refresh if already active for this agent (don't spawn duplicate)
+  const existing=hz.reallyActive.find(r=>r.name===name&&r.phase!=='calming'&&r.phase!=='done');
+  if(existing){
+    if(text) existing.text=text;
+    existing.pulse=1.0; existing.orbState.pulse=1.0; hz.pulse=1.0;
+    if(existing.callout&&text) existing.callout.lines=text.split('\n').slice(0,3).map(l=>l.trim()).filter(Boolean);
+    return;
+  }
+  // Next available slot (avoids overlap with other RA agents)
+  const used=hz.reallyActive.filter(r=>r.phase!=='calming'&&r.phase!=='done').map(r=>r.slot);
+  let slot=0; while(used.includes(slot)) slot++;
+  // In corner mode: launch from corner, return to corner after calm (spec §5.3: "returns to where it was")
+  let sx=hz.px, sy=hz.py, px=hz.px, py=hz.py, cornerRef=null;
+  if(hz.cornerMode.active){
+    const co=hz.cornerMode.cornerOrbs[cfgIdx];
+    if(co&&co.phase==='onstation'){
+      sx=co.cornerX; sy=co.cornerY;
+      px=co.cornerX; py=co.cornerY;
+      cornerRef=co;
+      co.phase='recalled'; co.scale=0; co.ms=0; // hide while RA event is active
+    }
+  }
+  hz.pulse=1.0; hz.lastTouch=Date.now();
+  hz.reallyActive.push({
+    name, cfg:ORB_CFG[cfgIdx], phase:'arriving', ms:0, slot,
+    startX:sx, startY:sy, x:sx, y:sy, scale:0, pulse:1.0, bPhase:0,
+    text, actionLabel, onAction, callout:null, cornerRef,
+    prevX:px, prevY:py, retX:sx, retY:sy,
+    orbState:{x:sx,y:sy,scale:0,pulse:1.0,particles:null,particleFadeIn:0,arrived:false},
+  });
+};
+
+window._hzCalmAgent = function(name){
+  const ra=hz.reallyActive.find(r=>r.name===name&&r.phase!=='calming'&&r.phase!=='done');
+  if(!ra) return;
+  ra.retX=ra.x; ra.retY=ra.y;
+  // In corner mode (or if RA was launched from corner): return to corner, not HZ
+  if(!ra.cornerRef&&hz.cornerMode.active){
+    const cfgIdx=ORB_CFG.findIndex(c=>c.name===name);
+    const co=hz.cornerMode.cornerOrbs[cfgIdx];
+    if(co){ ra.prevX=co.cornerX; ra.prevY=co.cornerY; ra.cornerRef=co; }
+  }
+  ra.phase='calming'; ra.ms=0;
+};
+
+// ── Manual test — run from browser console: _hzTest() or _hzTest('FRIDAY') ───────────────
+window._hzTest = function(name='VERONICA'){
+  const demo={
+    JARVIS:  'Strategic pattern detected.\nRecommending course correction.',
+    VERONICA:'Risk analysis complete.\n3 critical vectors flagged.',
+    FRIDAY:  'New data stream online.\nLatency optimal at 4ms.',
+    KAREN:   'Context update available.\nRelevance score: 94%.',
+  };
+  window._hzTriggerReallyActive(name,{
+    text:demo[name]||demo.VERONICA,
+    actionLabel:'Got it',
+    onAction:()=>console.log('[HZ test] acknowledged:',name),
+  });
+  console.log('[HZ] Really Active triggered for',name,'— click "Got it", Escape, or call _hzCalmAgent("'+name+'") to dismiss');
+};
+
+// ── 4-corner collaboration mode (spec §5.4) ───────────────────────────────────────────────
+// Entry: all four agents deploy from HZ to canonical corners (staggered, personality easing).
+// Exit:  all four return to HZ together (reverse stagger, faster than entry — ui-ux rule).
+
+window._hzEnterCornerMode = function(){
+  const cm=hz.cornerMode;
+  if(cm.active||cm.phase==='deploying'||cm.phase==='returning') return; // guard
+  if(ritual.active) return;
+  if(hz.summoned) { console.warn('[HZ] Dismiss summoned agent before entering corner mode'); return; }
+
+  cm.active=true; cm.phase='deploying'; cm.deployMs=0; cm.cornerOrbs=[];
+  const W=window.innerWidth, H=window.innerHeight;
+
+  ORB_CFG.forEach((cfg,cfgIdx)=>{
+    const pos=CORNER_POS[cfg.name];
+    // Deploy order index: JARVIS=0 (first), others follow
+    const dIdx=CORNER_DEPLOY_ORDER.indexOf(cfgIdx);
+    cm.cornerOrbs[cfgIdx]={
+      cfgIdx,
+      cornerX:pos.rx*W, cornerY:pos.ry*H,
+      startX:hz.px, startY:hz.py,
+      x:hz.px, y:hz.py, scale:0, bPhase:0, pulse:0,
+      phase:'deploying', ms:0,
+      emitDelay:dIdx*CORNER_STAGGER_MS, // staggered start (spec §5.4: "80–120ms apart")
+      status:'', statusAlpha:0, statusMs:0,
+      retStart:0, retFromX:0, retFromY:0,
+      orbState:{x:hz.px,y:hz.py,scale:0,pulse:0,particles:null,particleFadeIn:0,arrived:false},
+    };
+  });
+
+  hz.count=0; // all agents deployed to corners
+  // Reset DOM sidebar status text to neutral on fresh entry
+  ORB_CFG.forEach(cfg=>{ const el=document.getElementById('st-'+cfg.name); if(el) el.textContent='ONLINE'; });
+  document.getElementById('viewport').classList.add('hz-corner-mode');
+};
+
+window._hzExitCornerMode = function(){
+  const cm=hz.cornerMode;
+  if(!cm.active||cm.phase==='returning'||cm.phase==='off') return;
+
+  // 1. Calm any active Really Active agents that originated from corners so they
+  //    animate back cleanly rather than being orphaned mid-flight.
+  hz.reallyActive
+    .filter(r=>r.cornerRef&&(r.phase==='arriving'||r.phase==='present'))
+    .forEach(r=>window._hzCalmAgent(r.name));
+
+  // 2. Trigger return animation for any summoned corner agent (arc to corner, not snap).
+  const hasSummonedCorner=hz.summoned&&hz.summoned.cornerRef;
+  if(hasSummonedCorner) window._hzDismiss();
+
+  // 3. Set 'returning' phase IMMEDIATELY so re-entry is blocked (no setTimeout window).
+  //    Use a negative returnMs offset when a summoned agent needs to land first — the
+  //    tickCornerMode machinery uses this to delay corner-orb departures naturally.
+  cm.phase='returning';
+  cm.returnMs = hasSummonedCorner ? -(SUMMON_RETURN_MS+80) : 0;
+
+  const retOrder=[3,1,0,2]; // FRIDAY → KAREN → VERONICA → JARVIS (reverse deploy)
+  retOrder.forEach((cfgIdx,i)=>{
+    const co=cm.cornerOrbs[cfgIdx];
+    if(!co) return;
+    co.retStart=i*CORNER_STAGGER_MS; // relative to when returnMs reaches 0
+    co.retFromX=co.x; co.retFromY=co.y;
+    // Recalled orbs: snap to corner so they return from the correct position
+    if(co.phase==='recalled'){
+      co.x=co.cornerX; co.y=co.cornerY; co.retFromX=co.cornerX; co.retFromY=co.cornerY; co.ms=0;
+    }
+  });
+};
+
+// Update live status under a corner orb (spec §7.1: "micro status under the orb").
+// Also mirrors to the DOM sidebar .status-text element so both canvas label and
+// sidebar panel show the same live text while .hz-corner-mode is active.
+window._hzSetCornerStatus = function(name, text){
+  if(!hz.cornerMode.active) return;
+  const cfgIdx=ORB_CFG.findIndex(c=>c.name===name);
+  if(cfgIdx===-1) return;
+  const co=hz.cornerMode.cornerOrbs[cfgIdx];
+  if(!co) return;
+  co.status=(text||'').slice(0,22); co.statusAlpha=1; co.statusMs=0;
+  // Mirror to DOM sidebar panel (visible when .hz-corner-mode is active)
+  const domEl=document.getElementById('st-'+name);
+  if(domEl) domEl.textContent=co.status.toUpperCase()||'ONLINE';
+};
+
+// ── 4-corner console helpers ──────────────────────────────────────────────────────────────
+
+window._hzTestCorner = function(){
+  window._hzEnterCornerMode();
+  const deployDone=CORNER_TRAVEL_MS+CORNER_DEPLOY_ORDER.length*CORNER_STAGGER_MS+120;
+  setTimeout(()=>{
+    window._hzSetCornerStatus('JARVIS',  'Orchestrating...');
+    window._hzSetCornerStatus('VERONICA','Scanning risks');
+    window._hzSetCornerStatus('KAREN',   'Context ready');
+    window._hzSetCornerStatus('FRIDAY',  'Tasks queued');
+  }, deployDone);
+  console.log(
+    '[HZ] 4-corner deployed — team is on station.\n'+
+    '  Canvas labels + DOM sidebar panels both show live status.\n'+
+    '  Hardened exit scenarios:\n'+
+    '    _hzTestCornerExit()  → summon FRIDAY → exit (should arc back, not snap)\n'+
+    '    _hzTestCornerRA()    → RA on VERONICA → exit while RA active (should calm cleanly)\n'+
+    '  Manual:\n'+
+    '    _hzSummon("JARVIS")             → recall from corner\n'+
+    '    _hzDismiss()                    → return to corner\n'+
+    '    _hzExitCornerMode()             → group return to HZ\n'+
+    '    _hzSetCornerStatus("FRIDAY","Running...")'
+  );
+};
+
+// Scenario A: enter → summon → exit while agent is at center (tests hardened exit path)
+window._hzTestCornerExit = function(){
+  console.log('[HZ test A] Enter → summon FRIDAY → exit. FRIDAY should arc to corner, then team returns home.');
+  _hzExitCornerMode(); // clean any existing mode
+  setTimeout(()=>{
+    window._hzEnterCornerMode();
+    const deployDone=CORNER_TRAVEL_MS+3*CORNER_STAGGER_MS+200;
+    setTimeout(()=>{
+      console.log('[HZ test A] Summoning FRIDAY from her corner...');
+      window._hzSummon('FRIDAY');
+    }, deployDone);
+    setTimeout(()=>{
+      console.log('[HZ test A] Exiting corner mode — FRIDAY should arc to corner, team follows ~400ms later.');
+      window._hzExitCornerMode();
+    }, deployDone+1400);
+  }, 200);
+};
+
+// Scenario B: enter → trigger RA → exit while RA active (tests RA cleanup on exit)
+window._hzTestCornerRA = function(){
+  console.log('[HZ test B] Enter → RA on VERONICA → exit while RA active. VERONICA should calm back, team returns.');
+  _hzExitCornerMode();
+  setTimeout(()=>{
+    window._hzEnterCornerMode();
+    const deployDone=CORNER_TRAVEL_MS+3*CORNER_STAGGER_MS+200;
+    setTimeout(()=>{
+      console.log('[HZ test B] Firing Really Active on VERONICA from her corner...');
+      window._hzTriggerReallyActive('VERONICA',{text:'Risk pattern detected.\nReview required.',actionLabel:'Got it'});
+    }, deployDone);
+    setTimeout(()=>{
+      console.log('[HZ test B] Exiting while VERONICA is mid-RA — should calm and return cleanly.');
+      window._hzExitCornerMode();
+    }, deployDone+1200);
+  }, 200);
+};
+// Session start ritual — full implementation (spec §4, 0.0 s → 14.5 s)
+window._hzStartRitual = function(){
+  if(sessionStorage.getItem('jarvis_ritual_played')) return;
+  sessionStorage.setItem('jarvis_ritual_played','1');
+
+  // Reset ritual state
+  ritual.active=true; ritual.phase='void'; ritual.totalMs=0;
+  ritual.bubbleAlpha=0; ritual.bubbleScale=0.6;
+  ritual.jx=0; ritual.jy=0; ritual.jScale=0; ritual.jPower=-1;
+  ritual.jOrb=null; ritual.greetAlpha=0;
+  ritual.greetingPlayed=false; ritual.greetingLine=null;
+  ritual.retStart=0; ritual.retOriginX=null; ritual.retOriginY=null;
+  ritual.userAdvanced=false; ritual.migStart=0;
+  ritual.trailMotes=[]; hz.count=4;
+
+  // Centre the bubble (spec §4: "materializes exactly in the center of the screen")
+  hz.px=window.innerWidth*0.5;
+  hz.py=window.innerHeight*0.5;
+
+  // Hide all HUD elements — "screen is otherwise empty" (spec §4, 0.0–0.6 s)
+  // Background god-rays + star field remain running underneath per spec
+  _ritualHide(RITUAL_HIDDEN_IDS);
+
+  // Watchdog: independent of the rAF loop. Even if the tab is backgrounded
+  // (rAF paused) or the ritual stalls, this guarantees the HUD is restored.
+  // Generous margin over the 14.5s nominal runtime.
+  setTimeout(()=>{
+    if(ritual.phase!=='done'){
+      console.warn('[HZ ritual] watchdog fired — forcing HUD restore');
+      ritual.active=false; ritual.phase='done'; ritual.jScale=0;
+    }
+    _ritualRevealAll();
+  }, 17000);
+};
+
+// User action during conversation phase → early JARVIS return (spec §4 hybrid rule)
+window._hzRitualUserAction = function(){
+  if(ritual.active&&ritual.phase==='conversation') ritual.userAdvanced=true;
+};
+
+// Mouse tracking for RA callout hit-testing
+document.getElementById('viewport').addEventListener('mousemove',function(e){ _raMX=e.clientX; _raMY=e.clientY; });
+
+// ── Unified pointer handler — callout > summon dismiss (spec §5.2 + §5.3) ─────────────────
+document.getElementById('viewport').addEventListener('mousedown', function(e){
+  // 1. Really Active callout action/dismiss (checked first — highest priority)
+  for(const ra of hz.reallyActive){
+    if(ra.phase!=='present'||!ra.callout) continue;
+    const cl=ra.callout;
+    if(cl.actionLabel&&e.clientX>=cl.btnX&&e.clientX<=cl.btnX+cl.btnW&&
+       e.clientY>=cl.btnY&&e.clientY<=cl.btnY+cl.btnH){
+      if(typeof cl.onAction==='function') cl.onAction();
+      window._hzCalmAgent(ra.name); return;
+    }
+    if(e.clientX>=cl.x&&e.clientX<=cl.x+cl.w&&e.clientY>=cl.y&&e.clientY<=cl.y+cl.h){
+      window._hzCalmAgent(ra.name); return;
+    }
+  }
+  // 2. Summoned orb dismiss on click-outside
+  if(!hz.summoned||hz.summoned.phase!=='present') return;
+  if(e.target.closest('#chat-panel,#input-strip,#ticker,#hz-hitbox,#brain-badge')) return;
+  const dx=e.clientX-hz.summoned.x, dy=e.clientY-hz.summoned.y;
+  if(Math.hypot(dx,dy)>ORB_R*SUMMON_SCALE*1.85) window._hzDismiss();
+});
+
+// Escape: calm all RA agents first; then dismiss summoned
+window.addEventListener('keydown', function(e){
+  if(e.key==='Escape'){
+    const active=hz.reallyActive.filter(r=>r.phase==='arriving'||r.phase==='present');
+    if(active.length){ active.forEach(r=>window._hzCalmAgent(r.name)); }
+    else if(hz.summoned){ window._hzDismiss(); }
+  }
+});
+
+// ── Resize ────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{ resizeCvs(); clamp(); syncHb(); });
+
+// ── Boot ─────────────────────────────────────────────────────
+requestAnimationFrame(frame);
+
+})(); // end Home Zone IIFE
 </script>
 </body>
 </html>

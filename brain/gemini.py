@@ -82,30 +82,10 @@ def _build_gemini_contents(current_input: str, limit: int = 30) -> list:
 
 
 def think_friday(user_input: str) -> str:
-    api_key = load_key()
-    facts, wiki, brain = _build_memory_block(user_input)
-    system_instruction = _build_friday_system(facts=facts, wiki=(wiki + brain))
-
-    if api_key:
-        try:
-            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-            headers = {"Content-Type": "application/json", "X-goog-api-key": api_key}
-            payload = {
-                "systemInstruction": {"parts": [{"text": system_instruction}]},
-                "contents": _build_gemini_contents(user_input, limit=30),
-                "generationConfig": {"maxOutputTokens": 300, "temperature": 0.65}
-            }
-            r = requests.post(url, json=payload, headers=headers, timeout=15)
-            if r.status_code == 429:
-                return _groq_fallback(user_input, facts, wiki + brain) or _haiku_fallback(user_input, facts, wiki + brain)
-            data = r.json()
-            response = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            save_message("friday", response)
-            return response
-        except Exception:
-            pass
-
-    return _groq_fallback(user_input, facts, wiki + brain) or _haiku_fallback(user_input, facts, wiki + brain)
+    """FRIDAY — Claude (Haiku→Sonnet) with tools + grounded context.
+    Was Gemini Flash; now runs the same engine as JARVIS with her own persona."""
+    from brain.think import think
+    return think(user_input, agent="FRIDAY")
 
 
 def _groq_fallback(user_input: str, facts: str = "", wiki: str = "") -> str:
@@ -159,96 +139,9 @@ def _haiku_fallback(user_input: str, facts: str = "", wiki: str = "") -> str:
 
 
 def think_friday_stream(user_input: str):
-    """Streaming generator for FRIDAY. Gemini SSE → Groq stream → Haiku stream."""
-    import json as _json
-    api_key = load_key()
-    facts, wiki, brain = _build_memory_block(user_input)
-    system_instruction = _build_friday_system(facts=facts, wiki=(wiki + brain))
-
-    # ── 1. Gemini streaming ────────────────────────────────────────────────────
-    if api_key:
-        try:
-            url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   "gemini-2.0-flash:streamGenerateContent")
-            headers = {"Content-Type": "application/json", "X-goog-api-key": api_key}
-            payload = {
-                "systemInstruction": {"parts": [{"text": system_instruction}]},
-                "contents": _build_gemini_contents(user_input, limit=30),
-                "generationConfig": {"maxOutputTokens": 300, "temperature": 0.65},
-            }
-            r = requests.post(url, json=payload, headers=headers, stream=True, timeout=20)
-            if r.status_code == 200:
-                full = []
-                for raw_line in r.iter_lines(decode_unicode=True):
-                    line = raw_line.strip().lstrip(",").lstrip("[").rstrip("]").strip()
-                    if not line or line in ("[", "]", ","):
-                        continue
-                    try:
-                        data = _json.loads(line)
-                        text = data["candidates"][0]["content"]["parts"][0]["text"]
-                        if text:
-                            full.append(text)
-                            yield text
-                    except Exception:
-                        continue
-                if full:
-                    save_message("friday", "".join(full))
-                return
-        except Exception:
-            pass
-
-    # ── 2. Groq streaming fallback ─────────────────────────────────────────────
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if groq_key:
-        try:
-            from groq import Groq
-            client = Groq(api_key=groq_key)
-            stream = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                max_tokens=300,
-                temperature=0.65,
-                stream=True,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user",   "content": user_input},
-                ],
-            )
-            full = []
-            for chunk in stream:
-                text = (chunk.choices[0].delta.content or "")
-                if text:
-                    full.append(text)
-                    yield text
-            if full:
-                save_message("friday", "".join(full))
-            return
-        except Exception:
-            pass
-
-    # ── 3. Haiku streaming fallback ────────────────────────────────────────────
-    claude_key = (
-        os.environ.get("ANTHROPIC_API_KEY", "").strip() or
-        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-    )
-    if claude_key:
-        try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=claude_key)
-            full = []
-            with client.messages.stream(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
-                system=system_instruction,
-                messages=[{"role": "user", "content": user_input}],
-            ) as stream:
-                for text in stream.text_stream:
-                    if text:
-                        full.append(text)
-                        yield text
-            if full:
-                save_message("friday", "".join(full))
-        except Exception:
-            pass
+    """FRIDAY streaming — Claude with tools + grounded context."""
+    from brain.think import think_stream
+    yield from think_stream(user_input, agent="FRIDAY")
 
 
 def classify(user_input: str) -> int:

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<style>
+:root{
+  --cyan:#00e5ff; --cyan-rgb:0,229,255;
+  --amber:#ffb450; --amber-rgb:255,180,80;
+  --orange:#ff6a00; --orange-rgb:255,106,0;
+}
+*{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none;}
+html,body{
+  width:100%;height:100%;overflow:hidden;background:transparent;
+  font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;
+  cursor:default;
+}
+#wrap{
+  position:relative;width:100vw;height:100vh;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ── THE ORB ─────────────────────────────────────────────── */
+#orb{
+  position:relative;width:78px;height:78px;border-radius:50%;
+  cursor:pointer;
+  /* accent driven by state via --c / --c-rgb */
+  --c:var(--cyan); --c-rgb:var(--cyan-rgb);
+  background:
+    radial-gradient(circle at 38% 34%,
+      #ffffff 0%, #c8f7ff 14%,
+      var(--c) 46%,
+      rgba(var(--c-rgb),0.65) 70%,
+      rgba(var(--c-rgb),0.15) 100%);
+  box-shadow:
+    0 0 14px rgba(var(--c-rgb),0.65),
+    0 0 34px rgba(var(--c-rgb),0.40),
+    0 0 60px rgba(var(--c-rgb),0.18),
+    inset 0 0 14px rgba(255,255,255,0.45);
+  transition:background .4s ease, box-shadow .4s ease, transform .25s ease;
+  animation:breathe 4.6s ease-in-out infinite;
+}
+@keyframes breathe{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.06);}
+}
+/* concentric pulse rings (hidden unless a state turns them on) */
+.ring{
+  position:absolute;top:50%;left:50%;border-radius:50%;
+  border:1.5px solid rgba(var(--c-rgb),0.5);
+  transform:translate(-50%,-50%) scale(1);
+  width:78px;height:78px;opacity:0;pointer-events:none;
+  --c-rgb:var(--cyan-rgb);
+}
+
+/* small status dot badge for "I have something" */
+#badge{
+  position:absolute;top:6px;right:6px;width:14px;height:14px;border-radius:50%;
+  background:var(--amber);
+  box-shadow:0 0 8px rgba(var(--amber-rgb),0.9);
+  opacity:0;transform:scale(0.4);transition:opacity .3s,transform .3s;
+  pointer-events:none;
+}
+
+/* hover controls */
+.ctl{
+  position:absolute;width:20px;height:20px;border-radius:50%;
+  border:none;background:rgba(10,12,20,0.78);color:rgba(255,255,255,0.66);
+  font-size:12px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .18s;backdrop-filter:blur(4px);
+}
+#wrap:hover .ctl{opacity:1;}
+#expand{bottom:18px;right:18px;}
+#expand:hover{color:var(--cyan);}
+#quit{top:14px;left:14px;font-size:13px;}
+#quit:hover{color:#ff5555;}
+
+/* tiny one-line caption that fades in when JARVIS speaks (kept inside window) */
+#cap{
+  position:absolute;left:50%;bottom:4px;transform:translateX(-50%);
+  max-width:138px;font-size:8.5px;line-height:1.25;text-align:center;
+  color:rgba(255,255,255,0.82);text-shadow:0 1px 3px #000;
+  opacity:0;transition:opacity .3s;pointer-events:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#cap.show{opacity:1;}
+
+/* ── STATES ──────────────────────────────────────────────── */
+/* listening — cyan, expanding rings */
+body.listening #orb{--c:var(--cyan);--c-rgb:var(--cyan-rgb);animation:breathe 1.4s ease-in-out infinite;}
+body.listening .ring{animation:pulse 1.6s ease-out infinite;}
+body.listening .ring:nth-child(2){animation-delay:.5s;}
+body.listening .ring:nth-child(3){animation-delay:1s;}
+@keyframes pulse{
+  0%{opacity:.55;transform:translate(-50%,-50%) scale(1);}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(2.4);}
+}
+/* thinking — cyan, quick spin shimmer */
+body.thinking #orb{animation:breathe 1.1s ease-in-out infinite;}
+body.thinking #orb::after{
+  content:'';position:absolute;inset:-5px;border-radius:50%;
+  border:2px solid transparent;border-top-color:rgba(var(--cyan-rgb),0.85);
+  animation:spin .9s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+/* speaking — gentle bright bob */
+body.speaking #orb{animation:speak .5s ease-in-out infinite;}
+@keyframes speak{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
+/* has something — amber attention */
+body.has #orb{--c:var(--amber);--c-rgb:var(--amber-rgb);animation:attn 1.2s ease-in-out infinite;}
+body.has #badge{opacity:1;transform:scale(1);}
+@keyframes attn{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
+/* really active — orange, urgent */
+body.active #orb{--c:var(--orange);--c-rgb:var(--orange-rgb);animation:attn .8s ease-in-out infinite;}
+
+@media (prefers-reduced-motion: reduce){
+  #orb,.ring,#orb::after{animation:none!important;}
+}
+</style>
+</head>
+<body class="calm">
+<div id="wrap">
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div id="orb" title="Click to talk · ⤢ to open"></div>
+  <div id="badge"></div>
+  <div id="cap"></div>
+  <button id="expand" class="ctl" title="Open JARVIS">&#x2922;</button>
+  <button id="quit" class="ctl" title="Quit JARVIS">&times;</button>
+</div>
+
+<script>
+'use strict';
+const API_BASE='http://127.0.0.1:8080';
+let _state='calm';
+let _micTimer=null;
+let _tts=null;
+let _capTimer=null;
+let _apiReady=false;
+
+function api(){ return (window.pywebview && window.pywebview.api) || null; }
+window.addEventListener('pywebviewready', ()=>{ _apiReady=true; });
+
+function setState(s){
+  _state=s;
+  document.body.className=s;
+}
+
+function showCap(text){
+  const el=document.getElementById('cap');
+  el.textContent=text.length>42?text.slice(0,40)+'…':text;
+  el.classList.add('show');
+  clearTimeout(_capTimer);
+  _capTimer=setTimeout(()=>el.classList.remove('show'), 6000);
+}
+
+/* ── TALK (native mic via pywebview bridge) ─────────────────────────── */
+async function talk(){
+  const a=api();
+  if(!a){ return; }              // bridge not ready — no browser mic in WKWebView
+  // barge-in: tapping while speaking stops playback
+  if(_state==='speaking'){ stopTTS(); setState('calm'); return; }
+  if(_state==='listening'){
+    setState('thinking');
+    clearTimeout(_micTimer);
+    let text='';
+    try{ text=await a.stop_recording(); }catch(_){}
+    if(text && text.trim()){ streamReply(text.trim()); }
+    else { setState('calm'); }
+    return;
+  }
+  // start listening (clears any pending "has something")
+  let ok=false;
+  try{ ok=await a.start_recording(); }catch(_){}
+  if(ok===true){
+    setState('listening');
+    clearTimeout(_micTimer);
+    _micTimer=setTimeout(()=>{ if(_state==='listening') talk(); }, 10000); // auto-stop
+  } else {
+    setState('calm');
+  }
+}
+
+/* ── STREAM a reply from the same backend the HUD uses ──────────────── */
+async function streamReply(text){
+  setState('thinking');
+  let full='', agent='JARVIS';
+  try{
+    const res=await fetch(`${API_BASE}/api/stream?message=`+encodeURIComponent(text));
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for(const line of lines){
+        const t=line.trim(); if(!t.startsWith('data: ')) continue;
+        let evt; try{ evt=JSON.parse(t.slice(6)); }catch(_){ continue; }
+        if(evt.type==='speaker'){ agent=evt.name||agent; }
+        else if(evt.type==='text'){ full+=evt.chunk||''; }
+        else if(evt.type==='done'){ full=evt.full||full; agent=evt.agent||agent; }
+      }
+    }
+  }catch(_){}
+  const clean=(full||'').replace(/\[SHOW:[^\]]*\]/gi,'').replace(/\s{2,}/g,' ').trim();
+  if(clean){ speak(clean, agent); } else { setState('calm'); }
+}
+
+/* ── TTS — JARVIS talks to you from the corner ──────────────────────── */
+function stopTTS(){ if(_tts){ _tts.pause(); _tts.src=''; _tts=null; } }
+function speak(text, agent){
+  stopTTS();
+  setState('speaking');
+  showCap(text);
+  try{
+    _tts=new Audio(`${API_BASE}/api/tts?text=`+encodeURIComponent(text.slice(0,800))+`&agent=`+encodeURIComponent(agent||'JARVIS'));
+    _tts.onended=()=>{ _tts=null; if(_state==='speaking') setState('calm'); };
+    _tts.onerror=()=>{ _tts=null; if(_state==='speaking') setState('calm'); };
+    _tts.play().catch(()=>{ _tts=null; if(_state==='speaking') setState('calm'); });
+  }catch(_){ setState('calm'); }
+}
+
+/* ── PROACTIVE — "I have something important" ───────────────────────── */
+(function poll(){
+  async function tick(){
+    try{
+      const res=await fetch(`${API_BASE}/api/proactive`);
+      if(res.ok){
+        const {messages=[]}=await res.json();
+        for(const m of messages){
+          if(m.visibility==='surface'){
+            if(_state==='calm'){ setState('has'); }
+            const txt=(m.text||'').trim();
+            if(txt){ showCap(txt); speak(txt, m.agent||'JARVIS'); }
+          }
+        }
+      }
+    }catch(_){}
+    setTimeout(tick, 10000);
+  }
+  setTimeout(tick, 4000);
+})();
+
+/* ── WIRING ─────────────────────────────────────────────────────────── */
+document.getElementById('orb').addEventListener('click', (e)=>{ e.stopPropagation(); talk(); });
+document.getElementById('expand').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  const a=api(); if(a){ try{ a.toggle_hud(); }catch(_){} }
+});
+document.getElementById('quit').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  const a=api(); if(a){ try{ a.quit_app(); }catch(_){} }
+});
+</script>
+</body>
+</html>

@@ -7,10 +7,10 @@ struct HUDRingView: View {
 
     var agentColor: Color {
         switch speaker.uppercased() {
-        case "FRIDAY":   return Color(hex: "A064FF")
+        case "FRIDAY":   return Color(hex: "FF6A00")
         case "VERONICA": return Color(hex: "00FF9F")
         case "KAREN":    return Color(hex: "FFB450")
-        default:         return Color(hex: "00D4FF")
+        default:         return Color(hex: "00E5FF")
         }
     }
 

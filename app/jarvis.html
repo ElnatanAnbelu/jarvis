@@ -1,0 +1,2351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS</title>
+<style>
+/* ── DESIGN TOKENS ─────────────────────────────────────────── */
+:root {
+  --bg:            #0a0c14;
+  --bg-elevated:   #0e1120;
+  --bg-card:       #121526;
+  --bg-input:      rgba(255,255,255,0.04);
+  --border:        rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.11);
+
+  --cyan:          #00e5ff;
+  --cyan-dim:      rgba(0,229,255,0.45);
+  --cyan-soft:     rgba(0,229,255,0.07);
+
+  --text-1:        rgba(255,255,255,0.92);
+  --text-2:        rgba(255,255,255,0.52);
+  --text-3:        rgba(255,255,255,0.26);
+
+  --c-jarvis:      #00e5ff;
+  --c-friday:      #ff6a00;
+  --c-veronica:    #00ff9f;
+  --c-karen:       #ffb450;
+
+  --r-sm:  6px;
+  --r-md:  10px;
+  --r-lg:  14px;
+
+  --sidebar-w:  256px;
+  --topbar-h:   46px;
+  --bottombar-h: 70px;
+
+  --font-ui:   -apple-system, "SF Pro Display", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Menlo", "Monaco", "Consolas", monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── ROOT GRID ─────────────────────────────────────────────── */
+#app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: var(--topbar-h) 1fr var(--bottombar-h);
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar main"
+    "sidebar bottombar";
+  /* 100% fills html/body which are already 100% — avoids 100vh overflow
+     issues in pywebview native full-screen mode on macOS              */
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── TOP BAR ───────────────────────────────────────────────── */
+#topbar {
+  grid-area: topbar;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.topbar-brand {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.16em; color: var(--cyan);
+  text-transform: uppercase;
+}
+.topbar-right {
+  display: flex; align-items: center; gap: 14px;
+}
+#brain-badge {
+  display: none; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(0,229,255,0.09);
+  border: 1px solid rgba(0,229,255,0.22);
+  cursor: pointer; font-size: 10px; font-weight: 700;
+  color: var(--cyan); letter-spacing: 0.07em; text-transform: uppercase;
+  transition: background 0.15s;
+}
+#brain-badge:hover { background: rgba(0,229,255,0.15); }
+.badge-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--cyan);
+  animation: blink 1.4s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+#active-bar {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-2);
+}
+#active-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--cyan); transition: background 0.3s;
+}
+#active-name { color: var(--cyan); transition: color 0.3s; }
+
+#sys-time {
+  font-family: var(--font-mono); font-size: 12px; color: var(--text-3);
+}
+
+/* ── SIDEBAR ───────────────────────────────────────────────── */
+#sidebar {
+  grid-area: sidebar;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0;
+}
+.sidebar-hd {
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-logo {
+  font-size: 15px; font-weight: 800;
+  letter-spacing: 0.14em; color: var(--cyan);
+  text-transform: uppercase;
+}
+.sidebar-sub {
+  font-size: 9.5px; color: var(--text-3);
+  letter-spacing: 0.07em; text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* AGENT LIST */
+.agent-list { flex: 1; overflow-y: auto; padding: 10px 0; }
+.agent-list::-webkit-scrollbar { width: 3px; }
+.agent-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+
+.agent-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 9px 13px;
+  cursor: pointer; position: relative;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, border-color 0.2s;
+  user-select: none;
+  --ac: var(--cyan);
+}
+.agent-row:hover { background: rgba(255,255,255,0.03); }
+.agent-row:hover .agent-role::after { content: " · Summon"; color: var(--ac); opacity: 0.65; }
+.agent-row.is-active {
+  border-left-color: var(--ac);
+  background: rgba(255,255,255,0.04);
+}
+.agent-row.is-working .agent-avatar { animation: avatarPulse 1.8s ease-in-out infinite; }
+@keyframes avatarPulse { 0%,100%{opacity:1} 50%{opacity:0.55} }
+
+.agent-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em;
+  background: rgba(255,255,255,0.03);
+  /* Each agent has subtle color identity in standby — not gray, distinctly theirs */
+  border: 1.5px solid rgba(var(--ac-rgb, 0,229,255), 0.28);
+  color: rgba(var(--ac-rgb, 0,229,255), 0.52);
+  flex-shrink: 0;
+  transition: border-color 0.3s, color 0.3s, background 0.3s, box-shadow 0.3s;
+}
+/* When another agent is summoned — color identity recedes */
+#sidebar.has-summoned .agent-row:not(.is-summoned) .agent-avatar {
+  border-color: rgba(255,255,255,0.07);
+  color: var(--text-3);
+  background: rgba(255,255,255,0.02);
+  box-shadow: none;
+}
+.agent-row.is-active .agent-avatar,
+.agent-row.is-working .agent-avatar {
+  border-color: var(--ac);
+  color: var(--ac);
+  background: rgba(var(--ac-rgb, 0,229,255), 0.07);
+}
+.agent-info { flex: 1; min-width: 0; }
+.agent-name {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--text-2); transition: color 0.2s;
+  text-transform: uppercase;
+}
+.agent-row.is-active .agent-name { color: var(--text-1); }
+.agent-role {
+  font-size: 9.5px;
+  /* Faintly colored in the agent's own hue — four distinct identities at rest */
+  color: rgba(var(--ac-rgb, 255,255,255), 0.38);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.agent-pill {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
+  padding: 2px 7px; border-radius: 10px; flex-shrink: 0;
+  text-transform: uppercase; transition: all 0.25s;
+}
+/* Idle: each agent's pill is subtly colored — four distinct identities at rest */
+.agent-pill.idle     { color: rgba(var(--ac-rgb,0,229,255),0.5); background: rgba(var(--ac-rgb,0,229,255),0.06); }
+.agent-pill.working  { color: #ffb450; background: rgba(255,180,80,0.1); animation: blink 2s ease-in-out infinite; }
+.agent-pill.active   { color: var(--ac); background: rgba(var(--ac-rgb,0,229,255),0.1); }
+/* Has update: agent is signaling — persists until acknowledged */
+.agent-pill.has-update {
+  color: var(--ac); background: rgba(var(--ac-rgb,0,229,255),0.12);
+  box-shadow: 0 0 0 1.5px rgba(var(--ac-rgb,0,229,255),0.3);
+  animation: blink 1.0s ease-in-out infinite;
+}
+
+/* SIDEBAR BOTTOM */
+.sidebar-ft {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 9px;
+}
+#team-mode-btn {
+  width: 100%; padding: 8px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-2); font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  cursor: pointer; transition: all 0.18s; text-transform: uppercase;
+}
+#team-mode-btn:hover { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-soft); }
+#team-mode-btn.on { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-soft); }
+
+/* Home Zone dot cluster */
+#hz-cluster {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 2px; cursor: pointer;
+}
+.hz-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  opacity: 0.38; transition: opacity 0.25s, transform 0.25s;
+}
+#hz-cluster:hover .hz-dot { opacity: 0.75; transform: scale(1.15); }
+.hz-dot.hz-pulse { animation: hzPop 1.4s ease-out forwards; }
+@keyframes hzPop { 0%{transform:scale(1.9);opacity:1} 100%{transform:scale(1);opacity:0.38} }
+.hz-label { font-size: 9px; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; margin-left: 2px; }
+
+/* ── STANDBY / SUMMON STATE ─────────────────────────────────
+   Default: all agents dormant (text-3, no border glow).
+   .has-summoned on #sidebar dims non-active rows.
+   .is-summoned on the row makes that agent clearly "in the room".
+   Flash keyframe fires once on summon, settles to persistent glow. */
+.agent-row { opacity: 1; transition: opacity 0.4s ease, background 0.15s, border-color 0.25s; }
+/* Others recede more dramatically when one is summoned */
+#sidebar.has-summoned .agent-row:not(.is-summoned) { opacity: 0.32; }
+#sidebar.has-summoned .agent-row:not(.is-summoned):hover { opacity: 0.68; }
+
+.agent-row.is-summoned {
+  border-left-color: var(--ac);
+  background: rgba(255,255,255,0.05);
+}
+.agent-row.is-summoned .agent-avatar {
+  border-color: var(--ac);
+  color: var(--ac);
+  /* Scale up — depth-of-field: one agent close, others receding behind */
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px rgba(var(--ac-rgb,0,229,255),0.18),
+              0 0 14px rgba(var(--ac-rgb,0,229,255),0.08);
+}
+.agent-row.is-summoned .agent-name { color: var(--text-1); }
+
+/* ── STANDBY BREATHING — each agent has its own cadence (personality) ──
+   --av-breath is set per-agent in JS. Distinct timing = distinct character. */
+@keyframes standbyBreath {
+  0%,100% { border-color: rgba(var(--ac-rgb),0.12); }
+  50%      { border-color: rgba(var(--ac-rgb),0.30); }
+}
+/* Default state (no summon): ALL agents breathe their own color faintly */
+@keyframes idleBreath {
+  0%,100% { opacity: 0.82; }
+  50%      { opacity: 1.0; }
+}
+.agent-avatar { animation: idleBreath var(--av-breath, 4.2s) ease-in-out infinite; }
+/* When summoned: summoned agent stops breathing (solid presence, not idle) */
+.agent-row.is-summoned .agent-avatar { animation: none; }
+/* When another is summoned: others use their border-breath, not opacity */
+#sidebar.has-summoned .agent-row:not(.is-summoned) .agent-avatar {
+  animation: standbyBreath var(--av-breath, 4.2s) ease-in-out infinite;
+}
+/* Working state overrides all breathing */
+.agent-row.is-working .agent-avatar { animation: avatarPulse 1.8s ease-in-out infinite; }
+
+/* Avatar flash — subtle, used when agent sends a message */
+@keyframes avFlash {
+  0%   { box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255),0.0); }
+  35%  { box-shadow: 0 0 0 5px rgba(var(--ac-rgb,0,229,255),0.28); border-color: var(--ac); color: var(--ac); }
+  100% { box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255),0.0); }
+}
+.agent-avatar.av-flash { animation: avFlash 0.55s ease-out forwards; }
+
+/* Avatar rise — assertive, used when an agent has a proactive event.
+   Bigger, spring-physics feel: scale up → slight overshoot → settle. */
+@keyframes avRise {
+  0%   { transform: scale(1.0); box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255),0.0); }
+  38%  { transform: scale(1.28); box-shadow: 0 0 0 8px rgba(var(--ac-rgb,0,229,255),0.25); border-color: var(--ac); color: var(--ac); }
+  70%  { transform: scale(1.08); box-shadow: 0 0 0 4px rgba(var(--ac-rgb,0,229,255),0.12); }
+  100% { transform: scale(1.0);  box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255),0.0); }
+}
+.agent-avatar.av-rise { animation: avRise 0.82s cubic-bezier(0.34,1.2,0.64,1) forwards; }
+
+@keyframes summonFlash {
+  0%   { box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255), 0.0); background: rgba(255,255,255,0.05); }
+  25%  { box-shadow: 0 0 0 6px rgba(var(--ac-rgb,0,229,255), 0.18); background: rgba(var(--ac-rgb,0,229,255),0.08); }
+  100% { box-shadow: 0 0 0 0   rgba(var(--ac-rgb,0,229,255), 0.0); background: rgba(255,255,255,0.05); }
+}
+.agent-row.summon-flash { animation: summonFlash 0.55s ease-out forwards; }
+
+/* ── AGENT CONTEXT STRIP ────────────────────────────────────
+   "The agent is in the room." Slides in when summoned.
+   Larger, colored, with live status dot + animated ring.    */
+#agent-ctx {
+  flex-shrink: 0; overflow: hidden;
+  max-height: 0;
+  /* 85ms delay — appears after main border, before tint — directional cascade */
+  transition: max-height 0.32s cubic-bezier(0.4,0,0.2,1) 0.085s, opacity 0.28s ease 0.085s;
+  opacity: 0;
+}
+#agent-ctx.visible {
+  max-height: 80px;
+  opacity: 1;
+}
+.ctx-inner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 24px;
+  /* Heavy color gradient from left — workspace feels owned by this agent */
+  background: linear-gradient(90deg,
+    rgba(var(--ctx-rgb,0,229,255),0.12) 0%,
+    rgba(var(--ctx-rgb,0,229,255),0.05) 20%,
+    transparent 55%),
+    var(--bg-elevated);
+  border-bottom: 1px solid rgba(var(--ctx-rgb,0,229,255),0.18);
+  border-left: 4px solid var(--ctx-color, var(--cyan));
+  position: relative;
+}
+/* Top hairline in agent color */
+.ctx-inner::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: var(--ctx-color, var(--cyan));
+  opacity: 0.25; pointer-events: none;
+}
+/* Avatar — 44px, springs into position on arrival */
+@keyframes ctxArrive {
+  0%   { transform: scale(0.65); opacity: 0; }
+  65%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1.0);  opacity: 1; }
+}
+.ctx-av {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  border: 2px solid var(--ctx-color, var(--cyan));
+  color: var(--ctx-color, var(--cyan));
+  background: rgba(var(--ctx-rgb,0,229,255),0.1);
+  position: relative;
+  /* Springs in when the strip appears */
+  animation: ctxArrive 0.38s cubic-bezier(0.34,1.4,0.64,1) both;
+}
+.ctx-av::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1.5px solid var(--ctx-color, var(--cyan));
+  animation: ctxRing 3s ease-out infinite;
+}
+@keyframes ctxRing {
+  0%   { opacity: 0.35; transform: scale(0.88); }
+  55%  { opacity: 0.06; transform: scale(1.04); }
+  100% { opacity: 0;    transform: scale(1.04); }
+}
+.ctx-info { flex: 1; min-width: 0; }
+.ctx-name {
+  font-size: 14px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--ctx-color, var(--cyan));
+  line-height: 1.2;
+}
+.ctx-role { font-size: 10px; color: var(--text-3); margin-top: 2px; letter-spacing: 0.04em; }
+/* Right side: live status + dismiss */
+.ctx-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.ctx-status {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ctx-color, var(--cyan));
+}
+.ctx-stat-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--ctx-color, var(--cyan));
+  animation: blink 1.8s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.ctx-dismiss {
+  font-family: var(--font-ui); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 4px;
+  border: 1px solid rgba(var(--ctx-rgb,0,229,255),0.22);
+  background: transparent; color: var(--text-3);
+  cursor: pointer; transition: all 0.15s;
+}
+.ctx-dismiss:hover { color: var(--text-1); border-color: rgba(var(--ctx-rgb,0,229,255),0.45); }
+
+/* SESSION MARKER — permanent record of summon/dismiss in the chat stream */
+.session-marker {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0 8px; user-select: none;
+}
+.session-marker::before, .session-marker::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--sm-color, rgba(255,255,255,0.08));
+}
+.session-marker-inner {
+  display: flex; align-items: center; gap: 7px;
+  flex-shrink: 0;
+}
+.session-marker-av {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6.5px; font-weight: 800; letter-spacing: 0.04em;
+  border: 1.5px solid var(--sm-color, rgba(255,255,255,0.25));
+  color: var(--sm-color, rgba(255,255,255,0.25));
+}
+.session-marker-text {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--sm-color, rgba(255,255,255,0.28));
+}
+.session-marker-ts {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--text-3); margin-left: 4px;
+}
+
+/* Summoned row expands — agent physically takes more space than the others */
+.agent-row { overflow: hidden; }
+.agent-row.is-summoned {
+  padding-top: 11px; padding-bottom: 11px;
+}
+.agent-row.is-summoned .agent-avatar {
+  /* Grow from 34px to 42px — layout change, not just scale transform */
+  width: 42px; height: 42px; font-size: 10.5px;
+}
+/* Session tag — hidden by default, reveals on summon */
+.session-tag {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--ac); text-transform: uppercase;
+  max-height: 0; overflow: hidden; opacity: 0;
+  transition: max-height 0.25s ease 0.1s, opacity 0.2s ease 0.12s;
+}
+.agent-row.is-summoned .session-tag {
+  max-height: 16px; opacity: 0.6;
+}
+
+/* ── MAIN ──────────────────────────────────────────────────── */
+#main {
+  grid-area: main;
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative; min-height: 0;
+  /* Presence line — completes sidebar → workspace visual continuity */
+  border-left: 3px solid transparent;
+  transition: border-left-color 0.45s ease 0.05s; /* 50ms after sidebar */
+}
+
+/* ── CONTEXT INTERRUPT ──────────────────────────────────────
+   Shows when an unsummoned agent surfaces something while
+   another agent is active in the context strip.
+   "Someone is trying to get through."                       */
+#ctx-interrupt {
+  flex-shrink: 0; overflow: hidden;
+  max-height: 0; opacity: 0;
+  transition: max-height 0.2s ease, opacity 0.18s ease;
+}
+#ctx-interrupt.on { max-height: 38px; opacity: 1; }
+.ctx-int-inner {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 24px;
+  background: linear-gradient(90deg, rgba(var(--int-rgb,255,106,0),0.08) 0%, transparent 45%);
+  border-bottom: 1px solid rgba(var(--int-rgb,255,106,0),0.14);
+  border-left: 4px solid rgba(var(--int-rgb,255,106,0),0.45);
+}
+.ctx-int-av {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: 800; letter-spacing: 0.03em;
+  border: 1.5px solid rgba(var(--int-rgb,255,106,0),0.55);
+  color: rgba(var(--int-rgb,255,106,0),0.75);
+  animation: blink 1.1s ease-in-out infinite;
+}
+.ctx-int-text {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: rgba(var(--int-rgb,255,106,0),0.65);
+}
+.ctx-int-act {
+  margin-left: auto; flex-shrink: 0;
+  font-family: var(--font-ui); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 4px;
+  border: 1px solid rgba(var(--int-rgb,255,106,0),0.3);
+  background: transparent; color: rgba(var(--int-rgb,255,106,0),0.65);
+  cursor: pointer; transition: all 0.15s;
+}
+.ctx-int-act:hover { background: rgba(var(--int-rgb,255,106,0),0.1); color: rgba(var(--int-rgb,255,106,0),1); }
+
+/* Workspace tint — absolute layer behind all content.
+   Shifts environment color when an agent is summoned.       */
+#ws-tint {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0;
+  /* 135ms delay — fills in last, completing the cascade across the workspace */
+  transition: opacity 0.55s ease 0.135s;
+}
+#ws-tint.on { opacity: 1; }
+/* All flex children stack above the tint */
+#agent-ctx, #msgs-wrap, #thinking { position: relative; z-index: 1; }
+
+/* Chat scroll area */
+#msgs-wrap {
+  flex: 1; overflow-y: auto; padding: 20px 0 8px;
+}
+#msgs-wrap::-webkit-scrollbar { width: 4px; }
+#msgs-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+
+#msgs {
+  max-width: 720px; margin: 0 auto;
+  padding: 0 24px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+
+/* MESSAGES */
+.msg {
+  padding: 10px 13px;
+  border-radius: var(--r-md);
+  font-size: 13.5px; line-height: 1.62;
+  position: relative;
+}
+.msg.user {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text-1);
+  align-self: flex-end; max-width: 82%;
+  border-radius: var(--r-md) var(--r-md) 4px var(--r-md);
+}
+.msg.agent {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--mc, var(--cyan));
+  color: var(--text-1);
+  align-self: flex-start; max-width: 100%;
+}
+.msg-hdr {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+/* Mini avatar in message header — distinct entity, not just a color label */
+.msg-av {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7.5px; font-weight: 800; letter-spacing: 0.03em;
+  border: 1.5px solid var(--mc, var(--cyan));
+  color: var(--mc, var(--cyan));
+  background: rgba(0,0,0,0.3);
+}
+.msg-tag {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--mc, var(--cyan));
+}
+.msg-ts {
+  font-size: 9.5px; color: var(--text-3); margin-left: auto;
+}
+.msg-text { white-space: pre-wrap; word-break: break-word; color: var(--text-1); }
+
+.msg-cursor {
+  display: inline-block; width: 2px; height: 1.1em;
+  background: var(--mc, var(--cyan)); margin-left: 2px;
+  vertical-align: text-bottom; opacity: 0.8;
+  animation: cur 0.75s steps(1) infinite;
+}
+@keyframes cur { 0%,100%{opacity:0.8} 50%{opacity:0} }
+
+/* THINKING INDICATOR */
+#thinking {
+  display: none; align-items: center; gap: 8px;
+  padding: 8px 24px; max-width: 720px; margin: 0 auto; width: 100%;
+}
+#thinking.on { display: flex; }
+.t-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--text-3);
+  animation: td 1.1s ease-in-out infinite;
+}
+.t-dot:nth-child(2){animation-delay:0.15s}
+.t-dot:nth-child(3){animation-delay:0.30s}
+@keyframes td { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+#thinking-label { font-size: 11px; color: var(--text-3); }
+
+/* VOICE SEGMENTS */
+.voice-seg { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border); }
+.v-pill {
+  display: inline-flex; align-items: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+  padding: 2px 7px; border-radius: 10px; margin-bottom: 5px;
+  text-transform: uppercase;
+}
+.v-pill.jarvis   { background:rgba(0,229,255,0.1);  color:#00e5ff; }
+.v-pill.friday   { background:rgba(255,106,0,0.1);  color:#ff6a00; }
+.v-pill.veronica { background:rgba(0,255,159,0.1);  color:#00ff9f; }
+.v-pill.karen    { background:rgba(255,180,80,0.1); color:#ffb450; }
+
+/* BRAIN CHIPS */
+.chip-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+.chip {
+  font-size:9px; font-weight:600; letter-spacing:0.07em;
+  padding:2px 7px; border-radius:4px; text-transform:uppercase;
+}
+.chip.saved    {background:rgba(0,229,255,0.09); color:#00e5ff;}
+.chip.proposed {background:rgba(255,180,80,0.09); color:#ffb450;}
+.chip.searched {background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4);}
+.chip.suggest  {background:rgba(0,255,159,0.09); color:#00ff9f;}
+.chip.observer {background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.35);}
+.chip.sensitive{background:rgba(255,60,60,0.09);  color:#ff5555;}
+
+/* COLLAPSED MESSAGES */
+.msg.collapsed { cursor:pointer; }
+.col-preview { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.col-preview span:first-child { color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.col-chev { color:var(--text-3); flex-shrink:0; }
+
+/* CODE BLOCKS */
+.code-block {
+  margin: 9px 0 3px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  background: rgba(0,0,0,0.3);
+}
+.code-hdr {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 5px 11px;
+  background: rgba(255,255,255,0.035);
+  border-bottom: 1px solid var(--border);
+}
+.code-lang {
+  font-size:9.5px; font-weight:600; letter-spacing:0.1em;
+  color:var(--text-3); text-transform:uppercase;
+}
+.run-btn {
+  font-family:var(--font-ui); font-size:9.5px; font-weight:600;
+  letter-spacing:0.06em; padding:2px 9px; border-radius:4px;
+  border:1px solid var(--border-strong); background:transparent;
+  color:var(--text-2); cursor:pointer; transition:all 0.15s;
+  text-transform:uppercase;
+}
+.run-btn:hover { border-color:var(--cyan); color:var(--cyan); background:var(--cyan-soft); }
+.run-btn:disabled { opacity:0.4; cursor:not-allowed; }
+pre.code-body {
+  padding:11px 12px; overflow-x:auto;
+  font-family:var(--font-mono); font-size:12px; line-height:1.52;
+  color:rgba(255,255,255,0.82); margin:0; white-space:pre;
+}
+.code-result {
+  padding:9px 12px; border-top:1px solid var(--border);
+  font-family:var(--font-mono); font-size:11.5px; line-height:1.5;
+  white-space:pre-wrap; word-break:break-all; display:none;
+}
+.code-result.ok  { color:rgba(0,255,159,0.85); }
+.code-result.err { color:rgba(255,80,80,0.85); }
+.code-result.run { color:var(--text-3); }
+
+/* ENVIRONMENT CARD */
+.env-card {
+  margin:9px 0 3px;
+  border-radius:var(--r-md);
+  border:1px solid var(--border-strong);
+  overflow:hidden; background:var(--bg-elevated);
+}
+.env-hdr {
+  display:flex; align-items:center; gap:7px;
+  padding:8px 12px; border-bottom:1px solid var(--border);
+  font-size:10px; font-weight:600; letter-spacing:0.07em;
+  color:var(--text-2); text-transform:uppercase;
+}
+.env-icon { color:var(--cyan); font-size:12px; }
+.env-body { padding:11px 12px; font-size:13px; color:var(--text-2); line-height:1.6; }
+.env-thumb {
+  width:100%; max-height:160px; object-fit:cover;
+  display:block; border-bottom:1px solid var(--border);
+}
+.env-actions {
+  padding:8px 12px; border-top:1px solid var(--border);
+  display:flex; gap:7px;
+}
+.env-act {
+  font-family:var(--font-ui); font-size:10.5px; font-weight:600;
+  padding:4px 10px; border-radius:4px;
+  border:1px solid var(--border-strong); background:transparent;
+  color:var(--text-2); cursor:pointer; transition:all 0.15s;
+}
+.env-act:hover { border-color:var(--cyan); color:var(--cyan); background:var(--cyan-soft); }
+
+/* PROACTIVE / REALLY ACTIVE CARD ─────────────────────────
+   Agent stepping forward — heavier than a normal message.
+   Entrance from slightly below, fade in over 260ms.          */
+/* Proactive card enters FROM the sidebar — spatial continuity.
+   The agent steps OUT of the sidebar and INTO the workspace.  */
+@keyframes proEnter {
+  from { opacity:0; transform:translateX(-18px) scale(0.97); }
+  to   { opacity:1; transform:translateX(0)     scale(1.0);  }
+}
+.proactive-card {
+  background: var(--bg-elevated);
+  border: 1px solid rgba(var(--pc-rgb,0,229,255), 0.22);
+  border-left: 3px solid var(--pc, var(--cyan));
+  border-radius: var(--r-md);
+  padding: 0;
+  align-self: stretch; position: relative; overflow: hidden;
+  animation: proEnter 0.3s cubic-bezier(0.0,0.0,0.2,1) both;
+  /* subtle background wash */
+  box-shadow: 0 0 0 1px rgba(var(--pc-rgb,0,229,255),0.06) inset;
+}
+/* Top color wash strip */
+.proactive-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: var(--pc, var(--cyan));
+  opacity: 0.4;
+}
+.pro-inner {
+  padding: 13px 15px;
+  background: linear-gradient(90deg, rgba(var(--pc-rgb,0,229,255),0.05) 0%, transparent 35%);
+}
+.pro-hdr {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+/* Large agent avatar — visually distinct from chat messages */
+.pro-av {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  border: 2px solid var(--pc, var(--cyan));
+  color: var(--pc, var(--cyan));
+  background: rgba(var(--pc-rgb,0,229,255), 0.1);
+  position: relative;
+}
+/* Subtle ring pulse */
+.pro-av::after {
+  content:''; position:absolute; inset:-5px; border-radius:50%;
+  border: 1.5px solid var(--pc, var(--cyan)); opacity: 0.25;
+  animation: proRing 2.5s ease-out infinite;
+}
+@keyframes proRing {
+  0%   { transform:scale(0.92); opacity:0.35; }
+  60%  { transform:scale(1.0);  opacity:0.12; }
+  100% { transform:scale(1.0);  opacity:0.0; }
+}
+.pro-meta { flex: 1; min-width: 0; }
+.pro-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--pc, var(--cyan));
+  line-height: 1.2;
+}
+.pro-sub { font-size: 9.5px; color: var(--text-3); margin-top: 2px; letter-spacing: 0.05em; }
+.pro-text { font-size: 13.5px; color: var(--text-2); line-height: 1.6; }
+.pro-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.pro-ack {
+  font-family: var(--font-ui); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 5px 12px; border-radius: 5px;
+  border: 1px solid var(--pc, var(--cyan));
+  background: rgba(var(--pc-rgb,0,229,255),0.09);
+  color: var(--pc, var(--cyan)); cursor: pointer; transition: all 0.15s;
+}
+.pro-ack:hover { background: rgba(var(--pc-rgb,0,229,255),0.18); }
+.pro-dismiss {
+  font-family: var(--font-ui); font-size: 9.5px; font-weight: 600;
+  padding: 5px 9px; border-radius: 5px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-3); cursor: pointer; transition: all 0.15s;
+}
+.pro-dismiss:hover { color: var(--text-2); }
+.pro-x {
+  position: absolute; top: 8px; right: 11px;
+  font-size: 15px; color: var(--text-3); cursor: pointer; line-height: 1;
+}
+.pro-x:hover { color: var(--text-2); }
+
+/* SYSTEM MESSAGES */
+.sys-msg {
+  text-align:center; font-size:10.5px; color:var(--text-3);
+  padding:6px 0; letter-spacing:0.05em;
+}
+
+/* ── BOTTOM BAR ─────────────────────────────────────────────── */
+#bottombar {
+  grid-area: bottombar;
+  display:flex; align-items:center; gap:7px;
+  padding:0 18px;
+  border-top:1px solid var(--border);
+  background:var(--bg-elevated);
+  flex-shrink:0;
+}
+.icon-btn {
+  width:40px; height:40px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:transparent;
+  color:var(--text-3); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.15s; flex-shrink:0; position:relative;
+}
+.icon-btn:hover { border-color:var(--border-strong); color:var(--text-2); background:rgba(255,255,255,0.03); }
+.icon-btn.listening {
+  border-color:var(--cyan); color:var(--cyan);
+  background:rgba(0,229,255,0.08);
+  animation:micring 1.3s ease-in-out infinite;
+}
+@keyframes micring { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,255,0.3)} 50%{box-shadow:0 0 0 5px rgba(0,229,255,0.07)} }
+.icon-btn.processing { border-color:var(--cyan); color:var(--cyan); opacity:0.7; }
+.icon-btn.scanning   { border-color:#00ff9f; color:#00ff9f; background:rgba(0,255,159,0.07); }
+.icon-btn.btn-error  { border-color:#ff4444; color:#ff4444; }
+
+.icon-btn .tip {
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:4px; padding:2px 7px;
+  font-size:9px; font-weight:600; letter-spacing:0.07em;
+  color:var(--text-2); white-space:nowrap;
+  pointer-events:none; opacity:0; transition:opacity 0.12s;
+  text-transform:uppercase;
+}
+.icon-btn:hover .tip,
+.icon-btn.listening .tip,
+.icon-btn.scanning .tip { opacity:1; }
+
+#inp-wrap { flex:1; }
+#inp {
+  width:100%; height:40px;
+  background:var(--bg-input); border:1px solid var(--border);
+  border-radius:var(--r-sm); color:var(--text-1);
+  font-family:var(--font-ui); font-size:13.5px;
+  padding:0 13px; outline:none; caret-color:var(--cyan);
+  transition:border-color 0.15s;
+}
+#inp::placeholder { color:var(--text-3); }
+#inp:focus { border-color:rgba(0,229,255,0.32); }
+
+#send-btn {
+  width:40px; height:40px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:transparent;
+  color:var(--text-3); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-size:19px; font-weight:700; flex-shrink:0;
+  transition:all 0.15s;
+}
+#send-btn:hover { border-color:var(--cyan); color:var(--cyan); background:var(--cyan-soft); }
+
+#file-input { display:none; }
+
+/* ── IMAGE POPUPS ───────────────────────────────────────────── */
+.img-popup {
+  position:fixed; bottom:80px; z-index:60;
+  width:200px; background:var(--bg-card);
+  border:1px solid var(--border-strong); border-radius:var(--r-md);
+  overflow:hidden;
+}
+.img-popup.left  { left:calc(var(--sidebar-w) + 14px); }
+.img-popup.right { right:14px; }
+.img-popup img   { width:100%; height:130px; object-fit:cover; display:block; }
+.img-cap { padding:5px 8px; font-size:9.5px; color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.img-x   { position:absolute; top:5px; right:7px; font-size:13px; color:var(--text-3); cursor:pointer; }
+.img-x:hover { color:var(--text-1); }
+
+/* ── ROOM SCAN OVERLAY ─────────────────────────────────────── */
+#scan-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(10,12,20,0.82); backdrop-filter:blur(10px);
+  z-index:200; align-items:center; justify-content:center;
+}
+#scan-overlay.on { display:flex; }
+.scan-modal {
+  background:var(--bg-card); border:1px solid var(--border-strong);
+  border-radius:var(--r-lg); padding:24px; width:360px; text-align:center;
+}
+.scan-title { font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:6px; }
+.scan-sub   { font-size:11.5px; color:var(--text-2); margin-bottom:14px; line-height:1.5; }
+#scan-video { display:none; }
+#scan-canvas{ display:none; }
+#scan-prev  { width:100%; border-radius:var(--r-sm); border:1px solid var(--border); margin-bottom:12px; display:none; }
+.scan-stat  { font-size:11px; color:var(--cyan); min-height:16px; margin-bottom:13px; }
+.scan-btns  { display:flex; gap:8px; justify-content:center; }
+.s-btn {
+  font-family:var(--font-ui); font-size:11.5px; font-weight:600;
+  padding:7px 18px; border-radius:var(--r-sm);
+  cursor:pointer; transition:all 0.15s;
+}
+.s-btn.primary { background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.3); color:var(--cyan); }
+.s-btn.primary:hover { background:rgba(0,229,255,0.18); }
+.s-btn.secondary { background:transparent; border:1px solid var(--border); color:var(--text-2); }
+.s-btn.secondary:hover { color:var(--text-1); }
+.s-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* ── FOCUS ─────────────────────────────────────────────────── */
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline:2px solid rgba(0,229,255,0.55); outline-offset:2px;
+}
+
+/* ── VOICE MODE OVERLAY ─────────────────────────────────────
+   Fills the main workspace when mic is active.
+   Chat fades behind it so the user can focus on speaking.    */
+#voice-overlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px;
+  background: rgba(10,12,20,0.88);
+  backdrop-filter: blur(6px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+#voice-overlay.on { opacity: 1; pointer-events: auto; }
+.vo-ring {
+  width: 88px; height: 88px; border-radius: 50%;
+  border: 2px solid rgba(0,229,255,0.25);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.vo-ring::before {
+  content: ''; position: absolute; inset: -10px; border-radius: 50%;
+  border: 1.5px solid rgba(0,229,255,0.18);
+}
+.vo-ring::after {
+  content: ''; position: absolute; inset: -20px; border-radius: 50%;
+  border: 1px solid rgba(0,229,255,0.09);
+}
+.vo-ring.listening { border-color: var(--cyan); animation: voRing 1.2s ease-in-out infinite; }
+.vo-ring.listening::before { border-color: rgba(0,229,255,0.35); animation: voRing 1.2s ease-in-out 0.15s infinite; }
+.vo-ring.listening::after  { border-color: rgba(0,229,255,0.15); animation: voRing 1.2s ease-in-out 0.30s infinite; }
+@keyframes voRing {
+  0%,100% { transform: scale(1);    opacity: 1;   }
+  50%      { transform: scale(1.06); opacity: 0.7; }
+}
+.vo-ring.processing { border-color: rgba(0,229,255,0.4); animation: voProcess 0.8s linear infinite; }
+@keyframes voProcess { to { transform: rotate(360deg); } }
+.vo-icon {
+  color: var(--cyan);
+  display: flex; align-items: center; justify-content: center;
+}
+.vo-status {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--text-2); text-transform: uppercase;
+}
+.vo-hint {
+  font-size: 10px; color: var(--text-3); letter-spacing: 0.05em;
+}
+.vo-cancel {
+  font-family: var(--font-ui); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 5px 14px; border-radius: 4px;
+  border: 1px solid var(--border-strong); background: transparent;
+  color: var(--text-3); cursor: pointer; transition: all 0.15s;
+}
+.vo-cancel:hover { color: var(--text-1); }
+
+/* ── RESPONSIVE FULL-SCREEN ─────────────────────────────────── */
+/* Use 100% height (from body/html which are 100%) instead of 100vh
+   so macOS native full-screen doesn't cause overflow or misalignment */
+#app { height: 100%; }
+
+/* Wider viewports: give the sidebar and content more room */
+@media (min-width: 1280px) {
+  :root { --sidebar-w: 280px; }
+}
+@media (min-width: 1600px) {
+  :root { --sidebar-w: 300px; }
+  #msgs { max-width: 820px; }
+  #thinking { max-width: 820px; }
+}
+
+/* ── REDUCED MOTION ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="sidebar-hd">
+      <div class="sidebar-logo">J.A.R.V.I.S</div>
+      <div class="sidebar-sub">4 agents on standby</div>
+    </div>
+    <div class="agent-list" role="list" id="agent-list"></div>
+    <div class="sidebar-ft">
+      <button id="team-mode-btn" onclick="toggleTeamMode()" aria-label="Toggle team mode">Team Mode</button>
+      <div id="hz-cluster" onclick="hzClick()" role="button" tabindex="0" aria-label="Agent cluster">
+        <div class="hz-dot" style="background:#00e5ff" id="hzd-JARVIS"></div>
+        <div class="hz-dot" style="background:#ff6a00" id="hzd-FRIDAY"></div>
+        <div class="hz-dot" style="background:#00ff9f" id="hzd-VERONICA"></div>
+        <div class="hz-dot" style="background:#ffb450" id="hzd-KAREN"></div>
+        <span class="hz-label">Online</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <div class="topbar-brand">NEXUS OS v4.1</div>
+    <div class="topbar-right">
+      <div id="brain-badge" role="button" tabindex="0" onclick="clearBrainBadge()" aria-label="New Second Brain activity">
+        <div class="badge-dot"></div>
+        <span id="badge-count">0</span>
+        <span>Brain</span>
+      </div>
+      <div id="active-bar" aria-live="polite">
+        <div id="active-dot"></div>
+        <span>Active:</span>
+        <span id="active-name">JARVIS</span>
+      </div>
+      <span id="sys-time">--:--:--</span>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main id="main">
+    <!-- Workspace color tint — fades in when agent summoned -->
+    <div id="ws-tint"></div>
+    <!-- Voice overlay — shown when mic is active, minimizes the chat -->
+    <div id="voice-overlay">
+      <div class="vo-ring" id="vo-ring">
+        <div class="vo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+      </div>
+      <div class="vo-status" id="vo-status">Listening…</div>
+      <div class="vo-hint" id="vo-hint">Tap mic button or wait to stop</div>
+      <button class="vo-cancel" onclick="stopMic()">Cancel</button>
+    </div>
+    <!-- Agent context strip — visible when an agent is explicitly summoned -->
+    <div id="agent-ctx" aria-live="polite"></div>
+    <!-- Context interrupt — shows when another agent surfaces something while one is active -->
+    <div id="ctx-interrupt" aria-live="assertive"></div>
+    <div id="msgs-wrap">
+      <div id="msgs" aria-live="polite" aria-label="Conversation"></div>
+      <div id="thinking">
+        <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
+        <span id="thinking-label">Thinking…</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- BOTTOM BAR -->
+  <footer id="bottombar">
+    <input type="file" id="file-input" accept="image/*,.pdf,.txt,.md,.py,.js,.ts,.json,.csv" onchange="handleUpload(this)">
+
+    <button class="icon-btn" onclick="document.getElementById('file-input').click()" aria-label="Upload file" title="Upload">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <span class="tip">Upload</span>
+    </button>
+
+    <div id="inp-wrap">
+      <input id="inp" type="text" placeholder="Message JARVIS…" autocomplete="off" spellcheck="false" aria-label="Message input">
+    </div>
+
+    <button class="icon-btn" id="mic-btn" onclick="toggleMic()" aria-label="Voice input">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+      <span class="tip" id="mic-tip">Microphone</span>
+    </button>
+
+    <button class="icon-btn" id="scan-btn" onclick="startRoomScan()" aria-label="Room scan">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+      <span class="tip">Room Scan</span>
+    </button>
+
+    <button id="send-btn" onclick="doSend()" aria-label="Send">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+      </svg>
+    </button>
+  </footer>
+
+</div>
+
+<!-- IMAGE POPUPS -->
+<div id="img-popup-left"  class="img-popup left"  style="display:none"></div>
+<div id="img-popup-right" class="img-popup right" style="display:none"></div>
+
+<!-- ROOM SCAN OVERLAY -->
+<div id="scan-overlay" role="dialog" aria-modal="true" aria-label="Room Scan">
+  <div class="scan-modal">
+    <div class="scan-title">Room Scan</div>
+    <div class="scan-sub" id="scan-sub">Point your camera at the room. JARVIS will analyze what it sees.</div>
+    <video id="scan-video" autoplay muted playsinline></video>
+    <canvas id="scan-canvas"></canvas>
+    <img id="scan-prev" alt="Room capture">
+    <div class="scan-stat" id="scan-stat"></div>
+    <div class="scan-btns">
+      <button class="s-btn primary" id="scan-cap-btn" onclick="captureRoom()">Capture</button>
+      <button class="s-btn secondary" onclick="closeScan()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   AGENT CONFIG
+═══════════════════════════════════════════════════════════ */
+const AGENTS = {
+  JARVIS:   { hex:'#00e5ff', rgb:'0,229,255',   role:'Command · Synthesis',   init:'JAR' },
+  FRIDAY:   { hex:'#ff6a00', rgb:'255,106,0',   role:'Recon · Data · Speed',  init:'FRI' },
+  VERONICA: { hex:'#00ff9f', rgb:'0,255,159',   role:'Risk · Strategy',       init:'VER' },
+  KAREN:    { hex:'#ffb450', rgb:'255,180,80',  role:'Guidance · Protocol',   init:'KAR' },
+};
+const AGENT_ORDER = ['JARVIS','FRIDAY','VERONICA','KAREN'];
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════ */
+let curAgent   = 'JARVIS';
+let _summoned  = null;  // explicitly summoned agent — null = no one summoned (standby)
+let _ttsAudio  = null;
+let _chatAbort = null;
+let _audioCtx  = null;
+let _imgSide   = 'left';
+let _lastAct   = Date.now();
+let _msgN      = 0;
+let _teamMode  = false;
+let _micMode   = 'idle'; // idle | listening | processing | error
+let _mediaRec  = null;
+let _aChunks   = [];
+let _scanStream= null;
+let _scanBlob  = null;
+let _scanPhase = 'idle'; // idle | camera | captured | analyzing
+
+/* ═══════════════════════════════════════════════════════════
+   BRAIN BADGE
+═══════════════════════════════════════════════════════════ */
+const BB_KEY = 'jarvis_brain_badge_v1';
+const BB_TTL = 86400000;
+const IDLE_T = 30000;
+let _bb = { count:0, firstAt:null, anchors:[] };
+
+function _loadBB() {
+  try {
+    const raw = localStorage.getItem(BB_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.firstAt && (Date.now()-d.firstAt) > BB_TTL) { localStorage.removeItem(BB_KEY); return; }
+    _bb = d; _renderBB();
+  } catch(_){}
+}
+function _saveBB() { try { localStorage.setItem(BB_KEY, JSON.stringify(_bb)); } catch(_){} }
+function _renderBB() {
+  const el = document.getElementById('brain-badge');
+  const n  = document.getElementById('badge-count');
+  if (!el||!n) return;
+  if (_bb.count <= 0) { el.style.display='none'; return; }
+  el.style.display = 'flex';
+  n.textContent = _bb.count > 9 ? '9+' : String(_bb.count);
+}
+function _isIdle() {
+  if ((Date.now()-_lastAct) < IDLE_T) return false;
+  const w = document.getElementById('msgs-wrap');
+  if (w && (w.scrollHeight-w.scrollTop-w.clientHeight) < 40 && document.hasFocus()) return false;
+  return true;
+}
+function maybeBumpBB(vis, tags, msgId) {
+  if (vis !== 'surface') return;
+  if (!Array.isArray(tags)) return;
+  if (!tags.some(t => typeof t==='string' && t.startsWith('BRAIN:') && !t.toLowerCase().includes('searched') && !t.toLowerCase().includes('suggest'))) return;
+  if (!_isIdle()) return;
+  _bb.count++;
+  if (!_bb.firstAt) _bb.firstAt = Date.now();
+  if (msgId) _bb.anchors.push(msgId);
+  _saveBB(); _renderBB(); hzPulse();
+}
+function clearBrainBadge() {
+  const a = _bb.anchors[0];
+  if (a) { const el=document.getElementById(a); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); }
+  else { const w=document.getElementById('msgs-wrap'); if(w) w.scrollTop=w.scrollHeight; }
+  _bb = { count:0, firstAt:null, anchors:[] }; _saveBB(); _renderBB();
+}
+window.addEventListener('storage', e => { if (e.key===BB_KEY) _loadBB(); });
+['mousemove','keydown','scroll','click','wheel','touchstart'].forEach(ev =>
+  window.addEventListener(ev, ()=>{ _lastAct=Date.now(); }, {passive:true})
+);
+
+/* ═══════════════════════════════════════════════════════════
+   HOME ZONE PULSE
+═══════════════════════════════════════════════════════════ */
+function hzPulse() {
+  AGENT_ORDER.forEach(name => {
+    const d = document.getElementById('hzd-' + name);
+    if (!d) return;
+    d.classList.remove('hz-pulse');
+    void d.offsetWidth;
+    d.classList.add('hz-pulse');
+    setTimeout(() => d.classList.remove('hz-pulse'), 1500);
+  });
+}
+function hzClick() {
+  const w = document.getElementById('msgs-wrap');
+  if (w) w.scrollTop = w.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════════════════ */
+// Per-agent distinct character: breathing cadence + idle label
+const AGENT_PERSONALITY = {
+  JARVIS:   { breath: '4.8s', idleLabel: 'Ready',      },  // Composed, unhurried
+  FRIDAY:   { breath: '2.8s', idleLabel: 'Scanning',   },  // Fast, alert
+  VERONICA: { breath: '3.8s', idleLabel: 'Monitoring', },  // Precise, steady
+  KAREN:    { breath: '4.2s', idleLabel: 'On Call',    },  // Measured, warm
+};
+
+function buildSidebar() {
+  const list = document.getElementById('agent-list');
+  list.innerHTML = '';
+  AGENT_ORDER.forEach(name => {
+    const a = AGENTS[name];
+    const p = AGENT_PERSONALITY[name];
+    const row = document.createElement('div');
+    row.className = 'agent-row';
+    row.id = 'row-' + name;
+    row.setAttribute('role','listitem');
+    row.setAttribute('tabindex','0');
+    row.setAttribute('aria-label', `${name} — ${a.role} — click to summon`);
+    row.style.setProperty('--ac', a.hex);
+    row.style.setProperty('--ac-rgb', a.rgb);
+    row.innerHTML = `
+      <div class="agent-avatar" id="av-${name}">${a.init}</div>
+      <div class="agent-info">
+        <div class="agent-name">${name}</div>
+        <div class="agent-role">${a.role}</div>
+        <div class="session-tag">Active session</div>
+      </div>
+      <div class="agent-pill idle" id="pill-${name}">${p.idleLabel}</div>`;
+
+    // Set per-agent breathing cadence
+    const av = row.querySelector('.agent-avatar');
+    if (av) av.style.setProperty('--av-breath', p.breath);
+
+    // Hover preview — light border appears before click, commits on click
+    row.addEventListener('mouseenter', () => {
+      if (_summoned === name || _summoned) return; // No preview if already in a session
+      const mainEl = document.getElementById('main');
+      if (mainEl) {
+        mainEl.style.transition = 'border-left-color 0.1s ease';
+        mainEl.style.borderLeftColor = `rgba(${a.rgb},0.14)`;
+      }
+    });
+    row.addEventListener('mouseleave', () => {
+      if (_summoned) return;
+      const mainEl = document.getElementById('main');
+      if (mainEl) {
+        mainEl.style.transition = 'border-left-color 0.22s ease';
+        mainEl.style.borderLeftColor = 'transparent';
+        setTimeout(() => { if (!_summoned) mainEl.style.transition = ''; }, 240);
+      }
+    });
+
+    row.addEventListener('click', () => summonAgent(name));
+    row.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') { e.preventDefault(); summonAgent(name); } });
+    list.appendChild(row);
+  });
+}
+
+/** summonAgent — user intentionally brings an agent into focus.
+    Distinct from setAgent (which tracks who is replying mid-stream). */
+function summonAgent(name) {
+  // If already summoned, dismiss instead (toggle)
+  if (_summoned === name) { dismissAgent(); return; }
+
+  _summoned = name;
+  curAgent  = name;
+
+  // Dim all rows, highlight this one
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.classList.add('has-summoned');
+  document.querySelectorAll('.agent-row').forEach(r => {
+    r.classList.remove('is-summoned','is-active','summon-flash');
+  });
+  const row = document.getElementById('row-' + name);
+  if (row) {
+    row.classList.add('is-summoned');
+    // Trigger flash — remove + re-add to restart animation
+    void row.offsetWidth;
+    row.classList.add('summon-flash');
+    row.addEventListener('animationend', () => row.classList.remove('summon-flash'), { once: true });
+  }
+
+  // Topbar indicator
+  const dot = document.getElementById('active-dot');
+  const lbl = document.getElementById('active-name');
+  if (dot) dot.style.background = AGENTS[name].hex;
+  if (lbl) { lbl.textContent = name; lbl.style.color = AGENTS[name].hex; }
+
+  // Show context strip
+  _showCtx(name);
+
+  // Workspace tint + presence line.
+  // Clear inline transition (may have been set by hover preview) so CSS cascade takes over.
+  _setWsTint(AGENTS[name].rgb);
+  const main = document.getElementById('main');
+  if (main) {
+    main.style.transition = ''; // Fall back to CSS: 0.45s ease 0.05s
+    main.style.borderLeftColor = `rgba(${AGENTS[name].rgb},0.32)`;
+  }
+
+  // Sidebar header: show active session
+  const sub = document.querySelector('.sidebar-sub');
+  if (sub) { sub.textContent = `${name} — Active Session`; sub.style.color = AGENTS[name].hex; }
+
+  // Session marker in chat — permanent record of this summon
+  _insertSessionMarker(name, 'summoned');
+
+  // Update input placeholder
+  const inp = document.getElementById('inp');
+  if (inp) inp.placeholder = `Speaking to ${name}…`;
+
+  // Pill state
+  setAgentStatus(name, 'active');
+}
+
+/** setAgent — tracks which agent is actively replying during a stream.
+    Does not change summon state, does update topbar indicator. */
+function setAgent(name) {
+  curAgent = name;
+  if (!_summoned) {
+    // No explicit summon — just update topbar
+    const dot = document.getElementById('active-dot');
+    const lbl = document.getElementById('active-name');
+    if (dot) dot.style.background = AGENTS[name]?.hex || '#00e5ff';
+    if (lbl) { lbl.textContent = name; lbl.style.color = AGENTS[name]?.hex || '#00e5ff'; }
+  }
+}
+
+/** dismissAgent — sends the summoned agent back to standby. */
+function dismissAgent() {
+  if (!_summoned) return;
+  const prev = _summoned;
+  _summoned = null;
+
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.classList.remove('has-summoned');
+  document.querySelectorAll('.agent-row').forEach(r => r.classList.remove('is-summoned','is-active'));
+
+  // Hide context strip + clear workspace tint + clear presence line
+  _hideCtx();
+  _setWsTint(null);
+  const main = document.getElementById('main');
+  if (main) {
+    main.style.transition = ''; // Use CSS transition
+    main.style.borderLeftColor = 'transparent';
+  }
+  // Clear any active interrupt notification
+  const intEl = document.getElementById('ctx-interrupt');
+  if (intEl) intEl.classList.remove('on');
+
+  // Sidebar header: back to standby
+  const sub = document.querySelector('.sidebar-sub');
+  if (sub) { sub.textContent = '4 agents on standby'; sub.style.color = ''; }
+
+  // Session end marker
+  _insertSessionMarker(prev, 'dismissed');
+
+  // Restore pill to standby
+  setAgentStatus(prev, 'idle');
+
+  // Restore input placeholder
+  const inp = document.getElementById('inp');
+  if (inp) inp.placeholder = 'Message JARVIS…';
+
+  // Restore topbar to default
+  const dot = document.getElementById('active-dot');
+  const lbl = document.getElementById('active-name');
+  if (dot) dot.style.background = AGENTS['JARVIS'].hex;
+  if (lbl) { lbl.textContent = 'JARVIS'; lbl.style.color = AGENTS['JARVIS'].hex; }
+}
+
+function _showCtx(name) {
+  const a = AGENTS[name];
+  const ctx = document.getElementById('agent-ctx');
+  if (!ctx) return;
+  ctx.style.setProperty('--ctx-color', a.hex);
+  ctx.style.setProperty('--ctx-rgb', a.rgb);
+  ctx.innerHTML = `<div class="ctx-inner">
+    <div class="ctx-av">${a.init}</div>
+    <div class="ctx-info">
+      <div class="ctx-name">${name}</div>
+      <div class="ctx-role">${a.role}</div>
+    </div>
+    <div class="ctx-right">
+      <div class="ctx-status" id="ctx-status">
+        <div class="ctx-stat-dot"></div>
+        <span id="ctx-status-text">Active</span>
+      </div>
+      <button class="ctx-dismiss" onclick="dismissAgent()" aria-label="Dismiss ${name}">Dismiss</button>
+    </div>
+  </div>`;
+  void ctx.offsetWidth;
+  ctx.classList.add('visible');
+}
+
+function _hideCtx() {
+  const ctx = document.getElementById('agent-ctx');
+  if (!ctx) return;
+  ctx.classList.remove('visible');
+  ctx.addEventListener('transitionend', () => { if (!ctx.classList.contains('visible')) ctx.innerHTML = ''; }, { once: true });
+}
+
+/** Update the live status text in the context strip (only if summoned agent matches). */
+function _setCtxStatus(agentName, text) {
+  if (_summoned !== agentName) return;
+  const el = document.getElementById('ctx-status-text');
+  if (el) el.textContent = text;
+}
+
+/** Brief flash on sidebar avatar when a message arrives from that agent.
+    Connects the sidebar entity to the chat message visually. */
+function _flashAv(name) {
+  const av = document.getElementById('av-' + name);
+  if (!av) return;
+  av.classList.remove('av-flash');
+  void av.offsetWidth;
+  av.classList.add('av-flash');
+  av.addEventListener('animationend', () => av.classList.remove('av-flash'), { once: true });
+}
+
+/** Show context interrupt — "this agent is trying to get through."
+    Appears ABOVE the context strip when another agent is currently active. */
+function _showCtxInterrupt(name) {
+  const a  = AGENTS[name] || AGENTS['JARVIS'];
+  const el = document.getElementById('ctx-interrupt');
+  if (!el) return;
+  el.style.setProperty('--int-rgb', a.rgb);
+  el.innerHTML = `<div class="ctx-int-inner">
+    <div class="ctx-int-av">${a.init}</div>
+    <span class="ctx-int-text">${name} — stepping forward</span>
+    <button class="ctx-int-act" onclick="summonAgent('${name}'); document.getElementById('ctx-interrupt').classList.remove('on')">
+      Switch
+    </button>
+  </div>`;
+  el.classList.add('on');
+  // Auto-dismiss after 5s
+  setTimeout(() => el.classList.remove('on'), 5000);
+}
+
+/** Insert a session marker into the chat — permanent record of summon/dismiss. */
+function _insertSessionMarker(name, event) {
+  const msgs = document.getElementById('msgs');
+  if (!msgs) return;
+  const a    = AGENTS[name];
+  const now  = new Date();
+  const ts   = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const label = event === 'summoned' ? `${name} — Active` : `${name} — Session Ended`;
+  const m = document.createElement('div');
+  m.className = 'session-marker';
+  m.style.setProperty('--sm-color', event === 'summoned' ? a.hex : 'rgba(255,255,255,0.2)');
+  m.innerHTML = `
+    <div class="session-marker-inner">
+      <div class="session-marker-av">${a.init}</div>
+      <span class="session-marker-text">${label}</span>
+      <span class="session-marker-ts">${ts}</span>
+    </div>`;
+  msgs.appendChild(m);
+  scrollBottom();
+}
+
+/** Set/clear workspace color tint — subtle environmental shift on summon. */
+function _setWsTint(rgb) {
+  const el = document.getElementById('ws-tint');
+  if (!el) return;
+  if (rgb) {
+    el.style.background = `radial-gradient(ellipse 90% 110% at -8% 50%, rgba(${rgb},0.045) 0%, transparent 52%)`;
+    void el.offsetWidth;
+    el.classList.add('on');
+  } else {
+    el.classList.remove('on');
+  }
+}
+
+function setAgentStatus(name, status) {
+  const pill = document.getElementById('pill-' + name);
+  const row  = document.getElementById('row-' + name);
+  if (!pill) return;
+  pill.className = 'agent-pill ' + status;
+  // Idle uses per-agent personality label (not generic "Standby")
+  const idleLabel = AGENT_PERSONALITY[name]?.idleLabel || 'Ready';
+  const labels = { idle: idleLabel, working:'Working…', active:'Active', 'has-update':'Has update' };
+  pill.textContent = labels[status] || status;
+  if (row) row.classList.toggle('is-working', status==='working');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TEAM MODE
+═══════════════════════════════════════════════════════════ */
+function toggleTeamMode() {
+  _teamMode = !_teamMode;
+  document.getElementById('team-mode-btn').classList.toggle('on', _teamMode);
+  sysMsg(_teamMode
+    ? 'Team Mode activated — all agents coordinating on your requests.'
+    : 'Team Mode deactivated.');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLOCK
+═══════════════════════════════════════════════════════════ */
+function tick() {
+  const n=new Date();
+  const el=document.getElementById('sys-time');
+  if(el) el.textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0')+':'+String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+/* ═══════════════════════════════════════════════════════════
+   AUDIO UNLOCK
+═══════════════════════════════════════════════════════════ */
+function unlockAudio() {
+  if (_audioCtx) return;
+  try {
+    _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const buf=_audioCtx.createBuffer(1,1,22050);
+    const src=_audioCtx.createBufferSource();
+    src.buffer=buf; src.connect(_audioCtx.destination); src.start(0);
+    _audioCtx.resume();
+  } catch(_){}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RICH MESSAGE RENDERING
+═══════════════════════════════════════════════════════════ */
+const VBLOCK_RE = /\[(JARVIS|FRIDAY|VERONICA|KAREN)\]\s+/g;
+const BRAIN_RE  = /\[BRAIN:\s*([^\]]+)\]/gi;
+const SENS_RE   = /\[SENSITIVE\]/gi;
+const FENCE_RE  = /```(\w*)\n?([\s\S]*?)```/g;
+const EXEC_LANGS = new Set(['python','py','javascript','js','bash','sh','shell']);
+
+function stripShowTags(t) { return (t||'').replace(/\[SHOW:\s*[^\]]*\]/gi,'').replace(/\s{2,}/g,' ').trim(); }
+
+function parseVoiceBlocks(text) {
+  if (!text) return [{voice:null,text:''}];
+  const segs=[]; let last=0,lastVoice=null;
+  VBLOCK_RE.lastIndex=0; let m;
+  while ((m=VBLOCK_RE.exec(text))!==null) {
+    const chunk=text.slice(last,m.index).trim();
+    if (chunk||segs.length===0) segs.push({voice:lastVoice,text:chunk});
+    lastVoice=m[1]; last=m.index+m[0].length;
+  }
+  const tail=text.slice(last).trim();
+  if (tail||segs.length===0) segs.push({voice:lastVoice,text:tail});
+  return segs;
+}
+
+function extractChips(text) {
+  if (!text) return {text:'',chips:[]};
+  const chips=[]; let stripped=text;
+  BRAIN_RE.lastIndex=0; SENS_RE.lastIndex=0; let m;
+  while ((m=BRAIN_RE.exec(text))!==null)  chips.push({type:'brain',body:m[1].trim()});
+  while ((m=SENS_RE.exec(text))!==null)   chips.push({type:'sensitive',body:'SENSITIVE'});
+  stripped=stripped.replace(BRAIN_RE,'').replace(SENS_RE,'');
+  return {text:stripped.trim(), chips};
+}
+
+function chipClass(body) {
+  const lc=(body||'').toLowerCase();
+  if(lc.includes('saved'))    return 'saved';
+  if(lc.includes('proposed')) return 'proposed';
+  if(lc.includes('searched')) return 'searched';
+  if(lc.includes('suggest'))  return 'suggest';
+  if(lc.includes('approved')) return 'saved';
+  if(lc.includes('rejected')) return 'proposed';
+  return 'observer';
+}
+
+function renderTextWithCode(container, text) {
+  FENCE_RE.lastIndex=0;
+  let last=0; const parts=[]; let m;
+  while ((m=FENCE_RE.exec(text))!==null) {
+    if (m.index>last) parts.push({type:'text',content:text.slice(last,m.index)});
+    parts.push({type:'code',lang:m[1]||'',code:m[2].trimEnd()});
+    last=m.index+m[0].length;
+  }
+  if (last<text.length) parts.push({type:'text',content:text.slice(last)});
+  parts.forEach(p => {
+    if (p.type==='text') {
+      if (p.content.trim()) {
+        const s=document.createElement('span'); s.className='msg-text'; s.textContent=p.content; container.appendChild(s);
+      }
+    } else { container.appendChild(buildCodeBlock(p.lang,p.code)); }
+  });
+}
+
+function buildCodeBlock(lang, code) {
+  const wrap=document.createElement('div'); wrap.className='code-block';
+  const hdr=document.createElement('div'); hdr.className='code-hdr';
+  const badge=document.createElement('span'); badge.className='code-lang'; badge.textContent=lang||'text';
+  hdr.appendChild(badge);
+  const result=document.createElement('div'); result.className='code-result';
+  if (EXEC_LANGS.has((lang||'').toLowerCase())) {
+    const btn=document.createElement('button'); btn.className='run-btn'; btn.textContent='Run';
+    btn.setAttribute('aria-label','Run code');
+    btn.addEventListener('click', ()=>runCode(code,lang,btn,result));
+    hdr.appendChild(btn);
+  }
+  const pre=document.createElement('pre'); pre.className='code-body'; pre.textContent=code;
+  wrap.appendChild(hdr); wrap.appendChild(pre); wrap.appendChild(result);
+  return wrap;
+}
+
+async function runCode(code, lang, btn, resultEl) {
+  btn.disabled=true; btn.textContent='…';
+  resultEl.style.display='block'; resultEl.className='code-result run'; resultEl.textContent='Running…';
+  try {
+    const normLang=(lang||'').toLowerCase();
+    const language=normLang==='py'?'python':normLang==='js'?'javascript':normLang==='sh'||normLang==='shell'?'bash':normLang;
+    const r=await fetch('http://127.0.0.1:8080/api/execute',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({language,code}),
+    });
+    const d=await r.json();
+    resultEl.className='code-result '+(d.success?'ok':'err');
+    resultEl.textContent=d.output||(d.success?'(no output)':'Execution failed');
+  } catch(e) {
+    resultEl.className='code-result err'; resultEl.textContent='Could not reach executor.';
+  } finally { btn.disabled=false; btn.textContent='Run'; }
+}
+
+function renderRichMsg(el, agent, fullText, vis, tags) {
+  if (!el) return;
+  el.querySelectorAll('.msg-live-text,.msg-cursor,.msg-text,.voice-seg,.chip-row,.code-block').forEach(n=>n.remove());
+  const {text:clean,chips}=extractChips(fullText);
+  const segs=parseVoiceBlocks(clean);
+  segs.forEach((seg,i)=>{
+    if (i===0&&!seg.voice) { renderTextWithCode(el,seg.text); }
+    else if (seg.voice&&seg.text) {
+      const segEl=document.createElement('div'); segEl.className='voice-seg';
+      const pill=document.createElement('span');
+      pill.className='v-pill '+seg.voice.toLowerCase(); pill.textContent=seg.voice;
+      segEl.appendChild(pill); renderTextWithCode(segEl,seg.text); el.appendChild(segEl);
+    }
+  });
+  if (chips.length>0) {
+    const row=document.createElement('div'); row.className='chip-row';
+    chips.forEach(c=>{
+      const chip=document.createElement('span');
+      chip.className='chip '+(c.type==='sensitive'?'sensitive':chipClass(c.body));
+      chip.textContent=c.body; row.appendChild(chip);
+    });
+    el.appendChild(row);
+  }
+}
+
+function renderCollapsed(el, agent, fullText) {
+  if (!el) return;
+  el.classList.add('collapsed');
+  el.querySelectorAll('.msg-live-text,.msg-cursor').forEach(n=>n.remove());
+  const wrap=document.createElement('div'); wrap.className='col-preview';
+  const preview=document.createElement('span');
+  preview.textContent=(fullText||'').replace(/\s+/g,' ').trim().slice(0,90)+(fullText.length>90?'…':'');
+  const chev=document.createElement('span'); chev.className='col-chev'; chev.textContent='▾';
+  wrap.appendChild(preview); wrap.appendChild(chev); el.appendChild(wrap);
+  el.addEventListener('click',function exp(){
+    el.classList.remove('collapsed'); el.removeEventListener('click',exp);
+    renderRichMsg(el,agent,fullText,'normal',[]);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGING
+═══════════════════════════════════════════════════════════ */
+function _mkMsgEl(role, agentName) {
+  const msgs=document.getElementById('msgs');
+  const d=document.createElement('div');
+  d.className='msg '+role;
+  d.id='msg-'+(++_msgN);
+  if (role==='agent'&&agentName&&AGENTS[agentName]) {
+    const a = AGENTS[agentName];
+    d.style.setProperty('--mc', a.hex);
+    const hdr=document.createElement('div'); hdr.className='msg-hdr';
+    // Mini avatar — distinct entity signal
+    const av=document.createElement('div'); av.className='msg-av'; av.textContent=a.init;
+    const tag=document.createElement('div'); tag.className='msg-tag'; tag.textContent=agentName;
+    const ts=document.createElement('div'); ts.className='msg-ts';
+    const now=new Date(); ts.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    hdr.appendChild(av); hdr.appendChild(tag); hdr.appendChild(ts); d.appendChild(hdr);
+  }
+  msgs.appendChild(d); return d;
+}
+
+function appendMsg(role, text, agent) {
+  const d=_mkMsgEl(role, agent);
+  if (role==='agent') { renderRichMsg(d,agent,text,'normal',[]); }
+  else { const s=document.createElement('span'); s.className='msg-text'; s.textContent=text; d.appendChild(s); }
+  scrollBottom(); return d;
+}
+
+function appendMsgLive(agent) {
+  const d=_mkMsgEl('agent',agent);
+  const s=document.createElement('span'); s.className='msg-live-text msg-text'; d.appendChild(s);
+  const c=document.createElement('span'); c.className='msg-cursor'; d.appendChild(c);
+  scrollBottom(); return d;
+}
+
+function updateMsgLive(el, text) {
+  const s=el.querySelector('.msg-live-text'); if(s) s.textContent=text; scrollBottom();
+}
+
+function finishMsgLive(el) { el.querySelector('.msg-cursor')?.remove(); }
+
+function sysMsg(text) {
+  const msgs=document.getElementById('msgs');
+  const d=document.createElement('div'); d.className='sys-msg'; d.textContent=text;
+  msgs.appendChild(d); scrollBottom();
+}
+
+function scrollBottom() {
+  const w=document.getElementById('msgs-wrap'); if(w) w.scrollTop=w.scrollHeight;
+}
+
+function setThinking(on, agent) {
+  const el=document.getElementById('thinking');
+  const lb=document.getElementById('thinking-label');
+  if (!el) return;
+  el.classList.toggle('on', on);
+  if (lb&&agent) lb.textContent=agent+' is thinking…';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SEND / STREAM
+═══════════════════════════════════════════════════════════ */
+async function doSend() {
+  const inp=document.getElementById('inp');
+  const text=inp.value.trim(); if(!text) return;
+  inp.value=''; unlockAudio();
+  appendMsg('user',text);
+  if (_chatAbort) _chatAbort.abort();
+  const ctrl=new AbortController(); _chatAbort=ctrl;
+  let agent=_summoned||curAgent, msgEl=null, full='';
+  setThinking(true, agent); setAgentStatus(agent,'working');
+
+  const onEvt=(evt)=>{
+    if (evt.type==='thinking') {
+      setThinking(true,agent);
+      _setCtxStatus(agent,'Thinking…');
+    }
+    else if (evt.type==='speaker') {
+      agent=evt.name||curAgent; setAgent(agent); setAgentStatus(agent,'working');
+      setThinking(false);
+      _setCtxStatus(agent,'Responding…');
+      if (msgEl) finishMsgLive(msgEl);
+      msgEl=appendMsgLive(agent); full='';
+      // Flash the sidebar avatar to connect sidebar → chat
+      _flashAv(agent);
+    } else if (evt.type==='text') {
+      full+=evt.chunk||'';
+      if (msgEl) updateMsgLive(msgEl, stripShowTags(full));
+    } else if (evt.type==='done') {
+      setThinking(false);
+      const isSumm = _summoned===agent;
+      setAgentStatus(agent, isSumm ? 'active' : 'idle');
+      _setCtxStatus(agent,'Active');
+      const finalText=stripShowTags(evt.full||full);
+      const msgId=msgEl?msgEl.id:null;
+      if (msgEl) {
+        finishMsgLive(msgEl);
+        if (evt.visibility==='collapsed') renderCollapsed(msgEl,agent,finalText);
+        else renderRichMsg(msgEl,agent,finalText,evt.visibility,evt.tags);
+        msgEl=null;
+      }
+      parseAndShowImages(evt.full||full);
+      if (finalText.trim()) playTTS(finalText,agent);
+      maybeBumpBB(evt.visibility,evt.tags,msgId);
+    } else if (evt.type==='error') {
+      setThinking(false); setAgentStatus(agent, _summoned===agent ? 'active' : 'idle');
+      _setCtxStatus(agent,'Active');
+      if (msgEl) { finishMsgLive(msgEl); msgEl=null; }
+    }
+  };
+
+  try {
+    const res=await fetch(`http://127.0.0.1:8080/api/stream?message=${encodeURIComponent(text)}`,{signal:ctrl.signal});
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while (true) {
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for (const line of lines) {
+        const t=line.trim(); if(!t.startsWith('data: ')) continue;
+        try { onEvt(JSON.parse(t.slice(6))); } catch(_){}
+      }
+    }
+  } catch(e) {
+    setThinking(false); setAgentStatus(agent,'idle');
+    if (e.name!=='AbortError') {
+      if (msgEl) { finishMsgLive(msgEl); msgEl=null; }
+      appendMsg('agent','Connection lost. Is the server running?','JARVIS');
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TTS
+═══════════════════════════════════════════════════════════ */
+function stopTTS() { if (_ttsAudio) { _ttsAudio.pause(); _ttsAudio.src=''; _ttsAudio=null; } }
+
+function playTTS(text, agent) {
+  stopTTS(); if(!text?.trim()) return;
+  const url=`http://127.0.0.1:8080/api/tts?text=${encodeURIComponent(text.slice(0,800))}&agent=${encodeURIComponent(agent||'JARVIS')}`;
+  _ttsAudio=new Audio(url);
+  _ttsAudio.onended=()=>{ _ttsAudio=null; };
+  _ttsAudio.onerror=()=>{ _ttsAudio=null; };
+  _ttsAudio.play().catch(()=>{ _ttsAudio=null; });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MIC — Web Speech primary, MediaRecorder fallback
+═══════════════════════════════════════════════════════════ */
+function setMicUI(state) {
+  _micMode=state;
+  const btn=document.getElementById('mic-btn');
+  const tip=document.getElementById('mic-tip');
+  if (!btn) return;
+  btn.classList.remove('listening','processing','btn-error');
+  const labels={listening:'Listening…', processing:'Transcribing…', error:'Mic unavailable', idle:'Microphone'};
+  if (state==='listening')   btn.classList.add('listening');
+  else if (state==='processing') btn.classList.add('processing');
+  else if (state==='error')  btn.classList.add('btn-error');
+  if (tip) tip.textContent = labels[state]||'Microphone';
+  if (state==='error') setTimeout(()=>setMicUI('idle'), 2800);
+}
+
+let _micTimer = null;
+
+function _voiceOverlay(state) {
+  // state: 'listening' | 'processing' | 'off'
+  const overlay = document.getElementById('voice-overlay');
+  const ring    = document.getElementById('vo-ring');
+  const status  = document.getElementById('vo-status');
+  const hint    = document.getElementById('vo-hint');
+  if (!overlay) return;
+  if (state === 'off') {
+    overlay.classList.remove('on');
+    if (ring) { ring.classList.remove('listening','processing'); }
+    return;
+  }
+  overlay.classList.add('on');
+  if (ring)   ring.className   = 'vo-ring ' + state;
+  if (status) status.textContent = state === 'listening' ? 'Listening…' : 'Transcribing…';
+  if (hint)   hint.textContent   = state === 'listening' ? 'Tap mic button or wait to stop' : 'Please wait…';
+}
+
+async function toggleMic() {
+  unlockAudio();
+  if (_micMode === 'listening') { stopMic(); return; }
+
+  const api = window.pywebview?.api;
+  if (api) {
+    // ── Python-native path (sounddevice → Groq Whisper) ──────────────
+    // First, explicitly request mic permission (this forces the macOS popup on first use)
+    try {
+      await api.request_mic_permission();
+    } catch(e) {}
+
+    // Then check status
+    try {
+      const micStatus = await api.check_mic_permission();
+      if (micStatus === 'denied') {
+        setMicUI('error');
+        _voiceOverlay('error');
+        console.warn('[Mic] Permission denied — tell user to enable in System Settings');
+        const statusEl = document.getElementById('voice-status');
+        if (statusEl) statusEl.textContent = 'Mic denied — enable in System Settings → Privacy → Microphone';
+        return;
+      }
+    } catch(e) {}
+
+    const ok = await api.start_recording();
+    if (ok === true) {
+      setMicUI('listening');
+      _voiceOverlay('listening');
+      _micTimer = setTimeout(() => { if (_micMode==='listening') stopMic(); }, 10000);
+    } else {
+      console.warn('[Mic] start_recording failed:', ok);
+      setMicUI('error');
+    }
+  } else {
+    // ── Browser fallback (getUserMedia + Groq via /api/voice) ─────────
+    await startMediaRec();
+  }
+}
+
+async function stopMic() {
+  clearTimeout(_micTimer); _micTimer = null;
+
+  const api = window.pywebview?.api;
+  if (api) {
+    setMicUI('processing');
+    _voiceOverlay('processing');
+    try {
+      const text = await api.stop_recording();
+      if (text && text.trim()) {
+        document.getElementById('inp').value = text.trim();
+        _voiceOverlay('off');
+        setMicUI('idle');
+        doSend();
+      } else {
+        _voiceOverlay('off');
+        setMicUI('idle');
+      }
+    } catch(e) {
+      console.warn('[Mic] stop_recording error:', e);
+      _voiceOverlay('off');
+      setMicUI('idle');
+    }
+  } else {
+    _voiceOverlay('off');
+    if (_mediaRec && _mediaRec.state === 'recording') _mediaRec.stop();
+  }
+}
+
+async function startMediaRec() {
+  try {
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _aChunks=[]; _mediaRec=new MediaRecorder(stream);
+    _mediaRec.ondataavailable=e=>{ if(e.data.size>0) _aChunks.push(e.data); };
+    _mediaRec.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      setMicUI('processing'); _voiceOverlay('processing');
+      const blob=new Blob(_aChunks,{type:'audio/webm'});
+      const form=new FormData(); form.append('audio',blob,'voice.webm');
+      try {
+        const r=await fetch('http://127.0.0.1:8080/api/voice',{method:'POST',body:form});
+        const d=await r.json();
+        if (d.text?.trim()) { document.getElementById('inp').value=d.text.trim(); _voiceOverlay('off'); doSend(); }
+        else _voiceOverlay('off');
+      } catch(_){ _voiceOverlay('off'); }
+      setMicUI('idle');
+    };
+    _mediaRec.start();
+    setMicUI('listening'); _voiceOverlay('listening');
+    setTimeout(()=>{ if(_mediaRec?.state==='recording') _mediaRec.stop(); }, 8000);
+  } catch(e) {
+    console.warn('[Mic]', e.name, e.message);
+    _voiceOverlay('off');
+    if (e.name==='NotAllowedError') {
+      document.getElementById('mic-tip').textContent = 'Enable in System Settings › Privacy › Microphone';
+    }
+    setMicUI('error');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILE UPLOAD
+═══════════════════════════════════════════════════════════ */
+async function handleUpload(input) {
+  const file=input.files[0]; if(!file) return;
+  input.value=''; unlockAudio();
+  appendMsg('user',`[Uploaded: ${file.name}]`);
+  setThinking(true,'JARVIS');
+  const form=new FormData(); form.append('file',file); form.append('question','Analyze this for me.');
+  let msgEl=null, full='';
+  try {
+    const res=await fetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true) {
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for (const line of lines) {
+        const t=line.trim(); if(!t.startsWith('data: ')) continue;
+        let evt; try{evt=JSON.parse(t.slice(6));}catch(_){continue;}
+        if (evt.type==='speaker') {
+          setThinking(false); setAgent(evt.name||'JARVIS'); setAgentStatus(evt.name||'JARVIS','working');
+          msgEl=appendMsgLive(evt.name||'JARVIS'); full='';
+        } else if (evt.type==='text') {
+          full+=evt.chunk||''; if(msgEl) updateMsgLive(msgEl,full);
+        } else if (evt.type==='done') {
+          setThinking(false); setAgentStatus(evt.agent||'JARVIS','active');
+          if (msgEl) { finishMsgLive(msgEl); renderRichMsg(msgEl,evt.agent||'JARVIS',evt.full||full,evt.visibility,evt.tags); msgEl=null; }
+          if (evt.full) playTTS(evt.full,evt.agent||'JARVIS');
+        }
+      }
+    }
+  } catch(_) { setThinking(false); appendMsg('agent','Failed to analyze file.','JARVIS'); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   [SHOW:] IMAGE POPUPS
+═══════════════════════════════════════════════════════════ */
+function parseAndShowImages(text) {
+  [...(text||'').matchAll(/\[SHOW:\s*([^\]]+)\]/gi)].forEach(m=>showImgPopup(m[1].trim()));
+}
+function showImgPopup(query) {
+  const side=_imgSide; _imgSide=(side==='left')?'right':'left';
+  const el=document.getElementById('img-popup-'+side); if(!el) return;
+  el.style.display='block';
+  el.innerHTML=`<span class="img-x" onclick="closeImgPopup('${side}')">×</span><div style="padding:20px;text-align:center;font-size:10px;color:rgba(255,255,255,0.25)">Loading…</div>`;
+  fetch(`http://127.0.0.1:8080/api/image_search?query=${encodeURIComponent(query)}`)
+    .then(r=>r.json())
+    .then(d=>{ if(!d.url){el.style.display='none';return;} el.innerHTML=`<span class="img-x" onclick="closeImgPopup('${side}')">×</span><img src="${d.url}" alt="" onerror="closeImgPopup('${side}')"><div class="img-cap">${query.slice(0,44)}</div>`; })
+    .catch(()=>{ el.style.display='none'; });
+}
+function closeImgPopup(side) { const el=document.getElementById('img-popup-'+side); if(el) el.style.display='none'; }
+
+/* ═══════════════════════════════════════════════════════════
+   ROOM SCAN
+═══════════════════════════════════════════════════════════ */
+async function startRoomScan() {
+  const overlay = document.getElementById('scan-overlay');
+  const video   = document.getElementById('scan-video');
+  const prev    = document.getElementById('scan-prev');
+  const stat    = document.getElementById('scan-stat');
+  const cap     = document.getElementById('scan-cap-btn');
+  const sub     = document.getElementById('scan-sub');
+
+  _scanBlob = null; _scanPhase = 'camera';
+  prev.style.display = 'none';
+  stat.textContent = ''; stat.style.color = 'var(--cyan)';
+  cap.textContent = 'Capture'; cap.disabled = false;
+  overlay.classList.add('on');
+  document.getElementById('scan-btn').classList.add('scanning');
+
+  const api = window.pywebview?.api;
+  if (api) {
+    // ── Python-native path (ffmpeg capture) ──────────────────────────
+    video.style.display = 'none';
+
+    // New: proactively check permission status for better UX on macOS
+    try {
+      const camStatus = await api.check_camera_permission();
+      if (camStatus === 'denied') {
+        stat.textContent = 'Camera access denied — go to System Settings → Privacy & Security → Camera and enable it for Terminal / Python.';
+        stat.style.color = '#ff4444';
+        cap.disabled = true;
+        document.getElementById('scan-btn').classList.add('btn-error');
+        return;
+      }
+    } catch(e) {}
+
+    if (sub) sub.textContent = 'Capturing room with camera…';
+    stat.textContent = 'Accessing camera…';
+    cap.disabled = true;
+    captureRoom(); // auto-capture immediately
+  } else {
+    // ── Browser fallback (getUserMedia video preview) ─────────────────
+    video.style.display = 'block';
+    if (sub) sub.textContent = 'Point your camera at the room. JARVIS will analyze what it sees.';
+    try {
+      _scanStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+      video.srcObject = _scanStream;
+    } catch(e) {
+      console.warn('[Camera]', e.name, e.message);
+      stat.textContent = e.name==='NotAllowedError'
+        ? 'Camera access denied — enable in System Settings › Privacy › Camera'
+        : 'Camera unavailable — is one connected?';
+      stat.style.color = '#ff4444';
+      cap.disabled = true; document.getElementById('scan-btn').classList.add('btn-error');
+    }
+  }
+}
+
+async function captureRoom() {
+  const prev  = document.getElementById('scan-prev');
+  const stat  = document.getElementById('scan-stat');
+  const cap   = document.getElementById('scan-cap-btn');
+  const video = document.getElementById('scan-video');
+
+  if (_scanPhase === 'captured') { analyzeRoom(); return; }
+
+  const api = window.pywebview?.api;
+  if (api) {
+    // ── Python-native capture via ffmpeg ─────────────────────────────
+    stat.textContent = 'Capturing…'; cap.disabled = true;
+    const b64 = await api.capture_frame();
+    if (b64) {
+      prev.src = 'data:image/jpeg;base64,' + b64;
+      prev.style.display = 'block';
+      // Convert base64 → Blob for upload
+      const bytes = atob(b64);
+      const arr   = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      _scanBlob  = new Blob([arr], {type:'image/jpeg'});
+      _scanPhase = 'captured';
+      cap.textContent = 'Analyze'; cap.disabled = false;
+      stat.textContent = 'Room captured — ready to analyze.';
+    } else {
+      stat.textContent = 'Camera unavailable — grant access in System Settings › Privacy › Camera';
+      stat.style.color = '#ff4444';
+      document.getElementById('scan-btn').classList.add('btn-error');
+    }
+  } else {
+    // ── Browser fallback: draw video frame to canvas ──────────────────
+    const canvas = document.getElementById('scan-canvas');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    if (_scanStream) { _scanStream.getTracks().forEach(t=>t.stop()); _scanStream=null; }
+    video.style.display = 'none';
+    canvas.toBlob(blob => {
+      _scanBlob = blob;
+      prev.src = URL.createObjectURL(blob); prev.style.display = 'block';
+    }, 'image/jpeg', 0.85);
+    _scanPhase = 'captured';
+    cap.textContent = 'Analyze';
+    stat.textContent = 'Room captured — ready to analyze.';
+  }
+}
+
+async function analyzeRoom() {
+  if (!_scanBlob) return;
+  document.getElementById('scan-cap-btn').disabled=true;
+  _scanPhase='analyzing';
+  closeScan();
+  appendMsg('user','[Room scan captured]');
+  setThinking(true,'JARVIS');
+  const form=new FormData();
+  form.append('file',_scanBlob,'room-scan.jpg');
+  form.append('question','You are doing a room scan. Describe the physical environment in detail: objects present, spatial layout, lighting, notable features, and overall atmosphere. Be observant and specific.');
+  let msgEl=null, full='';
+  try {
+    const res=await fetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true) {
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for (const line of lines) {
+        const t=line.trim(); if(!t.startsWith('data: ')) continue;
+        let evt; try{evt=JSON.parse(t.slice(6));}catch(_){continue;}
+        if (evt.type==='speaker') {
+          setThinking(false); setAgent(evt.name||'JARVIS'); setAgentStatus(evt.name||'JARVIS','working');
+          msgEl=appendMsgLive(evt.name||'JARVIS'); full='';
+        } else if (evt.type==='text') {
+          full+=evt.chunk||''; if(msgEl) updateMsgLive(msgEl,full);
+        } else if (evt.type==='done') {
+          setThinking(false); setAgentStatus(evt.agent||'JARVIS','active');
+          if (msgEl) { finishMsgLive(msgEl); renderEnvCard(msgEl,evt.full||full); msgEl=null; }
+          if (evt.full) playTTS(evt.full,evt.agent||'JARVIS');
+        }
+      }
+    }
+  } catch(_) { setThinking(false); appendMsg('agent','Room scan analysis failed.','JARVIS'); }
+}
+
+function renderEnvCard(el, desc) {
+  el.querySelectorAll('.msg-live-text,.msg-cursor,.msg-text').forEach(n=>n.remove());
+  const card=document.createElement('div'); card.className='env-card';
+  // Escape description
+  const safe=desc.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  card.innerHTML=`
+    <div class="env-hdr"><span class="env-icon">◉</span>Environment Snapshot</div>
+    <div class="env-body">${safe}</div>
+    <div class="env-actions">
+      <button class="env-act" onclick="envAsk(this,'Ask JARVIS about this room:')">Ask JARVIS</button>
+      <button class="env-act" onclick="envAsk(this,'Based on the room scan,')">Ask team</button>
+    </div>`;
+  el.appendChild(card);
+}
+
+function envAsk(btn, prefix) {
+  const inp=document.getElementById('inp');
+  if(inp){ inp.value=prefix+' '; inp.focus(); }
+}
+
+function closeScan() {
+  document.getElementById('scan-overlay').classList.remove('on');
+  if (_scanStream) { _scanStream.getTracks().forEach(t=>t.stop()); _scanStream=null; }
+  document.getElementById('scan-btn').classList.remove('scanning','btn-error');
+  if (_scanPhase!=='analyzing') _scanPhase='idle';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROACTIVE PUSH WIRE
+═══════════════════════════════════════════════════════════ */
+(function startPoll(){
+  async function poll(){
+    try {
+      const res=await fetch('http://127.0.0.1:8080/api/proactive');
+      if(!res.ok) return;
+      const {messages=[]}=await res.json();
+      for (const msg of messages) {
+        hzPulse();
+        maybeBumpBB(msg.visibility,msg.tags,null);
+        if (msg.visibility==='surface') {
+          showProactive(msg.agent||'JARVIS', msg.text);
+          playTTS(msg.text, msg.agent||'JARVIS');
+        } else if (msg.visibility==='normal') {
+          appendMsg('agent', msg.text, msg.agent||'JARVIS');
+        }
+      }
+    } catch(_){}
+    setTimeout(poll,10000);
+  }
+  setTimeout(poll, 3500);
+})();
+
+function showProactive(agent, text) {
+  const a    = AGENTS[agent] || AGENTS['JARVIS'];
+  const msgs = document.getElementById('msgs');
+  const card = document.createElement('div');
+  card.className = 'proactive-card';
+  card.style.setProperty('--pc',     a.hex);
+  card.style.setProperty('--pc-rgb', a.rgb);
+  const safe = (text||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const alreadySummoned = (_summoned === agent);
+  card.innerHTML = `
+    <span class="pro-x" onclick="_ackProactive(this,'${agent}')" aria-label="Dismiss">×</span>
+    <div class="pro-inner">
+      <div class="pro-hdr">
+        <div class="pro-av">${a.init}</div>
+        <div class="pro-meta">
+          <div class="pro-title">${agent}</div>
+          <div class="pro-sub">Stepping forward</div>
+        </div>
+      </div>
+      <div class="pro-text">${safe}</div>
+      <div class="pro-actions">
+        <button class="pro-ack" onclick="_ackProactive(this,'${agent}')">Got it</button>
+        ${alreadySummoned ? '' : `<button class="pro-dismiss" onclick="summonAgent('${agent}');_ackProactive(this,'${agent}')">Summon ${agent}</button>`}
+      </div>
+    </div>`;
+  msgs.appendChild(card);
+  scrollBottom();
+
+  // Sidebar: assertive "rise" animation + persistent has-update pill
+  const sideAv = document.getElementById('av-' + agent);
+  if (sideAv) {
+    sideAv.classList.remove('av-rise','av-flash');
+    void sideAv.offsetWidth;
+    sideAv.classList.add('av-rise');
+    sideAv.addEventListener('animationend', () => sideAv.classList.remove('av-rise'), { once:true });
+  }
+  setAgentStatus(agent, 'has-update');
+
+  // If another agent is currently active, show the interrupt notification
+  // so the user sees "FRIDAY is trying to get through" in their context strip area
+  if (_summoned && _summoned !== agent) {
+    _showCtxInterrupt(agent);
+  }
+
+  // Temporary workspace claim — even unsummoned agents briefly shift the environment.
+  // The workspace responds to the event before the user decides whether to summon.
+  if (_summoned !== agent) {
+    const mainEl = document.getElementById('main');
+    _setWsTint(AGENTS[agent]?.rgb || '0,229,255');
+    if (mainEl) mainEl.style.borderLeftColor = `rgba(${AGENTS[agent]?.rgb||'0,229,255'},0.22)`;
+    // Fade back out after 3.5s if still not summoned
+    setTimeout(() => {
+      if (_summoned !== agent) {
+        _setWsTint(null);
+        if (mainEl) mainEl.style.borderLeftColor = 'transparent';
+      }
+    }, 3500);
+  }
+}
+
+function _ackProactive(el, agent) {
+  const card = el.closest('.proactive-card');
+  if (card) card.remove();
+  // Clear has-update pill if not currently summoned
+  if (_summoned !== agent) setAgentStatus(agent, 'idle');
+  else setAgentStatus(agent, 'active');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GREETING
+═══════════════════════════════════════════════════════════ */
+async function runGreeting() {
+  let msgEl=null, full='';
+  try {
+    const res=await fetch('http://127.0.0.1:8080/api/stream?message=__init__');
+    if(!res.ok) return;
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    setThinking(true,'JARVIS');
+    while(true) {
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for (const line of lines) {
+        const t=line.trim(); if(!t.startsWith('data: ')) continue;
+        let evt; try{evt=JSON.parse(t.slice(6));}catch(_){continue;}
+        if (evt.type==='speaker') { setThinking(false); msgEl=appendMsgLive('JARVIS'); }
+        else if (evt.type==='text') { full+=evt.chunk||''; if(msgEl) updateMsgLive(msgEl,full); }
+        else if (evt.type==='done') {
+          full=evt.full||full;
+          if (msgEl) { updateMsgLive(msgEl,full); finishMsgLive(msgEl); renderRichMsg(msgEl,'JARVIS',full,'normal',[]); }
+          if (full.trim()) playTTS(full,'JARVIS');
+          setThinking(false);
+        }
+      }
+    }
+  } catch(_) { setThinking(false); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded',()=>{
+  buildSidebar();
+  setAgent('JARVIS');
+  _loadBB();
+
+  ['keydown','click','touchstart'].forEach(ev=>
+    document.addEventListener(ev, unlockAudio, {once:true})
+  );
+
+  document.getElementById('inp').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); }
+  });
+
+  window.addEventListener('keydown',e=>{
+    if (e.key==='Escape') closeScan();
+  });
+
+  document.getElementById('hz-cluster').addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); hzClick(); }
+  });
+
+  setTimeout(runGreeting, 600);
+});
+</script>
+</body>
+</html>

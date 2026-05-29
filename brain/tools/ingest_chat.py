@@ -109,8 +109,27 @@ def _parse_insights(extraction_text: str) -> list:
     return out
 
 
+def _ensure_env_loaded():
+    """Make sure .env vars are present even when run as a script subprocess."""
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return
+    try:
+        from pathlib import Path
+        env = Path(__file__).parent.parent.parent / ".env"
+        if env.exists():
+            for line in env.read_text().splitlines():
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if v and k not in os.environ:
+                        os.environ[k] = v
+    except Exception:
+        pass
+
+
 def _call_haiku_for_extraction(transcript: str) -> str:
     """Run the extraction prompt through Claude Haiku."""
+    _ensure_env_loaded()
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     is_oauth = False
     if not api_key or api_key.startswith("sk-ant-oat"):

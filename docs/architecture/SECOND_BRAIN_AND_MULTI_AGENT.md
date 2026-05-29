@@ -265,7 +265,51 @@ Invoke explicitly: "JARVIS, synthesize the chat at ~/Desktop/chat.md."
 
 ---
 
-## 10. What's Deferred (Real Sub-Projects, Not Polish)
+## 10. Phase 1 / Phase 2 Scope Decision
+
+This section is the authoritative scope boundary. Anything not explicitly listed under Phase 1 is Phase 2 or later.
+
+### Phase 1 — Complete (this codebase, right now)
+
+| Item | Files | Status |
+|---|---|---|
+| **B6 Smart Visibility** — deterministic classifier (surface / normal / collapsed + tag extraction) | `brain/visibility.py`, `tests/test_visibility.py` | ✅ Done |
+| **B5 Group Chat Rendering** — voice blocks, brain chips, collapsed mode | `app/hud.html` (`parseVoiceBlocks`, `renderRichMessage`, `renderCollapsedMessage`, `extractBrainChips`) | ✅ Done |
+| **B7 HUD Notification Badge** — `⬡ N NEW`, 30s idle + not-at-bottom guard, 24h TTL, cross-tab sync | `app/hud.html` (`maybeBumpBrainBadge`, `_loadBrainBadge`, `clearBrainBadge`) | ✅ Done |
+| **Observer classified push** — observer emits `{text, visibility, tags}` dict (not plain string) | `brain/observer.py` | ✅ Done |
+| **Proactive endpoint enrichment** — `/api/proactive` normalizes both legacy strings and new dicts | `ui/server.py` (`proactive_poll`) | ✅ Done |
+| **SSE done event enrichment** — every chat `done` event carries `visibility` + `tags` | `ui/server.py` (`/api/stream`) | ✅ Done |
+| **Color consistency** — four canonical agent colors aligned across web HUD, native SwiftUI, and docs | `app/hud.html`, `JARVISApp/JARVIS/HUDRingView.swift`, `docs/AGENTS.md` | ✅ Done |
+| **Full test coverage** — visibility classifier + observer push path | `tests/test_visibility.py`, `tests/test_observer_push.py` | ✅ Done |
+
+**Canonical agent colors (Phase 1 single source of truth):**
+- JARVIS: `#00E5FF` — primary cyan
+- FRIDAY: `#FF6A00` — energetic orange-amber
+- VERONICA: `#00FF9F` — cool mint / analytical green
+- KAREN: `#FFB450` — warm amber-gold
+
+### Phase 2 — On Hold (do not implement, prototype, or plan)
+
+The full holographic spatial interface described in
+`docs/ui/hud-multi-agent-design-spec.md` is intentionally parked.
+That document is referenced **for aesthetic language and MCU color vocabulary only** — never as a Phase 1 implementation target.
+
+Items that are explicitly Phase 2:
+
+| Item | Why deferred |
+|---|---|
+| **Home Zone bubble** — floating corner cluster that holds all four agents | Requires WebGL/Metal orb renderer; fundamentally different UI architecture |
+| **Agent orbs** — individual holographic spheres per agent | Same WebGL/Metal requirement; 7-layer material + personality noise |
+| **Cloud expansion animation** — orbs travel from bubble into a content cloud | Spatial travel system, no DOM equivalent |
+| **4-corner layout** — agents at fixed corner positions (VERONICA TL, JARVIS TR, KAREN BL, FRIDAY BR) | Replaces current chat-centric layout entirely |
+| **"Really Active" states** — agent orb scales/pulses to 1.9–2.15× when flagged priority | Part of the orb rendering system |
+| **Spatial travel** — agents moving between positions with personality-driven arcs | WebGL animation system |
+| **Content windows + sovereignty rules** — agent-owned content panels, priority arbitration | Full window management system |
+| **Session start ritual** — 0–14.5s materialization sequence, JARVIS greeting, team settle | Cinematic sequencer |
+
+---
+
+## 11. What's Deferred (Real Sub-Projects, Not Polish)
 
 These genuinely need their own brainstorming + planning rounds before
 being responsibly built. Each could be a 1–2 week project.
@@ -278,7 +322,7 @@ being responsibly built. Each could be a 1–2 week project.
 
 ---
 
-## 11. Env Vars That Affect Behavior
+## 12. Env Vars That Affect Behavior
 
 | Variable | Effect |
 |---|---|
@@ -293,7 +337,7 @@ being responsibly built. Each could be a 1–2 week project.
 
 ---
 
-## 12. Test Coverage Summary
+## 13. Test Coverage Summary
 
 As of finish-up round: **117/117 tests passing.**
 
@@ -310,7 +354,7 @@ As of finish-up round: **117/117 tests passing.**
 
 ---
 
-## 13. Where To Look When Things Go Wrong
+## 14. Where To Look When Things Go Wrong
 
 | Symptom | First place to look |
 |---|---|
@@ -322,3 +366,27 @@ As of finish-up round: **117/117 tests passing.**
 | Telegram alerts not arriving | Check `TELEGRAM_BRAIN_ALERTS=1` env var is set; check `brain/notify.py` filter |
 | Observer surfacing repetitive insights | `brain/observer.py` — check vault has content for the topic; B8 grounding requires it |
 | Prompt too large | `brain/think.py` `_build_jarvis_system()` — verify `include_business=False`; check `prompts/specialized/second_brain.md` not the old three modules |
+
+---
+
+## 15. Phase 1 Completion Notes
+
+**Completed 2026-05-29.** Phase 1 (B5/B6/B7) is fully shipped. Summary of what was done in the final hardening pass:
+
+**Observer classified push (new):**
+`brain/observer.py` `_push()` now emits `{text, visibility, tags}` dicts instead of plain strings. The insight is classified via `brain.visibility.classify()` before being placed on the queue. The server's `proactive_poll` retains full backward compatibility with legacy plain-string producers (normalizes both at the drain site in `ui/server.py`).
+
+**Color consistency (fixed):**
+Three agents had wrong colors across implementations. All four canonical colors are now consistent across `app/hud.html` (CSS variables + JS `AGENT_COLORS`), `JARVISApp/JARVIS/HUDRingView.swift`, and `docs/AGENTS.md`:
+- FRIDAY was purple in `HUDRingView.swift` — fixed to orange `#FF6A00`
+- VERONICA was purple in `hud.html` — fixed to mint `#00FF9F`
+- KAREN was purple in `hud.html` — fixed to amber `#FFB450`
+- JARVIS aligned to `#00E5FF` in both Swift and web
+
+**Tests added:**
+`tests/test_observer_push.py` — covers the observer push path: dict structure, correct visibility/tags, [OBS] prefix, OBSERVER tag extraction, and the grounding tag path.
+
+**Known minor items (not blocking):**
+- B3 real multi-agent pipeline (actual Gemini/Groq tool calls) remains deferred — see section 11.
+- B9 background synthesis worker remains deferred — see section 11.
+- Agent panel mini-bars in the HUD are driven by static random values; no live backend signal is wired. This is cosmetic and Phase 2 adjacent.

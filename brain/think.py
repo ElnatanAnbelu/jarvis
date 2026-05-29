@@ -65,6 +65,33 @@ def _build_jarvis_system() -> str:
 
 JARVIS_SYSTEM = _build_jarvis_system()
 
+# ── Per-agent grounded system prompts (FRIDAY / VERONICA / KAREN) ────────────
+# Same grounding + security + anti-hallucination rules JARVIS gets, with each
+# agent's own persona. Built lazily and cached. This is the fix for the
+# regression where these three lost static context + security rules.
+_AGENT_SYSTEMS: dict = {}
+
+def _agent_system(agent: str) -> str:
+    agent = (agent or "JARVIS").upper()
+    if agent == "JARVIS":
+        return JARVIS_SYSTEM
+    if agent not in _AGENT_SYSTEMS:
+        try:
+            from prompts.runtime.prompt_loader import compose_full_system_prompt
+            _AGENT_SYSTEMS[agent] = compose_full_system_prompt(
+                agent=agent,
+                include_static_context=True,   # who Elnatan is, life context — grounding
+                include_business=False,         # injected dynamically by _build_context
+                include_security=True,          # tool-calling + anti-hallucination discipline
+            )
+        except Exception:
+            _AGENT_SYSTEMS[agent] = (
+                f"You are {agent}, one of Elnatan Anbelu's AI agents. Talk like a real human, "
+                "never recite scripted lines. Never invent facts. If you cannot actually do "
+                "something, say so plainly — never claim you did."
+            )
+    return _AGENT_SYSTEMS[agent]
+
 def expand_abbreviations(text: str) -> str:
     """Expand abbreviations for natural TTS playback."""
     subs = [
@@ -488,9 +515,9 @@ def _get_personal_context(user_input: str) -> str:
         import memory.vault as _vm
         if not hasattr(_vm, '_second_brain_instance'):
             _vm._second_brain_instance = VaultManager()
-        results = _vm._second_brain_instance.search_vault(user_input, max_results=2)
+        results = _vm._second_brain_instance.search_vault(user_input, max_results=5)
         if results:
-            return f"\nPERSONAL BRAIN:\n{results}\n"
+            return f"\nPERSONAL BRAIN (your Second Brain notes — ground answers in these, never invent):\n{results}\n"
     except Exception:
         pass
     return ""
@@ -705,14 +732,15 @@ def _make_client(auth_key=None, is_oauth=False):
         return anthropic.Anthropic(auth_token=auth_key)
     return anthropic.Anthropic(api_key=auth_key)
 
-def _build_anthropic_tools() -> list:
-    """Convert JARVIS tools to Anthropic native tool format.
+def _build_anthropic_tools(agent: str = "JARVIS") -> list:
+    """Convert an agent's tools to Anthropic native tool format.
 
     Uses agent-filtered registry view — JARVIS gets every tool including
-    Second Brain write tools that are blocked for other agents.
+    Second Brain write tools that are blocked for other agents. FRIDAY/
+    VERONICA/KAREN get their allowed (read/analysis/safe) subset.
     """
     from brain.tools.registry import get_tools
-    schemas = get_tools(agent="JARVIS")
+    schemas = get_tools(agent=agent)
     result = []
     for s in schemas:
         result.append({
@@ -723,21 +751,21 @@ def _build_anthropic_tools() -> list:
     return result
 
 
-def _build_cached_system(user_input: str) -> list:
+def _build_cached_system(user_input: str, agent: str = "JARVIS") -> list:
     """
-    Build a two-block cached system prompt.
-    Block 1 = static JARVIS_SYSTEM → cache_control ephemeral (5-min TTL, ~3KB saved every call)
-    Block 2 = dynamic context (facts + wiki) → cache_control ephemeral (invalidates when facts change)
+    Build a two-block cached system prompt for the given agent.
+    Block 1 = static agent system prompt → cache_control ephemeral (5-min TTL)
+    Block 2 = dynamic context (facts + wiki + brain) → cache_control ephemeral
     Cuts Claude bill ~30-50% on repeated prompts.
     """
     ctx = _build_context(user_input, include_history=False)
     return [
-        {"type": "text", "text": JARVIS_SYSTEM, "cache_control": {"type": "ephemeral"}},
-        {"type": "text", "text": ctx or " ",    "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": _agent_system(agent), "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": ctx or " ",           "cache_control": {"type": "ephemeral"}},
     ]
 
 
-def _think_sdk(user_input: str, model: str) -> str:
+def _think_sdk(user_input: str, model: str, agent: str = "JARVIS") -> str:
     """Claude via Anthropic SDK — full tool use with multi-round loop + prompt caching."""
     import anthropic
     from brain.tools import execute_tool
@@ -747,8 +775,8 @@ def _think_sdk(user_input: str, model: str) -> str:
     if not auth_key:
         raise ValueError("No auth key available")
 
-    system_blocks = _build_cached_system(user_input)
-    tools = _build_anthropic_tools()
+    system_blocks = _build_cached_system(user_input, agent)
+    tools = _build_anthropic_tools(agent)
     client = _make_client(auth_key, is_oauth)
     messages = build_messages_compressed(user_input)
 
@@ -772,7 +800,7 @@ def _think_sdk(user_input: str, model: str) -> str:
         tool_results = []
         for block in resp.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input, agent="JARVIS")
+                result = execute_tool(block.name, block.input, agent=agent)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -1060,7 +1088,59 @@ def _think_ollama_stream(user_input: str):
         pass
 
 
-def think(user_input: str, model: str = None) -> str:
+def select_agent_model(user_input: str) -> str:
+    """Haiku→Sonnet hybrid for FRIDAY/VERONICA/KAREN — never Opus (cost/latency)."""
+    m = select_model(user_input)
+    return CLAUDE_MODELS["sonnet"] if m == CLAUDE_MODELS["opus"] else m
+
+
+def _think_agent(user_input: str, model: str, agent: str) -> str:
+    """Non-JARVIS agents: Claude SDK (tools + grounded context) → Haiku fallback.
+    Persona, Second Brain grounding, and honesty rules preserved; never the
+    JARVIS-flavoured fallback chain (which would break their voice)."""
+    if _get_auth_key()[0]:
+        try:
+            r = expand_abbreviations(_think_sdk(user_input, model, agent=agent))
+            save_message(agent.lower(), r)
+            learn(user_input, r)
+            return r
+        except Exception as e:
+            if "401" in str(e) or "authentication" in str(e).lower() or "invalid" in str(e).lower():
+                _refresh_token()
+                if _get_auth_key()[0]:
+                    try:
+                        r = expand_abbreviations(_think_sdk(user_input, model, agent=agent))
+                        save_message(agent.lower(), r)
+                        return r
+                    except Exception:
+                        pass
+    # Fallback: single Haiku call with this agent's own grounded system prompt
+    try:
+        _api_key, _is_oauth = _get_auth_key()
+        if _api_key:
+            from memory.memory import build_messages_for_prompt
+            _client = _make_client(_api_key, _is_oauth)
+            ctx = _build_context(user_input, include_history=False)
+            _msgs = build_messages_for_prompt(user_input, limit=10)
+            _msg = _client.messages.create(
+                model=CLAUDE_MODELS["haiku"],
+                max_tokens=700,
+                system=_agent_system(agent) + "\n" + ctx,
+                messages=_msgs,
+            )
+            r = expand_abbreviations((_msg.content[0].text or "").strip())
+            if r:
+                save_message(agent.lower(), r)
+                return r
+    except Exception:
+        pass
+    return "I'm having trouble reaching my systems right now. Give me a moment."
+
+
+def think(user_input: str, model: str = None, agent: str = "JARVIS") -> str:
+    agent = (agent or "JARVIS").upper()
+    if agent != "JARVIS":
+        return _think_agent(user_input, model or select_agent_model(user_input), agent)
     chosen_model = model or select_model(user_input)
     rate_limited = False
 
@@ -1223,13 +1303,14 @@ def think(user_input: str, model: str = None) -> str:
 
     return "I'm having trouble reaching my systems right now. Try again in a moment."
 
-def think_stream(user_input: str, model: str = None):
+def think_stream(user_input: str, model: str = None, agent: str = "JARVIS"):
     """Generator: yields text chunks as Claude streams them. Falls back to blocking think()."""
     import anthropic
     from brain.tools import execute_tool
 
+    agent = (agent or "JARVIS").upper()
     auth_key, is_oauth = _get_auth_key()
-    chosen_model = model or select_model(user_input)
+    chosen_model = model or (select_model(user_input) if agent == "JARVIS" else select_agent_model(user_input))
 
     if not auth_key:
         # No credential at all — stream via Ollama then fall back to blocking chain
@@ -1238,14 +1319,14 @@ def think_stream(user_input: str, model: str = None):
             _chunks.append(_c)
             yield _c
         if _chunks:
-            save_message("jarvis", "".join(_chunks))
+            save_message(agent.lower(), "".join(_chunks))
             return
-        yield think(user_input, model=chosen_model)
+        yield think(user_input, model=chosen_model, agent=agent)
         return
 
     from memory.memory import build_messages_for_prompt
-    system_blocks = _build_cached_system(user_input)
-    tools = _build_anthropic_tools()
+    system_blocks = _build_cached_system(user_input, agent)
+    tools = _build_anthropic_tools(agent)
     client = _make_client(auth_key, is_oauth)
     messages = build_messages_compressed(user_input)
     cache_headers = {"anthropic-beta": "prompt-caching-2024-07-31"}
@@ -1270,7 +1351,7 @@ def think_stream(user_input: str, model: str = None):
         tool_results = []
         for block in final_msg.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input, agent="JARVIS")
+                result = execute_tool(block.name, block.input, agent=agent)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -1315,10 +1396,10 @@ def think_stream(user_input: str, model: str = None):
             _ollama_chunks.append(_chunk)
             yield _chunk
         if _ollama_chunks:
-            save_message("jarvis", "".join(_ollama_chunks))
+            save_message(agent.lower(), "".join(_ollama_chunks))
             return
         # Hard fallback — full blocking chain (Grok/Groq/Mistral/Haiku/Ollama blocking)
-        yield think(user_input, model=chosen_model)
+        yield think(user_input, model=chosen_model, agent=agent)
 
 
 if __name__ == "__main__":
