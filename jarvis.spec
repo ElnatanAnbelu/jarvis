@@ -52,11 +52,21 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # Explicitly exclude backend modules so they are never pulled in
+    # Explicitly exclude backend modules and heavy packages not used by the
+    # frozen front-end. Prevents scipy → array_api_compat → torch → llvmlite
+    # → transformers chain from bloating the bundle (~550 MB saved).
     excludes=[
+        # backend modules
         'memory', 'brain', 'voice', 'control', 'scripts',
         'flask', 'flask_cors', 'anthropic', 'openai',
         'telegram', 'whatsapp',
+        # ML / heavy packages not needed in the frozen GUI
+        'torch', 'torchvision', 'torchaudio',
+        'numba', 'llvmlite',
+        'transformers', 'tokenizers',
+        'sklearn', 'pandas', 'matplotlib',
+        'yt_dlp',
+        'scipy.array_api_compat',  # prevents torch drag-in via scipy
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
