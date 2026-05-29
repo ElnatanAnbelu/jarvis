@@ -892,12 +892,84 @@ def favicon():
 
 
 @app.route("/")
-def hud():
-    hud_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "hud.html")
-    resp = send_file(hud_path, mimetype='text/html')
+def jarvis_ui():
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "jarvis.html")
+    resp = send_file(path, mimetype='text/html')
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
     resp.headers['Pragma'] = 'no-cache'
     return resp
+
+
+@app.route("/bubble")
+def jarvis_bubble():
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "bubble.html")
+    resp = send_file(path, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
+
+
+@app.route("/api/end_session", methods=["POST"])
+def end_session():
+    """Called by the pywebview front-end on window close.
+    Summarises the session with Haiku and saves it for next startup."""
+    import threading as _t
+
+    def _summarize():
+        try:
+            from memory.memory import get_recent_history, save_session_summary
+            history = get_recent_history(limit=40)
+            if not history or len(history) < 4:
+                return
+            lines = []
+            for role, content in history:
+                label = "Elnatan" if role == "user" else "JARVIS"
+                lines.append("{}: {}".format(label, content[:400]))
+            convo = "\n".join(lines[-24:])
+
+            # Load .env keys if not already in environment
+            env_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
+            )
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f.read().splitlines():
+                        if "=" in line and not line.startswith("#"):
+                            k, v = line.split("=", 1)
+                            if v.strip() and k.strip() not in os.environ:
+                                os.environ[k.strip()] = v.strip()
+
+            api_key = (
+                os.environ.get("ANTHROPIC_API_KEY", "").strip() or
+                os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
+            )
+            if not api_key:
+                return
+
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=180,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Summarize this JARVIS session in 2-3 short sentences so JARVIS can pick up "
+                        "next session without re-explaining context. Focus on: what was worked on, key "
+                        "decisions made, current status of ongoing tasks. Start with 'Last session,' "
+                        "and be specific — name actual projects, files, or topics discussed.\n\n"
+                        "SESSION:\n{}".format(convo)
+                    )
+                }]
+            )
+            summary = (resp.content[0].text or "").strip()
+            if summary:
+                save_session_summary(summary)
+        except Exception as e:
+            print(f"[end_session] {e}", flush=True)
+
+    _t.Thread(target=_summarize, daemon=True).start()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
