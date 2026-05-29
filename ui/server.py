@@ -102,12 +102,25 @@ _proactive_q: queue.Queue = queue.Queue()
 
 # ── SMART VISIBILITY (B6) ────────────────────────────────────────────────────
 def _classify_visibility(text: str, agent: str = None, source: str = "chat") -> dict:
-    """Classify a message for HUD visibility. Safe fallback if classifier fails."""
+    """Classify a message for HUD visibility. Safe fallback if classifier fails.
+
+    Also triggers the optional Telegram brain alert (opt-in via the
+    TELEGRAM_BRAIN_ALERTS env var) — same filter philosophy as B7 badge:
+    only surface + BRAIN action messages get pushed cross-device.
+    """
     try:
         from brain.visibility import classify
-        return classify(text or "", agent=agent, source=source)
+        result = classify(text or "", agent=agent, source=source)
     except Exception:
-        return {"visibility": "normal", "tags": []}
+        result = {"visibility": "normal", "tags": []}
+    # Cross-device notification (silent no-op if not opted in)
+    try:
+        from brain.notify import maybe_telegram_brain_alert
+        maybe_telegram_brain_alert(text or "", result.get("visibility", "normal"),
+                                   result.get("tags", []), agent=agent)
+    except Exception:
+        pass
+    return result
 
 
 def _strip_markdown(text):
