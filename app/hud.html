@@ -422,6 +422,33 @@ html, body {
 .chat-corner-tl { top: 0; left: 0; border-top: 1px solid rgba(0,245,255,0.3); border-left: 1px solid rgba(0,245,255,0.3); }
 .chat-corner-br { bottom: 0; right: 0; border-bottom: 1px solid rgba(0,245,255,0.3); border-right: 1px solid rgba(0,245,255,0.3); }
 
+/* B7: Second Brain activity badge */
+.brain-badge {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0,245,255,0.08);
+  border: 1px solid rgba(0,245,255,0.45);
+  border-radius: 11px;
+  font-size: 9px; letter-spacing: 2px; font-weight: 700;
+  color: rgba(0,245,255,0.95);
+  cursor: pointer;
+  transition: all 200ms ease;
+  animation: brain-badge-pulse 2.4s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(0,245,255,0.25);
+}
+.brain-badge:hover {
+  background: rgba(0,245,255,0.16);
+  border-color: rgba(0,245,255,0.85);
+  box-shadow: 0 0 18px rgba(0,245,255,0.45);
+}
+.brain-badge-glyph { font-size: 11px; opacity: 0.95; }
+.brain-badge-label { opacity: 0.7; font-size: 8px; }
+@keyframes brain-badge-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(0,245,255,0.25); }
+  50%      { box-shadow: 0 0 22px rgba(0,245,255,0.55); }
+}
+
 /* Messages */
 #msgs {
   flex: 1; overflow-y: auto; padding: 10px 16px;
@@ -876,6 +903,12 @@ html, body {
         <div id="chat-header">
           <div class="chat-corner-tl"></div>
           <div id="chat-label">CHAT</div>
+          <!-- B7: Notification badge for Second Brain activity -->
+          <div id="brain-badge" class="brain-badge" style="display:none" onclick="clearBrainBadge()" title="New Second Brain activity — click to view">
+            <span class="brain-badge-glyph">&#x2B22;</span>
+            <span id="brain-badge-count">0</span>
+            <span class="brain-badge-label">NEW</span>
+          </div>
           <div class="chat-corner-br"></div>
         </div>
         <div id="msgs">
@@ -1011,6 +1044,100 @@ let _chatAbort    = null;
 let _imgSide      = 'left';   // alternates left/right for image popups
 let _audioCtx     = null;     // audio context for unlock
 
+/* ── B7: SECOND BRAIN NOTIFICATION BADGE ── */
+const BRAIN_BADGE_KEY  = 'jarvis_brain_badge_v1';
+const BRAIN_BADGE_TTL  = 24 * 60 * 60 * 1000;   // 24h auto-clear
+const IDLE_THRESHOLD   = 30 * 1000;             // 30s without interaction = idle
+let _lastActivity      = Date.now();
+let _brainBadgeState   = { count: 0, firstUnreadAt: null, anchors: [] };
+
+function _loadBrainBadge() {
+  try {
+    const raw = localStorage.getItem(BRAIN_BADGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.firstUnreadAt && (Date.now() - data.firstUnreadAt) > BRAIN_BADGE_TTL) {
+      localStorage.removeItem(BRAIN_BADGE_KEY);   // auto-clear stale
+      return;
+    }
+    _brainBadgeState = data;
+    _renderBrainBadge();
+  } catch (e) {}
+}
+
+function _saveBrainBadge() {
+  try { localStorage.setItem(BRAIN_BADGE_KEY, JSON.stringify(_brainBadgeState)); } catch (e) {}
+}
+
+function _renderBrainBadge() {
+  const el = document.getElementById('brain-badge');
+  const countEl = document.getElementById('brain-badge-count');
+  if (!el || !countEl) return;
+  if (_brainBadgeState.count <= 0) {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'flex';
+    countEl.textContent = _brainBadgeState.count > 9 ? '9+' : String(_brainBadgeState.count);
+  }
+}
+
+function _isUserIdle() {
+  if ((Date.now() - _lastActivity) < IDLE_THRESHOLD) return false;
+  // If user is scrolled to bottom of chat, they're actively reading — don't badge
+  const msgs = document.getElementById('msgs');
+  if (msgs) {
+    const atBottom = (msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight) < 40;
+    if (atBottom && document.hasFocus()) return false;
+  }
+  return true;
+}
+
+function maybeBumpBrainBadge(visibility, tags, messageId) {
+  // Only bump for SURFACE messages that have a BRAIN tag (action, not search)
+  if (visibility !== 'surface') return;
+  if (!Array.isArray(tags)) return;
+  const hasBrainAction = tags.some(t =>
+    typeof t === 'string' && t.startsWith('BRAIN:') &&
+    !t.toLowerCase().includes('searched') &&
+    !t.toLowerCase().includes('suggest')
+  );
+  if (!hasBrainAction) return;
+  if (!_isUserIdle()) return;
+  _brainBadgeState.count += 1;
+  if (!_brainBadgeState.firstUnreadAt) _brainBadgeState.firstUnreadAt = Date.now();
+  if (messageId) _brainBadgeState.anchors.push(messageId);
+  _saveBrainBadge();
+  _renderBrainBadge();
+}
+
+function clearBrainBadge() {
+  // Scroll to first unread anchor if we have one, then clear state
+  const firstAnchor = _brainBadgeState.anchors[0];
+  if (firstAnchor) {
+    const el = document.getElementById(firstAnchor);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    const msgs = document.getElementById('msgs');
+    if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  }
+  _brainBadgeState = { count: 0, firstUnreadAt: null, anchors: [] };
+  _saveBrainBadge();
+  _renderBrainBadge();
+}
+
+// Cross-tab sync
+window.addEventListener('storage', (e) => {
+  if (e.key === BRAIN_BADGE_KEY) _loadBrainBadge();
+});
+
+// Track user activity for idle detection
+['mousemove','keydown','scroll','click','wheel','touchstart'].forEach(evt => {
+  window.addEventListener(evt, () => { _lastActivity = Date.now(); }, { passive: true });
+});
+
+// Init on load
+window.addEventListener('DOMContentLoaded', _loadBrainBadge);
+
 /* ── AUDIO UNLOCK (call on first user gesture) ── */
 function unlockAudio() {
   if (_audioCtx) return;
@@ -1032,10 +1159,12 @@ function setRingState(state) {
 }
 
 /* ── LIVE STREAMING MESSAGE ── */
+let _msgIdCounter = 0;
 function appendMsgLive(agentName) {
   const msgs = document.getElementById('msgs');
   const d    = document.createElement('div');
   d.className = 'msg agent';
+  d.id = 'msg-' + (++_msgIdCounter);
   if (agentName && AGENT_COLORS[agentName]) {
     const tag = document.createElement('div');
     tag.className = 'msg-agent-tag';
@@ -1579,6 +1708,7 @@ async function doSend() {
     } else if (evt.type === 'done') {
       const full = evt.full || currentFull;
       const clean = stripShowTags(full);
+      const _msgId = currentMsgEl ? currentMsgEl.id : null;
       if (currentMsgEl) {
         updateMsgLive(currentMsgEl, clean);
         finishMsgLive(currentMsgEl);
@@ -1586,6 +1716,8 @@ async function doSend() {
       }
       parseAndShowImages(full);
       if (clean.trim()) playTTS(clean, currentAgent);
+      // B7: bump Second Brain notification badge if surface + brain action + user idle
+      maybeBumpBrainBadge(evt.visibility, evt.tags, _msgId);
     } else if (evt.type === 'error') {
       setRingState('idle');
       if (currentMsgEl) { finishMsgLive(currentMsgEl); currentMsgEl = null; }
