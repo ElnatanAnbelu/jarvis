@@ -495,10 +495,12 @@ _PROJECT_SIGNALS = frozenset({
 
 
 def _should_query_personal(user_input: str) -> bool:
-    lower = user_input.lower()
-    p_score = sum(1 for s in _PERSONAL_SIGNALS if s in lower)
-    j_score = sum(1 for s in _PROJECT_SIGNALS if s in lower)
-    return p_score >= j_score  # default True when tied or no signals (0 == 0)
+    """Always query the personal vault — it's a fast local text search and
+    grounding every reply in real context is the whole point of the Second Brain.
+    Only skip for purely empty/system turns."""
+    if not user_input or len(user_input.strip()) < 4:
+        return False
+    return True
 
 
 def _should_query_project(user_input: str) -> bool:
