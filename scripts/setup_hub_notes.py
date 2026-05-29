@@ -59,8 +59,9 @@ Co-architects: [[Elnatan]] · [[JARVIS]]
 """,
 }
 
-SKIP = {"Elnatan.md", "JARVIS.md", "Claude Code.md",
-        "_Activity.md", "_Activity.jsonl", "_PersonalModel.md"}
+# Only skip binary/append-only logs. Hub notes themselves still get the
+# footer — harmless redundancy on hubs keeps the format uniform.
+SKIP = {"_Activity.jsonl"}
 BACKLINK = "\n\n---\n*Linked: [[Elnatan]] · [[JARVIS]] · [[Claude Code]]*\n"
 OLD_BACKLINK = re.compile(r'\*Linked: \[\[Elnatan\]\] · \[\[JARVIS\]\]\*')
 
@@ -78,31 +79,21 @@ def main():
             p.write_text(content, encoding="utf-8")
             print(f"Created {rel}")
 
-    # Walk all areas + proposals and add the backlink footer
+    # Walk EVERYTHING — every .md anywhere in the vault gets the footer
+    # (except the binary log and any file that already has [[Claude Code]]).
+    # Also auto-populate an empty Obsidian daily note with a minimal header
+    # so it has content to link.
     added = 0
     updated = 0
-    for area in ["Personal", "Business", "Relationships", "Goals",
-                  "Decisions", "Daily", "Learning", "Archive"]:
-        targets = list((vault / area).rglob("*.md"))
-        for p in targets:
-            if p.name in SKIP:
-                continue
-            t = p.read_text(encoding="utf-8")
-            if "[[Claude Code]]" in t:
-                continue
-            if OLD_BACKLINK.search(t):
-                # upgrade old footer to include Claude Code
-                new_t = OLD_BACKLINK.sub(BACKLINK.strip().lstrip("\n").lstrip("-").lstrip("\n"), t)
-                p.write_text(new_t, encoding="utf-8")
-                updated += 1
-            else:
-                p.write_text(t.rstrip() + BACKLINK, encoding="utf-8")
-                added += 1
-
-    for p in (vault / "_JARVIS" / "Proposals").rglob("*.md"):
+    populated_empty = 0
+    for p in vault.rglob("*.md"):
         if p.name in SKIP:
             continue
         t = p.read_text(encoding="utf-8")
+        if not t.strip():
+            # Empty Obsidian daily note — give it minimal content
+            t = f"# {p.stem}\n\n*Daily note. Day belongs to [[Elnatan]].*\n"
+            populated_empty += 1
         if "[[Claude Code]]" in t:
             continue
         if OLD_BACKLINK.search(t):
@@ -113,7 +104,8 @@ def main():
             p.write_text(t.rstrip() + BACKLINK, encoding="utf-8")
             added += 1
 
-    print(f"Backlinked: {added} new, {updated} upgraded.")
+    print(f"Backlinked: {added} new, {updated} upgraded, "
+          f"{populated_empty} empty notes populated.")
     return 0
 
 
