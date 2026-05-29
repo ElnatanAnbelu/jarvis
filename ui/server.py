@@ -100,6 +100,16 @@ threading.Thread(target=_warmup_tts, daemon=True).start()
 _proactive_q: queue.Queue = queue.Queue()
 
 
+# ── SMART VISIBILITY (B6) ────────────────────────────────────────────────────
+def _classify_visibility(text: str, agent: str = None, source: str = "chat") -> dict:
+    """Classify a message for HUD visibility. Safe fallback if classifier fails."""
+    try:
+        from brain.visibility import classify
+        return classify(text or "", agent=agent, source=source)
+    except Exception:
+        return {"visibility": "normal", "tags": []}
+
+
 def _strip_markdown(text):
     import re
     # Preserve code fences (```lang\n...\n```) — HUD renders them as executable blocks
@@ -189,7 +199,8 @@ def stream():
                     threading.Thread(target=lambda: _speak(full, "JARVIS"), daemon=True).start()
                 except Exception:
                     pass
-            yield f"data: {json.dumps({'type': 'done', 'agent': 'JARVIS', 'full': full})}\n\n"
+            _vis = _classify_visibility(full, "JARVIS", "chat")
+            yield f"data: {json.dumps({'type': 'done', 'agent': 'JARVIS', 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
             return
 
         try:
@@ -208,12 +219,14 @@ def stream():
                 elif event_type == "done":
                     full = value
                     # In work-together mode, each agent emits done separately
-                    yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full})}\n\n"
+                    _vis = _classify_visibility(full, agent, "chat")
+                    yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
                     last_done_sent = True
                 elif event_type == "persist":
                     _active_agent["name"] = value  # update session
             if not last_done_sent:
-                yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full})}\n\n"
+                _vis = _classify_visibility(full, agent, "chat")
+                yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
         except Exception as e:
             import traceback
             print("ROUTE ERROR:", traceback.format_exc(), flush=True)
@@ -362,7 +375,8 @@ def upload_file():
             full = "".join(chunks).strip()
             if full:
                 save_message("jarvis", full)
-            yield f"data: {json.dumps({'type': 'done', 'agent': 'JARVIS', 'full': full})}\n\n"
+            _vis = _classify_visibility(full, "JARVIS", "chat")
+            yield f"data: {json.dumps({'type': 'done', 'agent': 'JARVIS', 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
         finally:
             try:
                 os.unlink(tmp_path)
@@ -742,12 +756,30 @@ def image_search():
 
 @app.route("/api/proactive", methods=["GET"])
 def proactive_poll():
+    """Drain the proactive queue. Each message is classified for visibility (B6)."""
     msgs = []
     while not _proactive_q.empty():
         try:
-            msgs.append(_proactive_q.get_nowait())
+            item = _proactive_q.get_nowait()
         except Exception:
             break
+        # Items may be plain strings (legacy) or dicts with {text, agent, source}
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            agent = item.get("agent", "JARVIS")
+            source = item.get("source", "proactive")
+        else:
+            text = str(item)
+            agent = "JARVIS"
+            source = "proactive"
+        vis = _classify_visibility(text, agent, source)
+        msgs.append({
+            "text": text,
+            "agent": agent,
+            "source": source,
+            "visibility": vis["visibility"],
+            "tags": vis["tags"],
+        })
     return jsonify({"messages": msgs})
 
 
