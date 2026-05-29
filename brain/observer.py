@@ -111,33 +111,61 @@ def _top_topics(messages):
     return [(w, c) for w, c in freq.most_common(10) if c >= 3]
 
 
+# ── B8: Second Brain grounding ────────────────────────────────────────────────
+def _search_brain_for_topic(topic: str, max_chars: int = 800) -> str:
+    """Query the Personal Second Brain for context on the detected topic.
+
+    Returns a short excerpt (truncated to max_chars) if any vault notes
+    are relevant; empty string otherwise. Failures are silent — the
+    observer falls back to pattern-only insights.
+    """
+    if not topic:
+        return ""
+    try:
+        from memory.vault import VaultManager
+        import memory.vault as _vm
+        # Reuse the singleton instance set up by brain/think.py if available
+        if not hasattr(_vm, "_second_brain_instance"):
+            _vm._second_brain_instance = VaultManager()
+        result = _vm._second_brain_instance.search_vault(topic, max_results=2)
+        if not result:
+            return ""
+        text = result.strip()
+        if len(text) > max_chars:
+            text = text[:max_chars].rstrip() + "..."
+        return text
+    except Exception:
+        return ""
+
+
 # ── Pattern detection ─────────────────────────────────────────────────────────
 def _detect_pattern():
     """
-    Returns (context_str, topic) if a noteworthy pattern is found, else (None, None).
+    Returns (context_str, topic, has_brain_grounding) if a noteworthy
+    pattern is found, else (None, None, False).
     """
     global _last_pattern_hash
     try:
         from memory.memory import get_recent_history
         messages = get_recent_history(limit=80)
         if len(messages) < 8:
-            return None, None
+            return None, None, False
 
         topics = _top_topics(messages)
         if not topics:
-            return None, None
+            return None, None, False
 
         top_word, top_count = topics[0]
 
         # Require the word appears in at least 5 separate messages
         msg_hits = sum(1 for _, c in messages if top_word in c.lower())
         if msg_hits < 5:
-            return None, None
+            return None, None, False
 
         # Skip if we already surfaced this exact pattern
         pattern_hash = top_word + str(msg_hits)
         if pattern_hash == _last_pattern_hash:
-            return None, None
+            return None, None, False
         _last_pattern_hash = pattern_hash
 
         # Build context: top topics + a few relevant message snippets
@@ -160,15 +188,26 @@ def _detect_pattern():
         except Exception:
             pass
 
+        # B8: ground in Second Brain when the topic appears in the vault
+        brain_excerpt = _search_brain_for_topic(top_word)
+        brain_section = ""
+        has_brain_grounding = False
+        if brain_excerpt:
+            brain_section = (
+                "\n\nVAULT CONTEXT — recorded notes on this topic:\n{}"
+            ).format(brain_excerpt)
+            has_brain_grounding = True
+
         context = (
             "Recurring topics in this session: {}.\n"
             "The topic '{}' appeared in {} messages.\n"
-            "Sample messages:\n{}{}"
-        ).format(topic_list, top_word, msg_hits, "\n".join(snippets), cross)
+            "Sample messages:\n{}{}{}"
+        ).format(topic_list, top_word, msg_hits,
+                 "\n".join(snippets), cross, brain_section)
 
-        return context, top_word
+        return context, top_word, has_brain_grounding
     except Exception:
-        return None, None
+        return None, None, False
 
 
 # ── Insight generation ────────────────────────────────────────────────────────
@@ -205,8 +244,12 @@ def _generate_insight(context, topic):
                     "and finally decided it was worth saying something — not an alert, not a notification, "
                     "a remark from someone who pays attention.\n\n"
                     "No markdown. No 'I noticed.' No filler. Just the observation and the offer.\n\n"
+                    "GROUNDING RULE: If the PATTERN block contains a 'VAULT CONTEXT' section, "
+                    "your observation MUST be grounded in that recorded data — reference what is "
+                    "actually noted (not invented). If no VAULT CONTEXT is present, the observation "
+                    "is pattern-only; do not pretend to recall vault content you don't have.\n\n"
                     "Tone examples:\n"
-                    "'You've returned to Addis Market's pricing four times now — shall I draft a comparison table, sir?'\n"
+                    "'You've returned to Atomic Habits four times now — your reading note still says chapter three; want me to update it?'\n"
                     "'The word \"launch\" has appeared in eleven messages. Perhaps it's time to attach a date to it.'\n"
                     "'Your focus has shifted toward planning and away from execution — want me to queue the next concrete step?'\n"
                     "'You've mentioned vendors three times today without a follow-up action. Shall I draft an outreach template?'\n\n"
@@ -226,12 +269,17 @@ def _observer_tick():
     if not _can_push():
         return
 
-    context, topic = _detect_pattern()
+    context, topic, has_brain_grounding = _detect_pattern()
     if not context:
         return
 
     insight = _generate_insight(context, topic)
     if insight and len(insight) > 12:
+        # B8: tag insights grounded in vault content so the HUD chip system
+        # (B5) shows the green grounding chip and the visibility classifier
+        # (B6) routes appropriately.
+        if has_brain_grounding:
+            insight = insight.rstrip() + " [BRAIN: GROUNDED]"
         _push(insight)
 
 
