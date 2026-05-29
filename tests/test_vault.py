@@ -345,6 +345,48 @@ def test_approve_proposal_stale_when_note_changed(vault, tmp_path):
     assert "updated content" not in note_path.read_text()
 
 
+def test_approve_proposal_overwrites_init_stub(vault, tmp_path):
+    """Approval can land on a vault-init stub (Personal/About Me, etc.)
+    without hitting the stale guard — the stub is recognized as a
+    placeholder and overwritten."""
+    sb = tmp_path / "SecondBrain"
+    # The About Me stub is created during vault init
+    about_path = sb / "Personal" / "About Me.md"
+    assert about_path.exists()  # init created it
+    assert "This is your space" in about_path.read_text()  # confirm stub content
+
+    # Stage a proposal targeting About Me
+    vault.propose_change("About Me", "Real content here.", "create",
+                         "Personal", "test", "seed about me")
+    proposal_files = list((sb / "_JARVIS" / "Proposals").rglob("*.md"))
+    pid = proposal_files[0].stem
+
+    # Approval should succeed (not stale) because target is an init stub
+    result = vault.approve_proposal(pid)
+    assert "stale" not in result.lower()
+    assert "applied" in result.lower() or "approved" in result.lower()
+    assert "Real content here." in about_path.read_text()
+
+
+def test_approve_proposal_still_stale_on_real_human_content(vault, tmp_path):
+    """The stale guard still fires when the target file has real content
+    (not a known init stub) — we don't silently overwrite human writes."""
+    sb = tmp_path / "SecondBrain"
+    real_path = sb / "Personal" / "Manually Written.md"
+    real_path.write_text("This is real content I wrote myself.\n", encoding="utf-8")
+
+    vault.propose_change("Manually Written", "JARVIS wants to overwrite", "create",
+                         "Personal", "test", "should refuse")
+    proposal_files = list((sb / "_JARVIS" / "Proposals").rglob("*.md"))
+    pid = proposal_files[0].stem
+
+    result = vault.approve_proposal(pid)
+    assert "stale" in result.lower()
+    # Real human content is preserved unchanged
+    assert "This is real content I wrote myself." in real_path.read_text()
+    assert "JARVIS wants to overwrite" not in real_path.read_text()
+
+
 def test_reject_proposal_preserves_file(vault, tmp_path):
     vault.propose_change("Sensitive", "data", "create", "Decisions", "conv", "reason")
     proposal_files = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))

@@ -153,6 +153,24 @@ class VaultManager:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
 
+    # Known vault-init stub signatures. A file matching one of these is
+    # considered a placeholder created by _ensure_vault and may be safely
+    # overwritten when an approval lands content for the same target.
+    _INIT_STUB_SIGNATURES = frozenset([
+        _ABOUT_ME_CONTENT,
+        _LONG_TERM_GOALS_CONTENT,
+        _DAILY_README_CONTENT,
+    ])
+
+    def _is_init_stub(self, path: Path) -> bool:
+        """Return True if the file content matches one of the known init
+        stub signatures — meaning it has never had real content written
+        to it and is safe to overwrite on approval."""
+        try:
+            return path.read_text(encoding="utf-8") in self._INIT_STUB_SIGNATURES
+        except Exception:
+            return False
+
     def _log_activity(self, action: str, note: str, source: str,
                       summary: str, risk: str = "low"):
         """
@@ -483,8 +501,11 @@ class VaultManager:
         if action == "create":
             note_path = self.vault_path / area_str / f"{self._safe_title(title_str)}.md"
             note_path.parent.mkdir(parents=True, exist_ok=True)
-            # Stale check for create: if file exists and wasn't created by this proposal
-            if note_path.exists():
+            # Stale check for create: if file exists AND is not a vault-init stub,
+            # refuse — we don't silently overwrite real human content. Init stubs
+            # (empty placeholder notes created by _ensure_vault) are recognized
+            # by content shape and may be safely overwritten by approval.
+            if note_path.exists() and not self._is_init_stub(note_path):
                 self._update_proposal_status(p, "stale")
                 return (
                     f"Proposal {proposal_id} is stale — `{area_str}/{title_str}` already exists. "
