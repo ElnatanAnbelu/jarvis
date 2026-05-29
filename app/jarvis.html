@@ -987,9 +987,56 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── DISPLAY SURFACE OVERLAY ──────────────────────────────────────── */
+#show-surface {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  flex-direction: column;
+  align-items: stretch;
+}
+#show-surface.active { display: flex; }
+#show-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#show-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+  color: var(--cyan); text-transform: uppercase;
+}
+#show-dismiss {
+  background: none; border: none; color: var(--text-2);
+  font-size: 18px; cursor: pointer; padding: 4px 8px;
+}
+#show-dismiss:hover { color: var(--text-1); }
+#show-body {
+  flex: 1; min-height: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+#show-body iframe {
+  width: 100%; height: 100%; border: none;
+}
+#show-body img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+}
+.show-text {
+  color: var(--text-1); font-size: 15px; line-height: 1.6;
+  padding: 24px; max-width: 720px; overflow-y: auto;
+  white-space: pre-wrap;
+}
 </style>
 </head>
 <body>
+<!-- ── DISPLAY SURFACE (shown when JARVIS emits a [SHOW:] directive) ─── -->
+<div id="show-surface">
+  <div id="show-topbar">
+    <span id="show-label">Display</span>
+    <button id="show-dismiss" onclick="dismissSurface()">×</button>
+  </div>
+  <div id="show-body"></div>
+</div>
 <div id="app">
 
   <!-- SIDEBAR -->
@@ -1124,6 +1171,85 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 </div>
 
 <script>
+/* ── DISPLAY SURFACE ──────────────────────────────────────────────────── */
+let _lastShowPayload = null;
+
+function showSurface(payload) {
+  const surface = document.getElementById('show-surface');
+  const body    = document.getElementById('show-body');
+  const label   = document.getElementById('show-label');
+  if (!surface || !body) return;
+
+  body.innerHTML = '';
+  _lastShowPayload = payload;
+
+  // Parse key=value pairs or bare search query
+  const eqIdx = payload.indexOf('=');
+  const kv = {};
+  if (eqIdx > 0) {
+    kv[payload.slice(0, eqIdx).trim().toLowerCase()] = payload.slice(eqIdx + 1).trim();
+  } else {
+    kv['query'] = payload;
+  }
+
+  if (kv.url) {
+    label.textContent = 'Web';
+    const ifr = document.createElement('iframe');
+    ifr.src = kv.url;
+    ifr.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+    body.appendChild(ifr);
+  } else if (kv.image) {
+    label.textContent = 'Image';
+    const img = document.createElement('img');
+    img.src = kv.image;
+    body.appendChild(img);
+  } else if (kv.file) {
+    label.textContent = 'File';
+    const div = document.createElement('div');
+    div.className = 'show-text';
+    div.textContent = 'Loading…';
+    body.appendChild(div);
+    fetch('/api/read_file?path=' + encodeURIComponent(kv.file))
+      .then(r => r.text()).then(t => { div.textContent = t; })
+      .catch(() => { div.textContent = 'Cannot read: ' + kv.file; });
+  } else if (kv.html) {
+    label.textContent = 'View';
+    const ifr = document.createElement('iframe');
+    ifr.srcdoc = kv.html;
+    body.appendChild(ifr);
+  } else if (kv.app) {
+    label.textContent = 'App';
+    const div = document.createElement('div');
+    div.className = 'show-text';
+    div.textContent = 'Opening ' + kv.app + '…';
+    body.appendChild(div);
+    fetch('/api/open_app?name=' + encodeURIComponent(kv.app)).catch(() => {});
+    setTimeout(() => dismissSurface(), 1500);
+  } else {
+    // Bare query → image search
+    label.textContent = 'Search';
+    const img = document.createElement('img');
+    img.alt = payload;
+    img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+    fetch('/api/image_search?q=' + encodeURIComponent(kv.query || payload))
+      .then(r => r.json())
+      .then(d => {
+        if (d.url) { img.src = d.url; }
+        else { body.innerHTML = '<div class="show-text">No image found for: ' + payload + '</div>'; }
+      })
+      .catch(() => { body.innerHTML = '<div class="show-text">Search failed.</div>'; });
+    body.appendChild(img);
+  }
+
+  surface.classList.add('active');
+}
+
+function dismissSurface() {
+  const surface = document.getElementById('show-surface');
+  if (surface) surface.classList.remove('active');
+}
+// showSurface() is called directly by JsApi.show_content() via evaluate_js.
+
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════
