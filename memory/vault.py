@@ -302,48 +302,73 @@ class VaultManager:
 
     # ── Proposal system ────────────────────────────────────────────────────────
 
-    def _build_proposal_id(self, area: str, title: str) -> tuple:
-        """Build a descriptive proposal ID + filename from area + title.
+    def _proposal_subfolder(self, area: str, title: str) -> str:
+        """Decide which subfolder under Proposals/ a given proposal lives in.
 
-        Returns (proposal_id, filename). Format: '{Area} — {Title}'.
-        On filename collision, appends ' (N)' to disambiguate but the
-        proposal_id stays clean and matches what's shown to the user.
+        Personal Model updates (target _PersonalModel in _JARVIS area) get
+        their own dedicated 'Personal Model' subfolder so the 6 sections
+        live together. Everything else uses its area name.
+        """
+        safe_title = (title or "").strip()
+        if area == "_JARVIS" and "_PersonalModel" in safe_title:
+            return "Personal Model"
+        if area == "_JARVIS":
+            return "_JARVIS"
+        # Strip path separators from area just in case
+        return re.sub(r'[<>:"/\\|?*]', '', area).strip() or "Other"
+
+    def _build_proposal_id(self, area: str, title: str) -> tuple:
+        """Build a descriptive proposal ID + relative path from area + title.
+
+        Returns (proposal_id, relative_path). The proposal lives in a
+        subfolder named for its area. The filename and proposal_id are
+        the clean title (no area prefix — the subfolder already shows
+        that). On collision, ' (N)' is appended.
+
+        Examples:
+          ('Business', 'Addis Market') →
+              ('Addis Market', Path('Business/Addis Market.md'))
+          ('_JARVIS', 'Personal Model — Energy Patterns') →
+              ('Personal Model — Energy Patterns',
+               Path('Personal Model/Personal Model — Energy Patterns.md'))
         """
         safe_title = self._safe_title(title)
-        safe_area = re.sub(r'[<>:"/\\|?*]', '', area).strip()
-        proposal_id = f"{safe_area} — {safe_title}"
-        proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
-        base = proposal_id
+        subfolder = self._proposal_subfolder(area, title)
+        proposals_dir = self.vault_path / "_JARVIS" / "Proposals" / subfolder
+        proposal_id = safe_title
+        base = safe_title
         filename = f"{base}.md"
-        # Collision handling: only add a counter if a file with this name
-        # already exists (rare — same target with multiple open proposals)
         n = 2
         while (proposals_dir / filename).exists():
             filename = f"{base} ({n}).md"
             n += 1
-        return proposal_id, filename
+        rel_path = Path(subfolder) / filename
+        return proposal_id, rel_path
 
     def _find_proposal_path(self, proposal_id: str) -> Optional[Path]:
-        """Look up a proposal file by its ID. The ID is the descriptive name
-        (e.g. 'Personal — Income & Finances'). We also tolerate legacy
-        date-counter IDs ('2026-05-29-001') and direct filename matches."""
+        """Look up a proposal file by its ID. The ID is the clean title.
+
+        Searches across all subfolders under Proposals/. Also tolerates
+        legacy formats (date-counter IDs, flat-folder filenames) for
+        backward compatibility.
+        """
         proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
         if not proposals_dir.exists():
             return None
-        # Exact filename match (new format)
-        exact = proposals_dir / f"{proposal_id}.md"
-        if exact.exists():
-            return exact
-        # Match with collision counter suffix
-        matches = list(proposals_dir.glob(f"{proposal_id} (*).md"))
+        # New format: search recursively for the filename
+        matches = list(proposals_dir.rglob(f"{proposal_id}.md"))
         if matches:
             return matches[0]
-        # Legacy: bare date-counter filename
+        # Match with collision suffix
+        matches = list(proposals_dir.rglob(f"{proposal_id} (*).md"))
+        if matches:
+            return matches[0]
+        # Legacy: bare flat-folder filename
         legacy = proposals_dir / f"{proposal_id}.md"
         if legacy.exists():
             return legacy
         # Legacy: search by proposal_id frontmatter field
-        for p in proposals_dir.glob("*.md"):
+        for p in proposals_dir.rglob("*.md"):
             fm = self._parse_frontmatter(p)
             if fm.get("proposal_id") == proposal_id:
                 return p
@@ -365,7 +390,7 @@ class VaultManager:
             Personal Model section updates).
         """
         title_for_display = display_title or title
-        proposal_id, filename = self._build_proposal_id(area, title_for_display)
+        proposal_id, rel_path = self._build_proposal_id(area, title_for_display)
         target = target_note_override or f"{area}/{self._safe_title(title)}"
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -393,8 +418,9 @@ class VaultManager:
         attribution = f"> *JARVIS: proposed from {source} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}*"
         body = "\n".join(fm_lines) + f"\n\n# Proposed Content\n\n{attribution}\n\n{proposed_content}\n"
 
-        # Descriptive filename — name only, no dates. Collision-handled.
-        proposal_path = self.vault_path / "_JARVIS" / "Proposals" / filename
+        # Descriptive filename in a subfolder by area. Collision-handled.
+        proposal_path = self.vault_path / "_JARVIS" / "Proposals" / rel_path
+        proposal_path.parent.mkdir(parents=True, exist_ok=True)
         proposal_path.write_text(body, encoding="utf-8")
         self._log_activity("propose", target, source,
                            f"Proposed {action}: {title}", risk=AREA_RISK.get(area, "medium"))
@@ -405,7 +431,8 @@ class VaultManager:
     def get_pending_proposals(self) -> str:
         proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
         pending = []
-        for p in sorted(proposals_dir.glob("*.md")):
+        # rglob to handle subfolder organization (Business/, Personal/, etc.)
+        for p in sorted(proposals_dir.rglob("*.md")):
             fm = self._parse_frontmatter(p)
             if fm.get("status") == "pending":
                 pid = fm.get("proposal_id", p.stem)

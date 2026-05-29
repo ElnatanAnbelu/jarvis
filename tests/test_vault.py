@@ -199,7 +199,7 @@ def test_create_note_high_risk_creates_proposal(vault, tmp_path):
         area="Relationships",
         source="conversation, 2026-05-28",
     )
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     assert len(proposals) == 1
     assert "proposal" in result.lower() or "proposed" in result.lower()
     rel_path = tmp_path / "SecondBrain" / "Relationships" / "Investor Ahmed.md"
@@ -214,7 +214,7 @@ def test_create_note_low_area_high_sensitivity_creates_proposal(vault, tmp_path)
         source="conversation",
         sensitivity="high",
     )
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     assert len(proposals) == 1
 
 
@@ -240,7 +240,7 @@ def test_update_note_proposes_when_human_edited(vault, tmp_path):
     note_path.write_text(note_path.read_text() + "\n*human addition*\n", encoding="utf-8")
     result = vault.update_note("Daily/My Log", "Entry 2.", "conv")
     assert "proposal" in result.lower() or "proposed" in result.lower()
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     assert len(proposals) == 1
 
 
@@ -255,13 +255,13 @@ def test_propose_change_creates_file_in_proposals_dir(vault, tmp_path):
         source="conversation, 2026-05-28",
         reason="Elnatan mentioned hitting first revenue milestone",
     )
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     assert len(proposals) == 1
 
 
 def test_proposal_file_has_required_frontmatter(vault, tmp_path):
     vault.propose_change("Test", "content", "create", "Business", "conv", "test")
-    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0]
+    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))[0]
     text = p.read_text()
     assert "proposal_id:" in text
     assert "status: pending" in text
@@ -270,33 +270,33 @@ def test_proposal_file_has_required_frontmatter(vault, tmp_path):
     assert "reason:" in text
 
 
-def test_proposal_ids_are_sequential(vault, tmp_path):
+def test_proposals_organized_by_subfolder(vault, tmp_path):
+    """Proposals live under Proposals/{Area}/ subfolders, not flat."""
     vault.propose_change("A", "c", "create", "Business", "conv", "r")
     vault.propose_change("B", "c", "create", "Business", "conv", "r")
-    proposals = sorted((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
-    # Descriptive names — both files exist with their target-derived names
-    stems = {p.stem for p in proposals}
-    assert "Business — A" in stems
-    assert "Business — B" in stems
+    proposals_root = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals"
+    business_files = sorted((proposals_root / "Business").glob("*.md"))
+    stems = {p.stem for p in business_files}
+    assert "A" in stems
+    assert "B" in stems
 
 
 def test_propose_change_returns_proposal_id_in_result(vault):
     result = vault.propose_change("X", "c", "create", "Business", "conv", "r")
     assert "proposal" in result.lower()
-    # New ID format is descriptive: "Area — Title"
-    assert "Business — X" in result
+    # Clean proposal ID: just the title (subfolder shows area)
+    assert "X" in result
 
 
 def test_proposal_collision_appends_counter(vault, tmp_path):
-    """Two proposals targeting the same note get unique filenames."""
+    """Two proposals targeting the same note get unique filenames within
+    their area subfolder."""
     vault.propose_change("Same Target", "c1", "create", "Business", "conv", "r1")
     vault.propose_change("Same Target", "c2", "create", "Business", "conv", "r2")
-    proposals = sorted(
-        (tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md")
-    )
-    stems = {p.stem for p in proposals}
-    assert "Business — Same Target" in stems
-    assert "Business — Same Target (2)" in stems
+    business_dir = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals" / "Business"
+    stems = {p.stem for p in business_dir.glob("*.md")}
+    assert "Same Target" in stems
+    assert "Same Target (2)" in stems
 
 
 # ── Task 6: Proposal Review Flow tests ────────────────────────────────────────
@@ -305,14 +305,15 @@ def test_get_pending_proposals_lists_pending_only(vault, tmp_path):
     vault.propose_change("A", "c1", "create", "Business", "conv", "r1")
     vault.propose_change("B", "c2", "create", "Decisions", "conv", "r2")
     result = vault.get_pending_proposals()
-    assert "Business — A" in result
-    assert "Decisions — B" in result
+    # New format: target_note shown in the listing, IDs are clean titles
+    assert "Business/A" in result
+    assert "Decisions/B" in result
 
 
 def test_approve_proposal_writes_note(vault, tmp_path):
     vault.propose_change("New Insight", "This is the content.", "create",
                          "Learning", "conversation", "test insight")
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     pid = proposals[0].stem
     result = vault.approve_proposal(pid)
     note_path = tmp_path / "SecondBrain" / "Learning" / "New Insight.md"
@@ -323,9 +324,10 @@ def test_approve_proposal_writes_note(vault, tmp_path):
 
 def test_approve_proposal_marks_status_approved(vault, tmp_path):
     vault.propose_change("X", "content", "create", "Learning", "conv", "r")
-    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    proposal_files = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
+    pid = proposal_files[0].stem
     vault.approve_proposal(pid)
-    proposal_text = (tmp_path / "SecondBrain" / "_JARVIS" / "Proposals" / f"{pid}.md").read_text()
+    proposal_text = proposal_files[0].read_text()
     assert "status: approved" in proposal_text
 
 
@@ -334,7 +336,7 @@ def test_approve_proposal_stale_when_note_changed(vault, tmp_path):
     vault.create_note("Existing Note", "original content", "Learning", "conv")
     vault.propose_change("Existing Note", "updated content", "update",
                          "Learning", "conv", "update reason")
-    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))[0].stem
     # Human edits the note AFTER the proposal was created
     note_path = tmp_path / "SecondBrain" / "Learning" / "Existing Note.md"
     note_path.write_text(note_path.read_text() + "\n*human edit*\n", encoding="utf-8")
@@ -345,11 +347,12 @@ def test_approve_proposal_stale_when_note_changed(vault, tmp_path):
 
 def test_reject_proposal_preserves_file(vault, tmp_path):
     vault.propose_change("Sensitive", "data", "create", "Decisions", "conv", "reason")
-    pid = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0].stem
+    proposal_files = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
+    pid = proposal_files[0].stem
     vault.reject_proposal(pid)
-    proposal_path = tmp_path / "SecondBrain" / "_JARVIS" / "Proposals" / f"{pid}.md"
-    assert proposal_path.exists()
-    assert "status: rejected" in proposal_path.read_text()
+    # File is preserved (in its subfolder) with status updated
+    assert proposal_files[0].exists()
+    assert "status: rejected" in proposal_files[0].read_text()
 
 
 def test_get_pending_proposals_empty(vault):
@@ -404,7 +407,7 @@ def test_update_personal_model_always_proposes(vault, tmp_path):
         source="conversation pattern, 2026-05-28",
         supporting_observations="3 sessions mentioned anime",
     )
-    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))
+    proposals = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))
     assert len(proposals) == 1
     assert "proposal" in result.lower()
 
@@ -423,7 +426,7 @@ def test_update_personal_model_proposal_includes_evidence(vault, tmp_path):
         source="conversation",
         supporting_observations="Mentioned hesitation 4 times this week",
     )
-    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").glob("*.md"))[0]
+    p = list((tmp_path / "SecondBrain" / "_JARVIS" / "Proposals").rglob("*.md"))[0]
     text = p.read_text()
     assert "Mentioned hesitation" in text
     assert "Decision-Making Style" in text
