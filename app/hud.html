@@ -449,6 +449,57 @@ html, body {
   50%      { box-shadow: 0 0 22px rgba(0,245,255,0.55); }
 }
 
+/* B5: Group chat — inline agent voice pills */
+.voice-pill {
+  display: inline-block;
+  padding: 1px 6px; margin-right: 6px;
+  font-size: 8px; letter-spacing: 1.5px; font-weight: 800;
+  border-radius: 4px;
+  vertical-align: 1px;
+  text-transform: uppercase;
+}
+.voice-pill.karen     { background: rgba(255,206,84,0.15); color: #ffce54; border: 1px solid rgba(255,206,84,0.4); }
+.voice-pill.veronica  { background: rgba(255,78,98,0.15);  color: #ff4e62; border: 1px solid rgba(255,78,98,0.4);  }
+.voice-pill.friday    { background: rgba(255,106,0,0.15);  color: #ff6a00; border: 1px solid rgba(255,106,0,0.4);  }
+.voice-pill.jarvis    { background: rgba(0,245,255,0.15);  color: #00f5ff; border: 1px solid rgba(0,245,255,0.4);  }
+.voice-segment {
+  display: block; margin-top: 4px; padding-left: 8px;
+  border-left: 1px solid rgba(255,255,255,0.07);
+}
+
+/* B5: Brain action chips at end of message */
+.brain-chip-row { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.brain-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 9px;
+  font-size: 8px; letter-spacing: 1.2px; font-weight: 700;
+  text-transform: uppercase;
+  cursor: default;
+}
+.brain-chip.saved     { background: rgba(0,220,130,0.13); color: #00dc82; border: 1px solid rgba(0,220,130,0.4); }
+.brain-chip.proposed  { background: rgba(255,176,0,0.13); color: #ffb000; border: 1px solid rgba(255,176,0,0.4); }
+.brain-chip.searched  { background: rgba(120,170,255,0.10); color: #78aaff; border: 1px solid rgba(120,170,255,0.3); }
+.brain-chip.suggest   { background: rgba(180,180,180,0.10); color: #b4b4b4; border: 1px solid rgba(180,180,180,0.25); opacity: 0.75; }
+.brain-chip.sensitive { background: rgba(255,78,98,0.12);  color: #ff4e62; border: 1px solid rgba(255,78,98,0.35); }
+.brain-chip.observer  { background: rgba(0,245,255,0.10);  color: #00f5ff; border: 1px solid rgba(0,245,255,0.35); }
+
+/* B5: Collapsed message preview */
+.msg.collapsed {
+  opacity: 0.55; cursor: pointer; padding: 4px 10px !important;
+  font-size: 10px; transition: opacity 200ms ease;
+  border-left-width: 1px !important;
+}
+.msg.collapsed:hover { opacity: 0.85; }
+.msg.collapsed .collapsed-preview {
+  display: flex; align-items: center; gap: 6px;
+}
+.msg.collapsed .collapsed-chevron {
+  font-size: 10px; opacity: 0.6;
+}
+.msg.collapsed-expanded {
+  opacity: 1; cursor: default; font-size: inherit; padding: 8px 12px !important;
+}
+
 /* Messages */
 #msgs {
   flex: 1; overflow-y: auto; padding: 10px 16px;
@@ -1125,6 +1176,142 @@ function clearBrainBadge() {
   _renderBrainBadge();
 }
 
+/* ── B5: GROUP CHAT RENDERING — voice blocks, brain chips, collapsed mode ── */
+
+const VOICE_BLOCK_RE = /\[(JARVIS|FRIDAY|VERONICA|KAREN)\]\s+/g;
+const BRAIN_TAG_RE   = /\[BRAIN:\s*([^\]]+)\]/gi;
+const SENSITIVE_TAG_RE = /\[SENSITIVE\]/gi;
+
+/**
+ * Parse message text into voice segments.
+ * Returns [{voice: null|"KAREN", text: "..."}, ...]
+ * The first segment may have voice=null (the primary agent's prose).
+ */
+function parseVoiceBlocks(text) {
+  if (!text) return [{ voice: null, text: '' }];
+  const segments = [];
+  let lastIdx = 0;
+  let lastVoice = null;
+  VOICE_BLOCK_RE.lastIndex = 0;
+  let m;
+  while ((m = VOICE_BLOCK_RE.exec(text)) !== null) {
+    const chunk = text.slice(lastIdx, m.index).trim();
+    if (chunk || segments.length === 0) {
+      segments.push({ voice: lastVoice, text: chunk });
+    }
+    lastVoice = m[1];
+    lastIdx = m.index + m[0].length;
+  }
+  const tail = text.slice(lastIdx).trim();
+  if (tail || segments.length === 0) {
+    segments.push({ voice: lastVoice, text: tail });
+  }
+  return segments;
+}
+
+/** Extract and strip [BRAIN:] and [SENSITIVE] tags. Returns {text, chips}. */
+function extractBrainChips(text) {
+  if (!text) return { text: '', chips: [] };
+  const chips = [];
+  let stripped = text;
+  BRAIN_TAG_RE.lastIndex = 0;
+  let m;
+  while ((m = BRAIN_TAG_RE.exec(text)) !== null) {
+    chips.push({ type: 'brain', body: m[1].trim() });
+  }
+  SENSITIVE_TAG_RE.lastIndex = 0;
+  while ((m = SENSITIVE_TAG_RE.exec(text)) !== null) {
+    chips.push({ type: 'sensitive', body: 'SENSITIVE' });
+  }
+  stripped = stripped.replace(BRAIN_TAG_RE, '').replace(SENSITIVE_TAG_RE, '');
+  return { text: stripped.trim(), chips };
+}
+
+/** Map a brain chip body to a CSS class. */
+function brainChipClass(body) {
+  const lc = (body || '').toLowerCase();
+  if (lc.includes('saved'))     return 'saved';
+  if (lc.includes('proposed'))  return 'proposed';
+  if (lc.includes('searched'))  return 'searched';
+  if (lc.includes('suggest'))   return 'suggest';
+  if (lc.includes('approved'))  return 'saved';
+  if (lc.includes('rejected'))  return 'proposed';
+  return 'observer';
+}
+
+/** Render a fully-finalized message with multi-voice + chips. */
+function renderRichMessage(el, agent, fullText, visibility, tags) {
+  if (!el) return;
+  // Clear existing children except the agent tag (first child)
+  while (el.children.length > 1) el.removeChild(el.lastChild);
+  // Also clear any text nodes (legacy span)
+  el.querySelectorAll('.msg-live-text, .msg-cursor').forEach(n => n.remove());
+
+  const { text: cleanText, chips } = extractBrainChips(fullText);
+  const segments = parseVoiceBlocks(cleanText);
+
+  // Primary text (first segment) goes inline; voice blocks become child segments
+  segments.forEach((seg, i) => {
+    if (i === 0 && !seg.voice) {
+      const main = document.createElement('span');
+      main.textContent = seg.text;
+      el.appendChild(main);
+    } else if (seg.voice && seg.text) {
+      const segEl = document.createElement('div');
+      segEl.className = 'voice-segment';
+      const pill = document.createElement('span');
+      pill.className = 'voice-pill ' + seg.voice.toLowerCase();
+      pill.textContent = seg.voice;
+      segEl.appendChild(pill);
+      const t = document.createElement('span');
+      t.textContent = seg.text;
+      segEl.appendChild(t);
+      el.appendChild(segEl);
+    }
+  });
+
+  // Render chips
+  if (chips.length > 0) {
+    const row = document.createElement('div');
+    row.className = 'brain-chip-row';
+    chips.forEach(c => {
+      const chip = document.createElement('span');
+      const klass = c.type === 'sensitive' ? 'sensitive' : brainChipClass(c.body);
+      chip.className = 'brain-chip ' + klass;
+      chip.textContent = c.body;
+      row.appendChild(chip);
+    });
+    el.appendChild(row);
+  }
+}
+
+/** Render a collapsed message (single-line preview, click to expand). */
+function renderCollapsedMessage(el, agent, fullText) {
+  if (!el) return;
+  el.classList.add('collapsed');
+  while (el.children.length > 1) el.removeChild(el.lastChild);
+  el.querySelectorAll('.msg-live-text, .msg-cursor').forEach(n => n.remove());
+
+  const wrap = document.createElement('div');
+  wrap.className = 'collapsed-preview';
+  const preview = document.createElement('span');
+  const first = (fullText || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  preview.textContent = first + (fullText.length > 90 ? '…' : '');
+  const chev = document.createElement('span');
+  chev.className = 'collapsed-chevron';
+  chev.textContent = '▾';
+  wrap.appendChild(preview);
+  wrap.appendChild(chev);
+  el.appendChild(wrap);
+
+  el.addEventListener('click', function expandOnce() {
+    el.classList.remove('collapsed');
+    el.classList.add('collapsed-expanded');
+    el.removeEventListener('click', expandOnce);
+    renderRichMessage(el, agent, fullText, 'normal', []);
+  });
+}
+
 // Cross-tab sync
 window.addEventListener('storage', (e) => {
   if (e.key === BRAIN_BADGE_KEY) _loadBrainBadge();
@@ -1709,9 +1896,15 @@ async function doSend() {
       const full = evt.full || currentFull;
       const clean = stripShowTags(full);
       const _msgId = currentMsgEl ? currentMsgEl.id : null;
+      const _agentForRender = currentAgent;
       if (currentMsgEl) {
-        updateMsgLive(currentMsgEl, clean);
         finishMsgLive(currentMsgEl);
+        // B5: rich render — voice blocks, brain chips, or collapsed preview
+        if (evt.visibility === 'collapsed') {
+          renderCollapsedMessage(currentMsgEl, _agentForRender, clean);
+        } else {
+          renderRichMessage(currentMsgEl, _agentForRender, clean, evt.visibility, evt.tags);
+        }
         currentMsgEl = null;
       }
       parseAndShowImages(full);
