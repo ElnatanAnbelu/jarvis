@@ -35,17 +35,27 @@ def send_email(to: str, subject: str, body: str) -> str:
     except Exception as e:
         return f"Failed to send email: {e}"
 
-def read_emails(count: int = 5) -> str:
+def read_emails(count: int = 5, primary_only: bool = True,
+                gmail_user: str = None, gmail_pass: str = None) -> str:
     cfg = load_config()
-    gmail_user = cfg.get('GMAIL_USER')
-    gmail_pass = cfg.get('GMAIL_APP_PASSWORD')
+    gmail_user = gmail_user or cfg.get('GMAIL_USER')
+    gmail_pass = gmail_pass or cfg.get('GMAIL_APP_PASSWORD')
     if not gmail_user or not gmail_pass:
         return "Gmail not configured."
     try:
         mail = imaplib.IMAP4_SSL('imap.gmail.com')
         mail.login(gmail_user, gmail_pass)
         mail.select('inbox')
-        _, msgs = mail.search(None, 'UNSEEN')
+        # Gmail-specific extension: limit to the Primary tab when requested.
+        # X-GM-RAW takes Gmail search syntax — "category:primary" mirrors the
+        # Primary tab in the web UI. Falls back gracefully if unsupported.
+        if primary_only:
+            try:
+                _, msgs = mail.search(None, 'X-GM-RAW', '"category:primary is:unread"')
+            except Exception:
+                _, msgs = mail.search(None, 'UNSEEN')
+        else:
+            _, msgs = mail.search(None, 'UNSEEN')
         ids = msgs[0].split()[-count:]
         results = []
         for uid in reversed(ids):
