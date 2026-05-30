@@ -1,4 +1,4 @@
-lets """
+"""
 Computer use agent — screenshot → Claude vision → actions → loop.
 """
 import base64
