@@ -60,14 +60,18 @@ class WakeWordListener:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _init_oww(self):
-        try:
-            from openwakeword.model import Model
-            m = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-            print("[Wake] openwakeword loaded (offline mode)", flush=True)
-            return m
-        except Exception as e:
-            print(f"[Wake] openwakeword unavailable ({e}), using energy-gate fallback", flush=True)
-            return None
+        # Try tflite first (what openwakeword downloads by default), then onnx
+        for framework in ("tflite", "onnx"):
+            try:
+                from openwakeword.model import Model
+                m = Model(wakeword_models=["hey_jarvis"], inference_framework=framework)
+                print(f"[Wake] openwakeword loaded ({framework} mode)", flush=True)
+                return m
+            except Exception as e:
+                last_err = e
+                continue
+        print(f"[Wake] openwakeword unavailable ({last_err}), using energy-gate fallback", flush=True)
+        return None
 
     def _loop(self):
         if self._oww is not None:
