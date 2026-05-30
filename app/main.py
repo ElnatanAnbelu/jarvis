@@ -244,28 +244,112 @@ class JsApi:
     # ── MICROPHONE ──────────────────────────────────────────────────────────
 
     def start_recording(self):
-        """Start mic capture via sounddevice. Returns True or an error string."""
-        try:
+        """VAD-based recording. Opens mic, waits for speech, auto-stops on silence,
+        transcribes, then fires autoTranscript(text) or autoTranscriptEmpty() in JS.
+        Returns True immediately — result comes back asynchronously via evaluate_js."""
+        if self._recording:
+            return True  # already running
+
+        self._recording = True
+        self._chunks = []
+
+        def _vad_thread():
+            import queue as _q
+            import numpy as np
             import sounddevice as sd
-            self._chunks    = []
-            self._recording = True
+
+            SR          = 16000
+            CHUNK_SECS  = 0.4
+            CHUNK_SAMP  = int(SR * CHUNK_SECS)
+            ENERGY_ON   = 300    # int16 RMS — speech start
+            ENERGY_OFF  = 200    # int16 RMS — speech end
+            SILENCE_END = 6      # chunks of silence before auto-stop (~2.4 s)
+            MAX_CHUNKS  = 75     # hard cap ~30 s
+
+            q: _q.Queue = _q.Queue()
+            speech_started = False
+            silent_count   = 0
+            chunks_all     = []
 
             def _cb(indata, frames, t, status):
-                if self._recording:
-                    self._chunks.append(indata.copy())
+                q.put(indata.copy())
 
-            self._stream = sd.InputStream(
-                samplerate=16000, channels=1, dtype="int16",
-                blocksize=1024, callback=_cb,
-            )
-            self._stream.start()
-            return True
-        except Exception as e:
-            print(f"[JsApi.start_recording] {e}", flush=True)
-            return str(e)
+            try:
+                with sd.InputStream(samplerate=SR, channels=1, dtype="int16",
+                                    blocksize=CHUNK_SAMP, callback=_cb):
+                    while self._recording and len(chunks_all) < MAX_CHUNKS:
+                        try:
+                            chunk = q.get(timeout=1.5)
+                        except _q.Empty:
+                            break
+
+                        rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+
+                        if rms >= ENERGY_ON:
+                            speech_started = True
+                            silent_count   = 0
+                            chunks_all.append(chunk)
+                        elif speech_started:
+                            chunks_all.append(chunk)
+                            silent_count += 1
+                            if silent_count >= SILENCE_END:
+                                break   # natural end of utterance
+                        # else: pre-speech silence, discard
+            except Exception as e:
+                print(f"[VAD] {e}", flush=True)
+
+            self._recording = False
+            self._stream    = None
+
+            # Transcribe
+            text = ""
+            if chunks_all:
+                try:
+                    import numpy as np
+                    import scipy.io.wavfile as wavfile
+                    import tempfile as tf
+
+                    audio = np.concatenate(chunks_all, axis=0)
+                    with tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                        tmp = f.name
+                    wavfile.write(tmp, SR, audio)
+                    groq_key = _load_groq_key()
+                    if groq_key:
+                        from groq import Groq
+                        client = Groq(api_key=groq_key)
+                        with open(tmp, "rb") as fh:
+                            result = client.audio.transcriptions.create(
+                                model="whisper-large-v3-turbo",
+                                file=("audio.wav", fh, "audio/wav"),
+                                response_format="text",
+                            )
+                        text = (result or "").strip()
+                    try:
+                        os.unlink(tmp)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print(f"[VAD transcribe] {e}", flush=True)
+
+            # Fire callback into JS
+            try:
+                import json as _json
+                if self._bubble:
+                    if text:
+                        self._bubble.evaluate_js(
+                            f"autoTranscript({_json.dumps(text)})"
+                        )
+                    else:
+                        self._bubble.evaluate_js("autoTranscriptEmpty()")
+            except Exception as e:
+                print(f"[VAD callback] {e}", flush=True)
+
+        threading.Thread(target=_vad_thread, daemon=True).start()
+        return True
 
     def stop_recording(self):
-        """Stop mic, transcribe via Groq Whisper. Returns transcript string."""
+        """Force-stop VAD recording early (barge-in / cancel).
+        Returns empty string — result will still arrive via autoTranscript callback."""
         self._recording = False
         if self._stream:
             try:
@@ -274,45 +358,7 @@ class JsApi:
             except Exception:
                 pass
             self._stream = None
-
-        chunks = self._chunks[:]
-        self._chunks = []
-        if not chunks:
-            return ""
-
-        tmp_path = None
-        try:
-            import numpy as np
-            import scipy.io.wavfile as wavfile
-            import tempfile as tf
-
-            audio = np.concatenate(chunks, axis=0)
-            with tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                tmp_path = f.name
-            wavfile.write(tmp_path, 16000, audio)
-
-            groq_key = _load_groq_key()
-            if not groq_key:
-                return ""
-
-            from groq import Groq
-            client = Groq(api_key=groq_key)
-            with open(tmp_path, "rb") as f:
-                result = client.audio.transcriptions.create(
-                    model="whisper-large-v3-turbo",
-                    file=("audio.wav", f, "audio/wav"),
-                    response_format="text",
-                )
-            return (result or "").strip()
-        except Exception as e:
-            print(f"[JsApi.stop_recording] {e}", flush=True)
-            return ""
-        finally:
-            if tmp_path:
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+        return ""
 
     # ── CAMERA ──────────────────────────────────────────────────────────────
 
