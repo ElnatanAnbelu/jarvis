@@ -495,12 +495,25 @@ _PROJECT_SIGNALS = frozenset({
 
 
 def _should_query_personal(user_input: str) -> bool:
-    """Always query the personal vault — it's a fast local text search and
-    grounding every reply in real context is the whole point of the Second Brain.
-    Only skip for purely empty/system turns."""
-    if not user_input or len(user_input.strip()) < 4:
+    """Query vault for personal questions and open-ended conversation.
+    Skip for pure status checks and short command queries."""
+    if not user_input or len(user_input.strip()) < 6:
         return False
-    return True
+    lower = user_input.lower().strip().rstrip("?!. ")
+    # Pure status / capability checks — no vault needed
+    _STATUS_SKIP = frozenset({
+        "are you there", "are you online", "are you awake", "are you up",
+        "hello", "hey", "hi", "ping", "test", "you there", "you up",
+        "you awake", "you online", "hey are you there",
+    })
+    if lower in _STATUS_SKIP:
+        return False
+    lower_full = user_input.lower()
+    p_score = sum(1 for s in _PERSONAL_SIGNALS if s in lower_full)
+    j_score = sum(1 for s in _PROJECT_SIGNALS if s in lower_full)
+    # Fire on: personal signals, OR open-ended conversation (no project signal, 4+ words)
+    is_conversational = j_score == 0 and len(lower_full.split()) >= 4
+    return p_score >= j_score or is_conversational
 
 
 def _should_query_project(user_input: str) -> bool:
