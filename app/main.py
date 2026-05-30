@@ -695,6 +695,31 @@ def main():
     _js_api._hud    = _window
     _js_api._bubble = _bubble
 
+    # ── Start wake-word listener immediately — no JS bridge needed ────────────
+    # Runs in its own thread; fires wakeWordFired() in bubble via evaluate_js.
+    # Add the venv site-packages to sys.path first so voice.wake can import
+    # openwakeword/sounddevice even when running inside the frozen bundle.
+    def _start_wake_early():
+        try:
+            if VENV_SITE not in sys.path:
+                sys.path.insert(0, VENV_SITE)
+            from voice.wake import WakeWordListener
+
+            def _on_wake():
+                try:
+                    if _js_api._bubble:
+                        _js_api._bubble.evaluate_js("wakeWordFired()")
+                except Exception as e:
+                    print(f"[Wake] evaluate_js: {e}", flush=True)
+
+            _js_api._wake_listener = WakeWordListener(on_wake=_on_wake)
+            _js_api._wake_listener.start()
+            print("[Wake] listener started (system-wide, always-on)", flush=True)
+        except Exception as e:
+            print(f"[Wake] failed to start: {e}", flush=True)
+
+    threading.Thread(target=_start_wake_early, daemon=True).start()
+
     if os.path.exists(ICON_PATH):
         try:
             from AppKit import NSApplication, NSImage
