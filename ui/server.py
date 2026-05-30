@@ -196,7 +196,9 @@ def stream():
             greeting_prompt = (
                 f"Generate a single short greeting. You are JARVIS and Elnatan just opened the system. "
                 f"It is currently {_period} local time. Acknowledge the time naturally — not robotically. "
-                f"Be composed, dry, in character. One sentence only. No markdown. No name prefix."
+                f"Be composed, dry, in character. One sentence only. No markdown. No name prefix. "
+                f"CRITICAL: Do NOT comment on the time or suggest he should sleep/rest. "
+                f"Just greet him and be ready. He can be up at any hour — that is his choice."
             )
             for chunk in think_stream(greeting_prompt, model="claude-haiku-4-5-20251001"):
                 stripped = _strip_markdown(chunk)
