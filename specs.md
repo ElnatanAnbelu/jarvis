@@ -71,6 +71,50 @@ The system is complete when, with Elnatan away:
 
 ---
 
+## 🏆 2.5 THE PREMIUM BAR (non-negotiable quality standard)
+
+JARVIS is on Elnatan's screen all day and runs his life — it must feel like a **flagship, bespoke, $50k product**, not an app. This bar governs **every surface** (orb, HUD, voice, Second Brain, away-reports). *Scope decided by owner: full send, all surfaces, all dimensions.*
+
+**The eight principles:**
+1. **Restraint is the luxury.** True-black (OLED) canvas, ONE signature blue accent, generous negative space. Nothing decorative that isn't functional. Premium is what you remove.
+2. **Materials, not flat color.** Depth through layered glass, subtle grain, volumetric glow, real shadow. The orb is a **living shader** — fresnel rim-light, internal caustics, **audio-reactive to voice amplitude in real time** — never a CSS circle.
+3. **Motion is physics.** Spring-based, locked **60fps**, nothing linear or instant. Every state transition choreographed; the orb breathes and reacts.
+4. **Typography is the brand.** One premium **variable** typeface, true optical hierarchy, tight tracking. No system/Inter default as the brand face.
+5. **Sound is half the experience.** A signature sound set (wake · listening · done · alert) that sounds *expensive* and restrained; TTS paced like a human, not a robot.
+6. **Concierge intelligence is the real premium.** Never repeats itself, never asks twice, always perfectly briefed, anticipates needs, masks latency. Feels like a $10k/mo chief of staff — the Second Brain is what makes this possible.
+7. **Bespoke to Elnatan.** His aesthetic, his language, his life. One-of-one — addresses and refers to him personally, not generically.
+8. **Zero jank, ever.** No layout shift, no flash of unstyled content, sub-100ms perceived response, spinners are a last resort, graceful degradation everywhere.
+
+**Hard bans (anti-slop):** generic purple→blue gradients · emoji as UI chrome · default system/Inter face as the brand · instant/linear transitions · spinner-as-default-state · stock "AI assistant" tropes · any visible jank.
+
+**Premium acceptance test:** *Would this look at home in an Apple keynote? Would a stranger glancing over Elnatan's shoulder ask "what IS that?"* If not, it isn't done. This bar is applied during Phase 4 and is a gate on every UI/voice surface in the Testing Plan (§6.5).
+
+> **Note on tonight:** the midnight push (§5) ships the premium *foundation* — the always-on orb, voice flow, and core feel held to this bar — but the full cinematic shader/sound/material pass is **Phase 4 polish** and continues after tonight. "Usable & premium-feeling tonight" ≠ "every shader finished tonight."
+
+---
+
+## 🧠 2.6 THE PREMIUM SECOND BRAIN VAULT (the memory palace)
+
+The Obsidian vault at `~/Documents/SecondBrain/` is JARVIS's long-term memory of Elnatan. It must feel like a **bespoke memory palace**, not a folder of markdown — beautiful to open, instantly legible, self-organizing.
+
+**Current state (verified):** strong bones already — a full life taxonomy (`Business/{Addis Market, Nexel}`, `Career`, `Decisions`, `Finances`, `Goals`, `Health`, `Relationships`, `Network`, `Patterns`, `Routines`, `Skills`, `Ideas`, `Personal`, `Places`, `Memories`, `Beliefs`, `Books`), plus `_Templates` (7), `_Indexes` (6), `_Inbox`, `_JARVIS/Proposals`, and `BRAIN_OVERVIEW.md`. **But not premium:** ~120 raw chat-dump notes (`Claude Chats` 83 + `Grok Chats` 37) clutter it; `.obsidian` has **no community plugins, no theme, no CSS** (core only); `_PersonalModel.md` is a stub; canvases are "Untitled"; dashboards are minimal.
+
+**The premium bar for the vault:**
+1. **Designed look.** Premium theme (AnuPpuccin / Minimal) + custom CSS snippets: area color-coding, note banners, icons (Iconize), styled callouts, and a **color-grouped, legible graph view** (not a hairball).
+2. **Living dashboards (Dataview/Datacore).** A flagship **Home** (`BRAIN_OVERVIEW.md` v2) that shows Elnatan's whole life at a glance — active goals, **pending JARVIS proposals (approve/reject inline)**, recent decisions, follow-ups due, finances snapshot, today's daily note. One **area-MOC dashboard per area**.
+3. **Templates + metadata schema.** Templater templates per note type (Person, Decision, Goal, Business entity, Meeting, Daily, Idea) enforcing a consistent YAML frontmatter schema (`type, area, status, created, updated, tags, links, sensitivity`) — so everything is queryable.
+4. **Periodic notes.** Daily / weekly / monthly notes with auto-rollups and review prompts.
+5. **Distill, don't dump.** The ~120 raw transcripts are distilled into structured knowledge and the raws archived out of sight (`Archive/` / `_Inbox`). Going forward JARVIS **never dumps raw** — it writes templated, linked, tagged notes.
+6. **Canvas life-map.** A designed visual overview of Elnatan's world (replacing the "Untitled" canvases).
+7. **JARVIS write-quality standard (self-sustaining).** `VaultManager` (`memory/vault.py`) enforces template + schema + backlinks on every note it writes or proposes — no raw text, no orphan notes. This is what keeps the vault premium *forever*, not just once.
+8. **Navigation.** `_Indexes` becomes the MOC hub; every note reachable in ≤2 hops.
+
+**Acceptance test:** open the vault and the **Home dashboard alone tells you the state of Elnatan's life**; every area has a dashboard; every note follows a template; there are no orphan or raw-dump notes; the graph is color-coded and legible. It looks like a *designed product*, not a pile of files.
+
+> **Mechanism note:** premium dashboards/templates require Obsidian **community plugins** (Dataview/Datacore, Templater, Periodic Notes, optionally Banners/Iconize) enabled in `.obsidian/community-plugins.json` + a theme. **Tonight** can stand up the *foundation* — plugins + theme, the Home dashboard, core templates + schema, and archiving the raw dumps. Distilling all 120 transcripts and per-area dashboards continue after. This workstream is the visible payoff of **Phase 5** (the synthesis worker writes premium notes into this structure).
+
+---
+
 ## 3. System Architecture
 
 ### 3.1 Subsystems (existing, mapped)
@@ -149,6 +193,16 @@ Tools largely exist; work = orchestration + per-domain red-list rules.
 - **Seed `_PersonalModel.md`** (currently a 2.2KB stub) from the synthesis worker.
 
 **Acceptance:** a multi-day signal (e.g. repeated mentions of an exam) produces a vault proposal; in a cold conversation JARVIS recalls a true, relevant fact unprompted and writes a new retrievable one.
+
+### 5b — The Knowledge Pipeline (the engine behind the vault)
+The vault now has a **visual pipeline dashboard** (`_Indexes/⚡ Pipeline.md`): `📥 Capture → ⚗️ Distill → 📝 Propose → ✅ Approve → 🗂 Filed`, with a live stage board. The **automated engine** that drives it:
+- **Capture:** anything dropped in `_Inbox/` (a thought, link, voice note via the Capture template, `status: inbox`) + observations staged by `memory/observations.py`.
+- **Distill:** a scheduled worker (extends `brain/proactive.py`) picks up `status: inbox` items + pending observations, distills them with Claude into structured, templated notes (`status: processing`).
+- **Propose:** writes them as proposals via `VaultManager.propose_change` (`memory/vault.py:335-469`) — HIGH-risk areas (Business/Decisions/Relationships) always land in review; LOW-risk auto-file.
+- **Approve:** surfaced in the Pipeline dashboard **and** pushed to Telegram (Block B `approve/reject`); on approve → note goes live (`status: filed`), logged to `_JARVIS/_Activity`.
+- **Premium guarantee:** every note the engine writes uses a template + the metadata schema + backlinks — so the vault grows *premium*, never as raw dumps.
+
+**Acceptance:** drop a raw note in `_Inbox`; within a scheduled cycle JARVIS distills it into a templated, linked note proposal; approving from Telegram or the dashboard files it into the right area with correct frontmatter; the Pipeline dashboard reflects each stage live.
 
 ---
 

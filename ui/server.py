@@ -15,7 +15,6 @@ def _run_async(coro):
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from flask import Flask, request, jsonify, Response, send_file
-from flask_cors import CORS
 import threading
 import json
 import time
@@ -23,17 +22,99 @@ import tempfile
 import subprocess
 import re
 import base64
+import hmac
+import secrets
+from urllib.parse import urlsplit
 
 app = Flask(__name__)
-CORS(app)
+
+# Per-process session token. Regenerated every time the server starts, so a
+# token captured from one run is useless against the next. Injected into the
+# served HTML and required on every non-exempt API call.
+SESSION_TOKEN = secrets.token_urlsafe(32)
+
+# Routes that are reachable WITHOUT the session token. Page routes need to be
+# loadable so they can receive the token; /api/status is an unauthenticated
+# health check. Everything else requires auth.
+_EXEMPT_PATHS = frozenset({"/", "/bubble", "/favicon.ico", "/api/status"})
+
+
+def _token_ok():
+    """True if the request carries the valid session token via header or query."""
+    supplied = request.headers.get("X-JARVIS-Token") or request.args.get("token") or ""
+    return hmac.compare_digest(str(supplied), SESSION_TOKEN)
+
+
+def _whatsapp_secret():
+    """Shared secret for the local WhatsApp Node bridge webhook (server-to-server).
+    Read from the environment, falling back to the repo .env file."""
+    tok = os.environ.get("WHATSAPP_TOKEN", "")
+    if tok:
+        return tok
+    try:
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("WHATSAPP_TOKEN="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        return ""
+    return ""
+
+
+def _same_origin():
+    """For Origin/Referer (if present), require the host to match this request's
+    host. Returns False only when a present header points at a different host."""
+    host = request.host  # e.g. "127.0.0.1:8080"
+    for header in ("Origin", "Referer"):
+        val = request.headers.get(header)
+        if not val:
+            continue
+        try:
+            netloc = urlsplit(val).netloc
+        except Exception:
+            return False
+        if netloc and netloc != host:
+            return False
+    return True
 
 
 @app.before_request
-def _localhost_only():
-    """Reject any request that didn't originate from localhost."""
-    from flask import request, abort
-    remote = request.remote_addr
-    if remote not in ("127.0.0.1", "::1"):
+def _auth_gate():
+    """Defense in depth against cross-origin / drive-by RCE.
+
+      1. Loopback-only (kept from before): non-local source addr is rejected.
+      2. Token: non-exempt routes require X-JARVIS-Token header or ?token=
+         query param matching the per-process SESSION_TOKEN.
+      3. Cross-origin POST guard: state-changing methods with a foreign
+         Origin/Referer are rejected even if they originate from loopback,
+         which blocks a malicious website's fetch() to our localhost server.
+    """
+    from flask import abort
+
+    # 1. Loopback only.
+    if request.remote_addr not in ("127.0.0.1", "::1"):
+        abort(403)
+
+    # 2 & 3 do not apply to exempt page/health routes.
+    if request.path in _EXEMPT_PATHS:
+        return
+
+    # Local server-to-server webhook (WhatsApp Node bridge) authenticates with
+    # the WhatsApp shared secret, not the browser session token.
+    if request.path == "/api/whatsapp":
+        want = _whatsapp_secret()
+        got = request.headers.get("x-whatsapp-token", "")
+        if not want or not hmac.compare_digest(str(got), str(want)):
+            abort(403)
+        return
+
+    # 3. Block cross-origin state-changing requests outright.
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not _same_origin():
+        abort(403)
+
+    # 2. Require a valid token for everything non-exempt.
+    if not _token_ok():
         abort(403)
 
 
@@ -894,22 +975,41 @@ def favicon():
     return Response(status=204)
 
 
-@app.route("/")
-def jarvis_ui():
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "jarvis.html")
-    resp = send_file(path, mimetype='text/html')
+def _serve_html_with_token(filename):
+    """Read an HTML page, inject the per-process session token as a global, and
+    serve it. The token lets same-origin page scripts authenticate their API
+    calls without exposing it to any other origin."""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", filename)
+    with open(path, "r", encoding="utf-8") as f:
+        html = f.read()
+    token_script = (
+        '<script>window.__JARVIS_TOKEN__='
+        + json.dumps(SESSION_TOKEN)
+        + ';</script>'
+    )
+    # Inject right after the opening <head> so it runs before any page script.
+    lower = html.lower()
+    idx = lower.find("<head>")
+    if idx != -1:
+        insert_at = idx + len("<head>")
+        html = html[:insert_at] + token_script + html[insert_at:]
+    else:
+        # No <head> — prepend so the global still exists before scripts run.
+        html = token_script + html
+    resp = Response(html, mimetype="text/html")
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
     resp.headers['Pragma'] = 'no-cache'
     return resp
+
+
+@app.route("/")
+def jarvis_ui():
+    return _serve_html_with_token("jarvis.html")
 
 
 @app.route("/bubble")
 def jarvis_bubble():
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "bubble.html")
-    resp = send_file(path, mimetype='text/html')
-    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
-    resp.headers['Pragma'] = 'no-cache'
-    return resp
+    return _serve_html_with_token("bubble.html")
 
 
 @app.route("/api/end_session", methods=["POST"])

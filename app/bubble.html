@@ -148,6 +148,11 @@ body.active #orb{--c:var(--orange);--c-rgb:var(--orange-rgb);animation:attn .8s 
    ──────────────────────────────────────────────────────────────────────── */
 const API_BASE = 'http://127.0.0.1:8080';
 
+/* ── AUTH (per-process session token injected by the server) ───────────── */
+const JT = window.__JARVIS_TOKEN__ || '';
+function authedUrl(u){ return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(JT); }
+function jfetch(u, opts){ opts = opts || {}; opts.headers = Object.assign({}, opts.headers, {'X-JARVIS-Token': JT}); return fetch(u, opts); }
+
 let _state          = 'calm';
 let _tts            = null;
 let _capTimer       = null;
@@ -233,7 +238,7 @@ async function streamReply(text, imageB64) {
   try {
     let url = API_BASE+'/api/stream?message='+encodeURIComponent(text);
     if (imageB64) url += '&image_b64='+encodeURIComponent(imageB64);
-    const res = await fetch(url);
+    const res = await jfetch(url);
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf='';
     while (true) {
       const {done,value} = await reader.read(); if (done) break;
@@ -267,10 +272,10 @@ function stopTTS() { if(_tts){_tts.pause();_tts.src='';_tts=null;} }
 function speak(text, agent) {
   stopTTS(); setState('speaking'); showCap(text); muteWake();
   try {
-    _tts = new Audio(
+    _tts = new Audio(authedUrl(
       API_BASE+'/api/tts?text='+encodeURIComponent(text.slice(0,800))+
       '&agent='+encodeURIComponent(agent||'JARVIS')
-    );
+    ));
     const _onEnd = () => {
       _tts=null; if(_state==='speaking') setState('calm');
       setTimeout(()=>{ unmuteWake(); if(_inConversation){resetConvTimer();startListening();} }, 400);
@@ -285,7 +290,7 @@ function speak(text, agent) {
 (function poll(){
   async function tick(){
     try{
-      const res=await fetch(API_BASE+'/api/proactive');
+      const res=await jfetch(API_BASE+'/api/proactive');
       if(res.ok){const{messages=[]}=await res.json();for(const m of messages){
         if(m.visibility==='surface'){if(_state==='calm')setState('has');
           const txt=(m.text||'').trim();if(txt){showCap(txt);speak(txt,m.agent||'JARVIS');}}}}

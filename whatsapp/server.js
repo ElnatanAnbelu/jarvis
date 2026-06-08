@@ -1,15 +1,50 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const path = require('path');
+
+// --- Shared-secret auth (SECURITY: fix for finding H7) ---
+// Refuse to start without a token rather than auto-generating a weak one.
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+if (!WHATSAPP_TOKEN) {
+    console.error(
+        'FATAL: WHATSAPP_TOKEN is not set. Refusing to start the WhatsApp HTTP API ' +
+        'because its routes can send messages and read contacts as you. ' +
+        'Set WHATSAPP_TOKEN in the environment (e.g. in .env) and restart.'
+    );
+    process.exit(1);
+}
+const TOKEN_BUF = Buffer.from(WHATSAPP_TOKEN);
+
+// Constant-time comparison of the provided header against the secret.
+function tokenMatches(provided) {
+    if (typeof provided !== 'string' || provided.length === 0) return false;
+    const providedBuf = Buffer.from(provided);
+    if (providedBuf.length !== TOKEN_BUF.length) return false;
+    return crypto.timingSafeEqual(providedBuf, TOKEN_BUF);
+}
 
 const app = express();
 app.use(express.json());
 
+// Reject any request without a valid x-whatsapp-token header.
+app.use((req, res, next) => {
+    if (!tokenMatches(req.get('x-whatsapp-token'))) {
+        return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    next();
+});
+
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: path.join(__dirname, '.wwebjs_auth') }),
-    puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    // SECURITY: --no-sandbox / --disable-setuid-sandbox were removed. They disable the
+    // Chromium renderer sandbox, so a compromised page rendered by Puppeteer (e.g. a
+    // malicious link/preview in a WhatsApp message) could escape into the host process.
+    // If WhatsApp Web fails to launch on a hardened/rootless environment that genuinely
+    // requires these flags, re-add them ONLY as a last resort and document why here.
+    puppeteer: {}
 });
 
 let isReady = false;
@@ -40,9 +75,9 @@ client.on('message', async (msg) => {
 
     // Route through JARVIS brain
     try {
-        const response = await fetch('http://localhost:8080/api/whatsapp', {
+        const response = await fetch('http://127.0.0.1:8080/api/whatsapp', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-whatsapp-token': process.env.WHATSAPP_TOKEN || '' },
             body: JSON.stringify({ message: text, sender: sender, from: msg.from })
         });
         const data = await response.json();
@@ -119,8 +154,9 @@ app.get('/status', (req, res) => {
     res.json({ ready: isReady });
 });
 
-app.listen(3001, () => {
-    console.log('WhatsApp service running on port 3001');
+// SECURITY: bind to loopback only so the API is not reachable from the LAN.
+app.listen(3001, '127.0.0.1', () => {
+    console.log('WhatsApp service running on 127.0.0.1:3001 (token-protected)');
 });
 
 client.initialize();

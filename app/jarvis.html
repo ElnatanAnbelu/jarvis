@@ -1171,6 +1171,11 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 </div>
 
 <script>
+/* ── AUTH (per-process session token injected by the server) ───────────── */
+const JT = window.__JARVIS_TOKEN__ || '';
+function authedUrl(u){ return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(JT); }
+function jfetch(u, opts){ opts = opts || {}; opts.headers = Object.assign({}, opts.headers, {'X-JARVIS-Token': JT}); return fetch(u, opts); }
+
 /* ── DISPLAY SURFACE ──────────────────────────────────────────────────── */
 let _lastShowPayload = null;
 
@@ -1209,7 +1214,7 @@ function showSurface(payload) {
     div.className = 'show-text';
     div.textContent = 'Loading…';
     body.appendChild(div);
-    fetch('/api/read_file?path=' + encodeURIComponent(kv.file))
+    jfetch('/api/read_file?path=' + encodeURIComponent(kv.file))
       .then(r => r.text()).then(t => { div.textContent = t; })
       .catch(() => { div.textContent = 'Cannot read: ' + kv.file; });
   } else if (kv.html) {
@@ -1223,7 +1228,7 @@ function showSurface(payload) {
     div.className = 'show-text';
     div.textContent = 'Opening ' + kv.app + '…';
     body.appendChild(div);
-    fetch('/api/open_app?name=' + encodeURIComponent(kv.app)).catch(() => {});
+    jfetch('/api/open_app?name=' + encodeURIComponent(kv.app)).catch(() => {});
     setTimeout(() => dismissSurface(), 1500);
   } else {
     // Bare query → image search
@@ -1231,7 +1236,7 @@ function showSurface(payload) {
     const img = document.createElement('img');
     img.alt = payload;
     img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
-    fetch('/api/image_search?q=' + encodeURIComponent(kv.query || payload))
+    jfetch('/api/image_search?q=' + encodeURIComponent(kv.query || payload))
       .then(r => r.json())
       .then(d => {
         if (d.url) { img.src = d.url; }
@@ -1765,7 +1770,7 @@ async function runCode(code, lang, btn, resultEl) {
   try {
     const normLang=(lang||'').toLowerCase();
     const language=normLang==='py'?'python':normLang==='js'?'javascript':normLang==='sh'||normLang==='shell'?'bash':normLang;
-    const r=await fetch('http://127.0.0.1:8080/api/execute',{
+    const r=await jfetch('http://127.0.0.1:8080/api/execute',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({language,code}),
     });
@@ -1930,7 +1935,7 @@ async function doSend() {
   };
 
   try {
-    const res=await fetch(`http://127.0.0.1:8080/api/stream?message=${encodeURIComponent(text)}`,{signal:ctrl.signal});
+    const res=await jfetch(`http://127.0.0.1:8080/api/stream?message=${encodeURIComponent(text)}`,{signal:ctrl.signal});
     if (!res.ok) throw new Error('HTTP '+res.status);
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
     while (true) {
@@ -1958,7 +1963,7 @@ function stopTTS() { if (_ttsAudio) { _ttsAudio.pause(); _ttsAudio.src=''; _ttsA
 
 function playTTS(text, agent) {
   stopTTS(); if(!text?.trim()) return;
-  const url=`http://127.0.0.1:8080/api/tts?text=${encodeURIComponent(text.slice(0,800))}&agent=${encodeURIComponent(agent||'JARVIS')}`;
+  const url=authedUrl(`http://127.0.0.1:8080/api/tts?text=${encodeURIComponent(text.slice(0,800))}&agent=${encodeURIComponent(agent||'JARVIS')}`);
   _ttsAudio=new Audio(url);
   _ttsAudio.onended=()=>{ _ttsAudio=null; };
   _ttsAudio.onerror=()=>{ _ttsAudio=null; };
@@ -2082,7 +2087,7 @@ async function startMediaRec() {
       const blob=new Blob(_aChunks,{type:'audio/webm'});
       const form=new FormData(); form.append('audio',blob,'voice.webm');
       try {
-        const r=await fetch('http://127.0.0.1:8080/api/voice',{method:'POST',body:form});
+        const r=await jfetch('http://127.0.0.1:8080/api/voice',{method:'POST',body:form});
         const d=await r.json();
         if (d.text?.trim()) { document.getElementById('inp').value=d.text.trim(); _voiceOverlay('off'); doSend(); }
         else _voiceOverlay('off');
@@ -2113,7 +2118,7 @@ async function handleUpload(input) {
   const form=new FormData(); form.append('file',file); form.append('question','Analyze this for me.');
   let msgEl=null, full='';
   try {
-    const res=await fetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
+    const res=await jfetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
     while(true) {
       const {done,value}=await reader.read(); if(done) break;
@@ -2148,7 +2153,7 @@ function showImgPopup(query) {
   const el=document.getElementById('img-popup-'+side); if(!el) return;
   el.style.display='block';
   el.innerHTML=`<span class="img-x" onclick="closeImgPopup('${side}')">×</span><div style="padding:20px;text-align:center;font-size:10px;color:rgba(255,255,255,0.25)">Loading…</div>`;
-  fetch(`http://127.0.0.1:8080/api/image_search?query=${encodeURIComponent(query)}`)
+  jfetch(`http://127.0.0.1:8080/api/image_search?query=${encodeURIComponent(query)}`)
     .then(r=>r.json())
     .then(d=>{ if(!d.url){el.style.display='none';return;} el.innerHTML=`<span class="img-x" onclick="closeImgPopup('${side}')">×</span><img src="${d.url}" alt="" onerror="closeImgPopup('${side}')"><div class="img-cap">${query.slice(0,44)}</div>`; })
     .catch(()=>{ el.style.display='none'; });
@@ -2271,7 +2276,7 @@ async function analyzeRoom() {
   form.append('question','You are doing a room scan. Describe the physical environment in detail: objects present, spatial layout, lighting, notable features, and overall atmosphere. Be observant and specific.');
   let msgEl=null, full='';
   try {
-    const res=await fetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
+    const res=await jfetch('http://127.0.0.1:8080/api/upload',{method:'POST',body:form});
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
     while(true) {
       const {done,value}=await reader.read(); if(done) break;
@@ -2328,7 +2333,7 @@ function closeScan() {
 (function startPoll(){
   async function poll(){
     try {
-      const res=await fetch('http://127.0.0.1:8080/api/proactive');
+      const res=await jfetch('http://127.0.0.1:8080/api/proactive');
       if(!res.ok) return;
       const {messages=[]}=await res.json();
       for (const msg of messages) {
@@ -2422,7 +2427,7 @@ function _ackProactive(el, agent) {
 async function runGreeting() {
   let msgEl=null, full='';
   try {
-    const res=await fetch('http://127.0.0.1:8080/api/stream?message=__init__');
+    const res=await jfetch('http://127.0.0.1:8080/api/stream?message=__init__');
     if(!res.ok) return;
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
     setThinking(true,'JARVIS');

@@ -1,6 +1,9 @@
 # ─── Secrets — never commit these ───────────────────────────────────────────
 .env
 google_credentials.json
+google_token.json
+*token*.json
+*_token.json
 contacts.json
 *.pem
 *.key
