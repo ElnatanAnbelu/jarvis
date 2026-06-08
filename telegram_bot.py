@@ -53,6 +53,128 @@ def _get_chat_id() -> str:
     return ""
 
 
+# ── owner command parsing ─────────────────────────────────────────────────────
+# Single-word owner commands (no argument).
+_OWNER_COMMANDS_NOARG = {
+    "pause", "resume", "away", "home", "back", "status", "pending",
+}
+# Owner commands that take a single integer id.
+_OWNER_COMMANDS_ARG = {"approve", "reject", "undo"}
+
+
+def parse_owner_command(text: str):
+    """Parse an owner control message into ``(cmd, arg)`` or ``None``.
+
+    Pure function — no I/O — so it is trivially unit-testable.
+
+    Returns:
+      * ``(cmd, None)`` for no-arg commands (pause/resume/away/home/back/
+        status/pending). ``home`` and ``back`` are normalized to ``"home"``.
+      * ``(cmd, arg_str)`` for id commands (approve/reject/undo); ``arg_str`` is
+        the raw remainder (may be empty/invalid — the handler validates it).
+      * ``None`` if the message is not an owner command (falls through to the
+        normal brain router).
+
+    Matching is case-insensitive and tolerates a single leading slash.
+    """
+    if not text:
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("/"):
+        stripped = stripped[1:].strip()
+        if not stripped:
+            return None
+
+    parts = stripped.split(None, 1)
+    cmd = parts[0].lower()
+    rest = parts[1].strip() if len(parts) > 1 else ""
+
+    if cmd in _OWNER_COMMANDS_NOARG:
+        # No-arg commands must not carry trailing text (avoid eating real chat
+        # like "status of the project ...").
+        if rest:
+            return None
+        if cmd == "back":
+            cmd = "home"
+        return (cmd, None)
+
+    if cmd in _OWNER_COMMANDS_ARG:
+        return (cmd, rest)
+
+    return None
+
+
+def _is_owner(chat_id) -> bool:
+    """True if ``chat_id`` is the configured owner (or no owner is set yet).
+
+    Owner is the explicit ``OWNER_CHAT_ID`` env var if present, otherwise the
+    persisted ``TELEGRAM_CHAT_ID`` the bot already captures on first contact.
+    If neither is known we have not yet locked to an owner, so allow (first-run
+    capture path) — once a chat id is known it is treated as the owner.
+    """
+    owner = os.environ.get("OWNER_CHAT_ID", "").strip()
+    if not owner:
+        # Fall back to the persisted chat id in .env (stable — not the mutable
+        # in-memory global, which a non-owner's normal message could overwrite).
+        env_path = Path(__file__).parent / ".env"
+        try:
+            for line in env_path.read_text().splitlines():
+                if line.startswith("TELEGRAM_CHAT_ID="):
+                    owner = line.split("=", 1)[1].strip()
+                    break
+        except OSError:
+            owner = ""
+        # Last resort: the in-memory global (first run before .env persists).
+        if not owner and _chat_id:
+            owner = str(_chat_id)
+    if not owner:
+        return True
+    return str(chat_id) == str(owner)
+
+
+def _handle_owner_command(cmd: str, arg):
+    """Execute a parsed owner command and return the reply text.
+
+    Imports autonomy/memory at the call site to avoid circular imports.
+    """
+    from brain import autonomy
+    from memory import memory
+
+    if cmd in ("approve", "reject", "undo"):
+        try:
+            cid = int(str(arg).strip())
+        except (TypeError, ValueError):
+            return f"Usage: {cmd} <id>  (id must be a number)"
+        if cmd == "approve":
+            return autonomy.approve(cid)
+        if cmd == "reject":
+            return autonomy.reject(cid)
+        return memory.revert_action(cid)
+
+    if cmd == "pause":
+        autonomy.set_paused(True)
+        return "⏸ Paused — all autonomous actions halted."
+    if cmd == "resume":
+        autonomy.set_paused(False)
+        return "▶️ Resumed."
+    if cmd == "away":
+        autonomy.set_away(True)
+        return "🌙 Away-mode ON — red-list actions will need your approval."
+    if cmd == "home":
+        autonomy.set_away(False)
+        return "🏠 Away-mode OFF."
+    if cmd == "status":
+        paused = "yes" if autonomy.is_paused() else "no"
+        away = "yes" if autonomy.is_away() else "no"
+        return f"Paused: {paused} · Away: {away}\n{autonomy.pending_summary()}"
+    if cmd == "pending":
+        return autonomy.pending_summary()
+
+    return None
+
+
 def _tts_to_file(text: str, speaker: str):
     api_key = load_key()
     if not api_key:
@@ -121,10 +243,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
-    # Save chat ID on first message
-    _save_chat_id(update.effective_chat.id)
+    chat_id = update.effective_chat.id
 
-    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    # Owner control commands (approve/reject/pause/resume/away/home/status/
+    # pending/undo) are handled BEFORE the brain router and short-circuit it.
+    parsed = parse_owner_command(text)
+    if parsed is not None:
+        if not _is_owner(chat_id):
+            # Security (C4): once an owner is known, ignore control commands
+            # from any other sender.
+            await update.message.reply_text("Not authorized.")
+            return
+        cmd, arg = parsed
+        reply = await asyncio.get_event_loop().run_in_executor(
+            None, _handle_owner_command, cmd, arg
+        )
+        if reply is not None:
+            await update.message.reply_text(reply)
+            return
+
+    # Save chat ID on first message
+    _save_chat_id(chat_id)
+
+    await context.bot.send_chat_action(chat_id, "typing")
 
     loop = asyncio.get_event_loop()
     response, model = await loop.run_in_executor(None, route, text)

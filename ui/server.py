@@ -965,6 +965,100 @@ def observer_quiet():
     return jsonify({"quiet": is_quiet()})
 
 
+# ── SAFETY CONTROLS (autonomy + action ledger) ───────────────────────────────
+# Local API surface for the HUD/orb UI to drive the autonomy safety substrate:
+# pause/resume, away mode, pending-confirmation approval, and the action ledger
+# (undo + "while you were away" activity feed). All routes are non-exempt, so the
+# before_request auth gate already enforces the session token on them.
+
+def _require_int_id():
+    """Pull an integer 'id' from the JSON body. Returns (id, None) on success or
+    (None, error_response) when the body is missing or 'id' isn't a valid int."""
+    data = request.json if request.is_json else None
+    if not isinstance(data, dict) or "id" not in data:
+        return None, (jsonify({"error": "Missing 'id' in JSON body"}), 400)
+    try:
+        return int(data["id"]), None
+    except (TypeError, ValueError):
+        return None, (jsonify({"error": "'id' must be an integer"}), 400)
+
+
+@app.route("/api/pause", methods=["POST"])
+def autonomy_pause():
+    from brain import autonomy
+    autonomy.set_paused(True)
+    return jsonify({"paused": True})
+
+
+@app.route("/api/resume", methods=["POST"])
+def autonomy_resume():
+    from brain import autonomy
+    autonomy.set_paused(False)
+    return jsonify({"paused": False})
+
+
+@app.route("/api/away", methods=["POST"])
+def autonomy_away():
+    """Set away mode. Body/query {"on": bool}; default toggles current state."""
+    from brain import autonomy
+    on = None
+    data = request.json if request.is_json else None
+    if isinstance(data, dict) and "on" in data:
+        on = data["on"]
+    elif "on" in request.args:
+        on = request.args.get("on", "").strip().lower() in ("1", "true", "yes", "on")
+    if on is None:
+        on = not autonomy.is_away()
+    on = bool(on)
+    autonomy.set_away(on)
+    return jsonify({"away": autonomy.is_away()})
+
+
+@app.route("/api/pending", methods=["GET"])
+def autonomy_pending():
+    from brain import autonomy
+    from memory.memory import get_pending_confirmations
+    return jsonify({
+        "pending": get_pending_confirmations(),
+        "paused": autonomy.is_paused(),
+        "away": autonomy.is_away(),
+    })
+
+
+@app.route("/api/approve", methods=["POST"])
+def autonomy_approve():
+    from brain import autonomy
+    confirm_id, err = _require_int_id()
+    if err is not None:
+        return err
+    return jsonify({"result": autonomy.approve(confirm_id)})
+
+
+@app.route("/api/reject", methods=["POST"])
+def autonomy_reject():
+    from brain import autonomy
+    confirm_id, err = _require_int_id()
+    if err is not None:
+        return err
+    return jsonify({"result": autonomy.reject(confirm_id)})
+
+
+@app.route("/api/undo", methods=["POST"])
+def autonomy_undo():
+    from memory.memory import revert_action
+    action_id, err = _require_int_id()
+    if err is not None:
+        return err
+    return jsonify({"result": revert_action(action_id)})
+
+
+@app.route("/api/activity", methods=["GET"])
+def autonomy_activity():
+    """The 'while you were away' feed — read side; Block D styles it."""
+    from memory.memory import get_recent_actions
+    return jsonify({"recent": get_recent_actions(20)})
+
+
 @app.route("/api/status", methods=["GET"])
 def status():
     return jsonify({"status": "online", "version": "3.0", "location": _location})

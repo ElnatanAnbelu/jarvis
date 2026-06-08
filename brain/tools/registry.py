@@ -12,7 +12,8 @@ TOOL_REGISTRY: dict = {}
 
 
 def tool(description: str, parameters: dict,
-         allowed_agents: Optional[List[str]] = None) -> Callable:
+         allowed_agents: Optional[List[str]] = None,
+         risk: str = "low") -> Callable:
     """Decorator that registers a function as a JARVIS tool.
 
     Usage:
@@ -20,6 +21,7 @@ def tool(description: str, parameters: dict,
             description="What this tool does",
             parameters={"arg": {"type": "string", "description": "..."}},
             allowed_agents=["JARVIS"],   # optional: restrict to specific agents
+            risk="red",                  # optional: risk band (default "low")
         )
         def my_tool(arg: str) -> str:
             return "result"
@@ -28,6 +30,12 @@ def tool(description: str, parameters: dict,
     allowed_agents=["JARVIS"]     → only JARVIS may call it; other agents
                                     are blocked at execute_tool time and the
                                     tool is hidden from get_tools(agent=other).
+
+    risk="low" (default) → ordinary tool.
+    risk="medium"        → notable but reversible.
+    risk="red"           → irreversible / high-stakes. The central autonomy gate
+                           routes red-list calls to human confirmation when the
+                           user is away or the call came from an untrusted source.
     """
     def decorator(fn: Callable) -> Callable:
         TOOL_REGISTRY[fn.__name__] = {
@@ -42,6 +50,7 @@ def tool(description: str, parameters: dict,
             },
             "fn": fn,
             "allowed_agents": allowed_agents,
+            "risk": risk,
         }
         return fn
     return decorator
@@ -71,23 +80,91 @@ def get_tools(agent: Optional[str] = None) -> list:
             if _agent_can_call(entry, agent)]
 
 
-def execute_tool(name: str, args: dict, agent: Optional[str] = None) -> str:
+def _inverse_for(name: str, args: dict):
+    """Return (inverse_tool, inverse_args) for the reversible ledger, or
+    (None, None) when no inverse is cleanly knowable at the registry level.
+
+    Deliberately conservative: we do NOT fabricate inverses. For file
+    overwrites (write_file/create_file) the prior on-disk content is not read
+    here, so the registry cannot reconstruct a correct restore — those rely on
+    the red-list confirmation gate instead, and we return no inverse. Threaded
+    here so a tool layer CAN supply a real inverse later without changing the
+    call sites. Most tools legitimately have no inverse.
+    """
+    return None, None
+
+
+def execute_tool(name: str, args: dict, agent: Optional[str] = None,
+                 source: str = "user", _bypass_gate: bool = False) -> str:
     """Call a registered tool by name with the given arguments.
 
-    If agent is given and the tool restricts allowed_agents, the call is
-    refused with a clear message instead of being executed.
+    Access control:
+        If agent is given and the tool restricts allowed_agents, the call is
+        refused with a clear message instead of being executed.
+
+    Safety gate (Block: risk gate):
+        Unless _bypass_gate is True, every call funnels through the central
+        autonomy gate (brain.autonomy.gate). The gate decides one of:
+          - "execute": fall through and run the tool.
+          - "deny":    the kill-switch (paused) blocked a non-user action —
+                       return a clear message, do NOT run, log success=False.
+          - "confirm": a red-list action while away / from an untrusted source —
+                       it was enqueued for human approval; return a "needs
+                       approval" message, do NOT run, log a pending entry.
+
+    source:
+        "user"       — a direct, present-human request (most permissive).
+        "autonomous" — JARVIS acting on its own.
+        "external"   — triggered by untrusted inbound content.
+
+    _bypass_gate=True skips the gate entirely (used by autonomy.approve once the
+    human has already approved a queued action) but the execution is still logged.
     """
     if name not in TOOL_REGISTRY:
         return f"Unknown tool: '{name}'. Available: {', '.join(TOOL_REGISTRY.keys())}"
     entry = TOOL_REGISTRY[name]
+    risk = entry.get("risk")
     if not _agent_can_call(entry, agent):
         return (f"Tool '{name}' is not available to {agent}. "
                 f"JARVIS handles this — suggest it via [BRAIN: suggest → ...] instead.")
+
+    if not _bypass_gate:
+        # Guarded import — autonomy imports the registry (approve path), so a
+        # module-level import here would be circular.
+        try:
+            from brain import autonomy
+            decision = autonomy.gate(name, args, agent=agent, risk=risk, source=source)
+        except Exception:
+            decision = None  # gate unavailable → fail open to prior behavior
+
+        if decision is not None:
+            action = decision.get("action")
+            if action == "deny":
+                msg = f"🚫 '{name}' was blocked: {decision.get('reason', 'denied by safety gate')}"
+                try:
+                    from memory.memory import log_action
+                    log_action(name, args, msg, success=False, agent=agent, risk=risk)
+                except Exception:
+                    pass
+                return msg
+            if action == "confirm":
+                cid = decision.get("confirm_id")
+                msg = (f"⏳ '{name}' needs your approval (#{cid}) — sent to Telegram.")
+                try:
+                    from memory.memory import log_action
+                    log_action(name, args, msg, success=False, agent=agent, risk=risk)
+                except Exception:
+                    pass
+                return msg
+            # action == "execute" → fall through and run.
+
     try:
         result = str(entry["fn"](**args))
         try:
             from memory.memory import log_action
-            log_action(name, args, result, success=True)
+            inverse_tool, inverse_args = _inverse_for(name, args)
+            log_action(name, args, result, success=True, agent=agent, risk=risk,
+                       inverse_tool=inverse_tool, inverse_args=inverse_args)
         except Exception:
             pass
         return result
@@ -95,7 +172,7 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None) -> str:
         err = f"Tool '{name}' failed: {e}"
         try:
             from memory.memory import log_action
-            log_action(name, args, err, success=False)
+            log_action(name, args, err, success=False, agent=agent, risk=risk)
         except Exception:
             pass
         return err

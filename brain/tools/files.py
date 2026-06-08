@@ -41,7 +41,8 @@ def create_file(path: str, content: str = "") -> str:
     description="Delete a file or directory. Only use when the user explicitly asks to delete something.",
     parameters={
         "path": {"type": "string", "description": "File or directory path to delete"},
-    }
+    },
+    risk="red",
 )
 def delete_file(path: str) -> str:
     from control.files import delete_file as _delete

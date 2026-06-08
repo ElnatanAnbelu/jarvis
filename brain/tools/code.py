@@ -9,7 +9,8 @@ from brain.tools.registry import tool
         "code":     {"type": "string", "description": "The complete code to execute"},
         "timeout":  {"type": "integer", "description": "Max execution time in seconds (default 30)"},
         "cwd":      {"type": "string", "description": "Working directory path (optional)"},
-    }
+    },
+    risk="red",
 )
 def execute_code(language: str, code: str, timeout: int = 30, cwd: str = None) -> str:
     from control.code_executor import execute_code_with_healing, format_execution_result
@@ -23,7 +24,8 @@ def execute_code(language: str, code: str, timeout: int = 30, cwd: str = None) -
         "command": {"type": "string", "description": "Shell command to run"},
         "cwd":     {"type": "string", "description": "Working directory path (optional)"},
         "timeout": {"type": "integer", "description": "Max time in seconds (default 30)"},
-    }
+    },
+    risk="red",
 )
 def run_shell(command: str, cwd: str = None, timeout: int = 30) -> str:
     from control.code_executor import run_shell as _run
@@ -93,7 +95,8 @@ def git_commit(path: str, message: str = "update") -> str:
         "path":   {"type": "string", "description": "Project directory path"},
         "remote": {"type": "string", "description": "Remote name (default: origin)"},
         "branch": {"type": "string", "description": "Branch to push (default: current branch)"},
-    }
+    },
+    risk="red",
 )
 def git_push(path: str, remote: str = "origin", branch: str = "") -> str:
     from control.git_ops import git_push as _run

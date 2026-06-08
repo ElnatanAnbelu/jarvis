@@ -58,6 +58,13 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    # Apply versioned schema migrations (ledger reversibility columns,
+    # pending_confirmations table, …). Idempotent — safe every startup.
+    try:
+        from .migrations import run_migrations
+        run_migrations(DB_PATH)
+    except Exception:
+        pass
 
 
 # ── Conversations ──────────────────────────────────────────────────────────────
@@ -361,14 +368,205 @@ def build_messages_compressed(current_input, recent_limit=10):
 
 # ── Actions Performed Log ──────────────────────────────────────────────────────
 
-def log_action(tool_name: str, args: dict, result: str, success: bool = True):
-    """Persist every tool call so JARVIS remembers actions beyond the 30-message window."""
+def log_action(tool_name: str, args: dict, result: str, success: bool = True,
+               agent=None, risk=None, inverse_tool=None, inverse_args=None) -> int:
+    """Persist every tool call so JARVIS remembers actions beyond the 30-message window.
+
+    Extended for the safety substrate (Block A): records the calling `agent`,
+    the assessed `risk` band, and an optional inverse operation
+    (`inverse_tool` + `inverse_args` as a JSON string or dict) so the action can
+    be reverted later via revert_action(). Returns the inserted row id.
+
+    Backward compatible: existing callers passing (tool_name, args, result,
+    success=...) positionally keep working unchanged.
+    """
+    if inverse_args is not None and not isinstance(inverse_args, str):
+        inverse_args = json.dumps(inverse_args)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO actions_performed (timestamp, tool_name, args, result, success) VALUES (?, ?, ?, ?, ?)",
-        (datetime.now().isoformat(), tool_name, json.dumps(args), str(result)[:500], int(success))
+        "INSERT INTO actions_performed "
+        "(timestamp, tool_name, args, result, success, agent, risk, inverse_tool, inverse_args) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (datetime.now().isoformat(), tool_name, json.dumps(args), str(result)[:500],
+         int(success), agent, risk, inverse_tool, inverse_args)
     )
+    row_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return row_id
+
+
+def revert_action(action_id: int) -> str:
+    """Undo a previously logged action by executing its recorded inverse tool.
+
+    Loads the action row; if it was already reverted or has no inverse_tool,
+    returns a clear message and does nothing. Otherwise executes the inverse via
+    the tool registry, marks the row reverted (reverted=1 + reverted_at), and
+    returns a human-readable result.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT tool_name, inverse_tool, inverse_args, reverted FROM actions_performed WHERE id=?",
+        (action_id,)
+    )
+    row = c.fetchone()
+    if row is None:
+        conn.close()
+        return f"No action found with id {action_id}."
+    tool_name, inverse_tool, inverse_args, reverted = row
+    if reverted:
+        conn.close()
+        return f"Action {action_id} ({tool_name}) was already reverted."
+    if not inverse_tool:
+        conn.close()
+        return f"Action {action_id} ({tool_name}) has no inverse — it cannot be undone."
+    conn.close()
+
+    # Guarded import — avoids a circular import at module load time.
+    try:
+        from brain.tools.registry import execute_tool
+    except Exception as e:
+        return f"Cannot revert action {action_id}: tool registry unavailable ({e})."
+
+    try:
+        inv_args = json.loads(inverse_args or "{}")
+    except Exception:
+        inv_args = {}
+
+    try:
+        result = execute_tool(inverse_tool, inv_args)
+    except Exception as e:
+        return f"Revert of action {action_id} ({tool_name}) failed: {e}"
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE actions_performed SET reverted=1, reverted_at=? WHERE id=?",
+        (datetime.now().isoformat(), action_id)
+    )
+    conn.commit()
+    conn.close()
+    return f"Reverted action {action_id} ({tool_name}) via {inverse_tool}: {result}"
+
+
+# ── Flags (booleans/strings over the meta table) ────────────────────────────────
+
+def get_flag(key: str, default=None):
+    """Read a runtime flag from the meta table (e.g. away_mode, paused).
+
+    Stored as 'true'/'false' for booleans. When `default` is a bool, returns a
+    bool (the stored 'true'/'false', or `default` if unset). Otherwise returns
+    the stored string, or `default` if unset.
+    """
+    sentinel = "\x00__unset__"
+    raw = _meta_get(key, sentinel)
+    if raw == sentinel:
+        return default
+    if isinstance(default, bool):
+        return raw == "true"
+    return raw
+
+
+def set_flag(key: str, value):
+    """Persist a runtime flag to the meta table. Bools are stored as
+    'true'/'false'; everything else is stored as its string form."""
+    if isinstance(value, bool):
+        stored = "true" if value else "false"
+    else:
+        stored = str(value)
+    _meta_set(key, stored)
+
+
+# ── Pending Confirmations (human-in-the-loop approval queue) ─────────────────────
+
+_CONFIRMATION_TERMINAL = {"approved", "rejected", "executed", "failed", "cancelled"}
+
+
+def enqueue_confirmation(tool_name: str, args: dict, agent=None, risk=None, reason: str = "") -> int:
+    """Queue a risky tool call awaiting human approval. Returns the row id."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO pending_confirmations "
+        "(created_at, tool_name, args, agent, risk, reason, status) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
+        (datetime.now().isoformat(), tool_name, json.dumps(args), agent, risk, reason)
+    )
+    row_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return row_id
+
+
+def _confirmation_row_to_dict(row) -> dict:
+    cid, created_at, tool_name, args_str, agent, risk, reason, status, result, resolved_at = row
+    try:
+        args = json.loads(args_str) if args_str else {}
+    except Exception:
+        args = {}
+    return {
+        "id": cid,
+        "created_at": created_at,
+        "tool_name": tool_name,
+        "args": args,
+        "agent": agent,
+        "risk": risk,
+        "reason": reason,
+        "status": status,
+        "result": result,
+        "resolved_at": resolved_at,
+    }
+
+
+_CONFIRMATION_COLUMNS = (
+    "id, created_at, tool_name, args, agent, risk, reason, status, result, resolved_at"
+)
+
+
+def get_pending_confirmations() -> list:
+    """Return all confirmations still in 'pending' status, oldest first."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT %s FROM pending_confirmations WHERE status='pending' ORDER BY id ASC"
+        % _CONFIRMATION_COLUMNS
+    )
+    rows = c.fetchall()
+    conn.close()
+    return [_confirmation_row_to_dict(r) for r in rows]
+
+
+def get_confirmation(cid: int):
+    """Return a single confirmation by id as a dict, or None if not found."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT %s FROM pending_confirmations WHERE id=?" % _CONFIRMATION_COLUMNS,
+        (cid,)
+    )
+    row = c.fetchone()
+    conn.close()
+    return _confirmation_row_to_dict(row) if row else None
+
+
+def set_confirmation_status(cid: int, status: str, result=None):
+    """Update a confirmation's status (and optional result). Stamps resolved_at
+    when the status is terminal (approved/rejected/executed/failed/cancelled)."""
+    resolved_at = datetime.now().isoformat() if status in _CONFIRMATION_TERMINAL else None
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if result is not None:
+        c.execute(
+            "UPDATE pending_confirmations SET status=?, result=?, resolved_at=? WHERE id=?",
+            (status, str(result), resolved_at, cid)
+        )
+    else:
+        c.execute(
+            "UPDATE pending_confirmations SET status=?, resolved_at=? WHERE id=?",
+            (status, resolved_at, cid)
+        )
     conn.commit()
     conn.close()
 

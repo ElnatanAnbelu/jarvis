@@ -8,7 +8,8 @@ from brain.tools.registry import tool
         "to":      {"type": "string", "description": "Recipient email address"},
         "subject": {"type": "string", "description": "Email subject line"},
         "body":    {"type": "string", "description": "Email body content"},
-    }
+    },
+    risk="red",
 )
 def send_email(to: str, subject: str, body: str) -> str:
     from control.email import send_email as _send
@@ -25,7 +26,8 @@ def send_email(to: str, subject: str, body: str) -> str:
     parameters={
         "contact": {"type": "string", "description": "Contact's real name as it appears in Contacts (e.g. 'Mom', 'Dad'). Never guess a phone number."},
         "message": {"type": "string", "description": "The exact message the user told you to send. Must come directly from the user's words, nothing else."},
-    }
+    },
+    risk="red",
 )
 def send_imessage(contact: str, message: str) -> str:
     from control.messages import send_imessage as _send
@@ -48,7 +50,8 @@ def read_emails(count: int = 5) -> str:
     parameters={
         "to":      {"type": "string", "description": "Phone number with country code e.g. +251911202059"},
         "message": {"type": "string", "description": "Message to send"},
-    }
+    },
+    risk="red",
 )
 def send_whatsapp(to: str, message: str) -> str:
     from control.whatsapp import send_whatsapp as _send
