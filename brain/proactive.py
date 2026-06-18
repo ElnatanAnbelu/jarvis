@@ -195,9 +195,9 @@ def _competitor_scan():
 def _run_dynamic_task(task_id: int, description: str):
     """Execute a user-registered scheduled task via JARVIS and push result to HUD."""
     try:
-        from brain.think import think as think_jarvis
+        from brain.runner import run_goal
         from memory.memory import update_task_last_run
-        result = think_jarvis(description, model="claude-haiku-4-5-20251001")
+        result = run_goal(description, label=f"task:{task_id}")
         if result:
             _send(f"Scheduled task complete:\n{result[:400]}")
         update_task_last_run(task_id)

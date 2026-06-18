@@ -85,8 +85,13 @@ def _jarvis_model(score: int) -> str:
     return MODELS[1]
 
 
-def route(user_input: str) -> tuple[str, str]:
-    """Blocking route — returns (response, agent_name)."""
+def route(user_input: str, source: str = "user") -> tuple[str, str]:
+    """Blocking route — returns (response, agent_name).
+
+    source: "user" (trusted, present human) | "external" (untrusted inbound, e.g.
+    a WhatsApp from a contact) — threaded to the brain so the safety gate forces
+    confirmation on red-list actions triggered by untrusted content.
+    """
     lower = user_input.lower().strip()
 
     if lower in ("stop", "cancel", "abort", "stop it", "never mind"):
@@ -122,7 +127,7 @@ def route(user_input: str) -> tuple[str, str]:
 
     # Tool requests + score 4-5 always go to JARVIS
     if _has_tool(actual) or score >= 4:
-        r = think_jarvis(actual, model=_jarvis_model(score))
+        r = think_jarvis(actual, model=_jarvis_model(score), source=source)
         return r, "JARVIS"
 
     # If explicit agent called, use them
@@ -131,7 +136,7 @@ def route(user_input: str) -> tuple[str, str]:
         if r:
             return r, explicit_agent
         # fallback to JARVIS Haiku
-        r = think_jarvis(actual, model=MODELS[1])
+        r = think_jarvis(actual, model=MODELS[1], source=source)
         return r, "JARVIS"
 
     # Score-based routing
@@ -141,7 +146,7 @@ def route(user_input: str) -> tuple[str, str]:
         if r:
             return r, agent
         # fallback to JARVIS Haiku
-        r = think_jarvis(actual, model=MODELS[1])
+        r = think_jarvis(actual, model=MODELS[1], source=source)
         return r, "JARVIS"
 
     # JARVIS with Haiku (score 1)

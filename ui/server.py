@@ -553,7 +553,9 @@ def whatsapp_incoming():
     sender = data.get("sender", "WhatsApp")
     if not user_input:
         return jsonify({"response": ""})
-    response, agent = _route(f"[WhatsApp from {sender}]: {user_input}")
+    # Inbound WhatsApp is untrusted content (C4) — tag external so the safety gate
+    # forces confirmation on any red-list action it tries to trigger.
+    response, agent = _route(f"[WhatsApp from {sender}]: {user_input}", source="external")
     return jsonify({"response": response, "agent": agent})
 
 

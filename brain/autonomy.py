@@ -54,6 +54,18 @@ def set_away(value: bool) -> None:
     memory.set_flag("away_mode", bool(value))
 
 
+def get_autonomy_mode() -> str:
+    """'supervised' (default — safe shakeout, every autonomous action proposes) or
+    'auto' (routine executes, red-list still confirms). Per the trust ramp: flip a
+    domain to 'auto' once it behaves."""
+    mode = memory.get_flag("autonomy_mode", "supervised")
+    return mode if mode in ("supervised", "auto") else "supervised"
+
+
+def set_autonomy_mode(mode: str) -> None:
+    memory.set_flag("autonomy_mode", "auto" if mode == "auto" else "supervised")
+
+
 def is_red(tool_name: str, declared_risk=None) -> bool:
     return declared_risk == "red" or tool_name in RED_LIST
 
@@ -80,6 +92,15 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
         return {"action": "deny",
                 "reason": "JARVIS is paused — the kill-switch is active. Resume to allow actions.",
                 "confirm_id": None}
+
+    # Shakeout: in supervised mode every autonomous action proposes for approval.
+    if source == "autonomous" and get_autonomy_mode() == "supervised":
+        cid = memory.enqueue_confirmation(tool_name, args, agent=agent,
+                                          risk=(risk or "supervised"),
+                                          reason="supervised autonomous action")
+        return {"action": "confirm",
+                "reason": f"Supervised mode — '{tool_name}' queued for your approval (#{cid}).",
+                "confirm_id": cid}
 
     if red and (is_away() or source == "external"):
         cid = memory.enqueue_confirmation(

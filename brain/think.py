@@ -1147,13 +1147,13 @@ def _think_agent(user_input: str, model: str, agent: str) -> str:
     return "I'm having trouble reaching my systems right now. Give me a moment."
 
 
-def think(user_input: str, model: str = None, agent: str = "JARVIS") -> str:
+def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str = "user") -> str:
     agent = (agent or "JARVIS").upper()
     # Fully-local single-JARVIS brain (P1): collapse all agents into one local JARVIS.
     try:
         from brain import agent as _local
         if _local.enabled():
-            r = expand_abbreviations(_local.run(user_input, agent="JARVIS", source="user"))
+            r = expand_abbreviations(_local.run(user_input, agent="JARVIS", source=source))
             save_message("jarvis", r)
             try:
                 learn(user_input, r)
@@ -1326,7 +1326,7 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS") -> str:
 
     return "I'm having trouble reaching my systems right now. Try again in a moment."
 
-def think_stream(user_input: str, model: str = None, agent: str = "JARVIS"):
+def think_stream(user_input: str, model: str = None, agent: str = "JARVIS", source: str = "user"):
     """Generator: yields text chunks as Claude streams them. Falls back to blocking think()."""
     import anthropic
     from brain.tools import execute_tool
@@ -1341,7 +1341,7 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS"):
     if _use_local:
         _chunks = []
         try:
-            for _c in _local.run_stream(user_input, agent="JARVIS", source="user"):
+            for _c in _local.run_stream(user_input, agent="JARVIS", source=source):
                 _chunks.append(_c)
                 yield _c
         except Exception:
