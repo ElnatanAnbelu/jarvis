@@ -728,14 +728,9 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
     return ctx
 
 def _get_auth_key():
-    """Returns (key, is_oauth) tuple. OAuth tokens use auth_token= (Bearer), API keys use api_key=."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if api_key and not api_key.startswith("sk-ant-oat"):
-        return api_key, False
-    oauth = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
-    if oauth:
-        return oauth, True
-    return None, False
+    """Returns (key, is_oauth) tuple. Delegates to brain.auth — the single source of truth."""
+    from brain.auth import get_auth_key
+    return get_auth_key()
 
 
 def _make_client(auth_key=None, is_oauth=False):

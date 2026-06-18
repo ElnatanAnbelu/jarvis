@@ -127,11 +127,10 @@ RULES:
 - Keep it under 6 sentences. Talk directly to Elnatan. Sharp and factual."""
 
     try:
-        from brain.think import _get_auth_key, CLAUDE_MODELS
-        import anthropic
-        auth_key = _get_auth_key()
-        if auth_key:
-            client = anthropic.Anthropic(api_key=auth_key)
+        from brain.think import CLAUDE_MODELS
+        from brain.auth import make_client
+        client = make_client()
+        if client:
             resp = client.messages.create(
                 model=CLAUDE_MODELS["haiku"],
                 max_tokens=200,

@@ -70,7 +70,7 @@ def read_image(path: str) -> tuple[str, str]:
 
 def ask_about_file(file_path: str, question: str, model: str = "claude-sonnet-4-6"):
     """Generator that streams Claude's answer about a document."""
-    from brain.think import _get_auth_key
+    from brain.auth import make_client
     import anthropic
 
     text = read_file(file_path)
@@ -83,12 +83,11 @@ def ask_about_file(file_path: str, question: str, model: str = "claude-sonnet-4-
     if len(text) > 80000:
         text = text[:80000] + "\n\n[... document truncated for length ...]"
 
-    auth_key = _get_auth_key()
-    if not auth_key:
+    client = make_client()
+    if client is None:
         yield "No API key available."
         return
 
-    client = anthropic.Anthropic(api_key=auth_key)
     prompt = f"Here is the content of the file \"{name}\":\n\n{text}\n\n---\n\n{question}"
 
     models_to_try = [model] if model == "claude-haiku-4-5-20251001" else [model, "claude-haiku-4-5-20251001"]
@@ -114,7 +113,7 @@ def ask_about_file(file_path: str, question: str, model: str = "claude-sonnet-4-
 
 def ask_about_image(image_path: str, question: str, model: str = "claude-sonnet-4-6"):
     """Generator that streams Claude's vision analysis of an image."""
-    from brain.think import _get_auth_key
+    from brain.auth import make_client
     import anthropic
 
     try:
@@ -123,12 +122,11 @@ def ask_about_image(image_path: str, question: str, model: str = "claude-sonnet-
         yield str(e)
         return
 
-    auth_key = _get_auth_key()
-    if not auth_key:
+    client = make_client()
+    if client is None:
         yield "No API key available."
         return
 
-    client = anthropic.Anthropic(api_key=auth_key)
 
     models_to_try = [model] if model == "claude-haiku-4-5-20251001" else [model, "claude-haiku-4-5-20251001"]
     for attempt_model in models_to_try:
@@ -187,16 +185,15 @@ def generate_document(request: str, model: str = "claude-sonnet-4-6"):
     Generator. Streams the document content, then saves it to Desktop.
     Yields text chunks, then a final '[Saved to Desktop as ...]' line.
     """
-    from brain.think import _get_auth_key
+    from brain.auth import make_client
     import anthropic
     from datetime import datetime
 
-    auth_key = _get_auth_key()
-    if not auth_key:
+    client = make_client()
+    if client is None:
         yield "No API key available."
         return
 
-    client = anthropic.Anthropic(api_key=auth_key)
 
     prompt = f"""{request}
 

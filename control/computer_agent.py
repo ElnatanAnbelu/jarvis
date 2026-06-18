@@ -121,11 +121,12 @@ def _execute_action(action: dict) -> str:
 
 def _call_claude(task: str, screenshot_b64: str, history: list) -> list:
     """Send screenshot + task to Claude, get back list of actions."""
-    import anthropic
-    from brain.think import _get_auth_key, CLAUDE_MODELS
+    from brain.think import CLAUDE_MODELS
+    from brain.auth import make_client
 
-    key = _get_auth_key()
-    client = anthropic.Anthropic(api_key=key)
+    client = make_client()
+    if client is None:
+        return [{"action": "done", "note": "No API key — computer-use brain unavailable."}]
 
     messages = history + [
         {
