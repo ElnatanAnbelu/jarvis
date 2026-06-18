@@ -72,6 +72,12 @@ def _resolve_tools(user_input: str, agent: str, source: str):
     gated + executed via the registry. Model tier is picked per request.
     """
     from brain.tools.registry import execute_tool
+    try:
+        from obs.log import new_correlation, log_event
+        new_correlation()
+        log_event("request", source=source, agent=agent, chars=len(user_input or ""))
+    except Exception:
+        pass
     tools = _select_tools(user_input, agent)
     model = llm.select_tier(user_input)
     messages = [

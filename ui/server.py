@@ -1061,7 +1061,13 @@ def autonomy_activity():
 
 @app.route("/api/status", methods=["GET"])
 def status():
-    return jsonify({"status": "online", "version": "3.0", "location": _location})
+    daemons = {}
+    try:
+        from obs.log import liveness
+        daemons = liveness()
+    except Exception:
+        pass
+    return jsonify({"status": "online", "version": "3.0", "location": _location, "daemons": daemons})
 
 
 @app.route("/favicon.ico")

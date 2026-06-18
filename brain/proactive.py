@@ -246,6 +246,11 @@ def start_proactive_scheduler(hud_queue=None):
 
     def run():
         while True:
+            try:
+                from obs.log import heartbeat
+                heartbeat("scheduler")
+            except Exception:
+                pass
             schedule.run_pending()
             time.sleep(60)
 

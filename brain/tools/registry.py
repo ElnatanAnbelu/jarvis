@@ -6,9 +6,17 @@ get_tools(agent=None) returns the schema list; pass agent to filter.
 execute_tool(name, args, agent=None) looks up and calls the function;
 pass agent to enforce per-agent access control.
 """
+import time as _time
 from typing import Callable, Optional, List
 
 TOOL_REGISTRY: dict = {}
+
+# Structured observability (safe no-op if obs is unavailable).
+try:
+    from obs.log import log_event as _obs
+except Exception:
+    def _obs(*a, **k):
+        pass
 
 
 def tool(description: str, parameters: dict,
@@ -141,6 +149,8 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
             action = decision.get("action")
             if action == "deny":
                 msg = f"🚫 '{name}' was blocked: {decision.get('reason', 'denied by safety gate')}"
+                _obs("tool.denied", level="warning", tool=name, agent=agent, risk=risk,
+                     source=source, reason=decision.get("reason"))
                 try:
                     from memory.memory import log_action
                     log_action(name, args, msg, success=False, agent=agent, risk=risk)
@@ -150,6 +160,8 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
             if action == "confirm":
                 cid = decision.get("confirm_id")
                 msg = (f"⏳ '{name}' needs your approval (#{cid}) — sent to Telegram.")
+                _obs("tool.confirm_required", tool=name, agent=agent, risk=risk,
+                     source=source, confirm_id=cid)
                 try:
                     from memory.memory import log_action
                     log_action(name, args, msg, success=False, agent=agent, risk=risk)
@@ -158,8 +170,11 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
                 return msg
             # action == "execute" → fall through and run.
 
+    _start = _time.time()
     try:
         result = str(entry["fn"](**args))
+        _obs("tool.executed", tool=name, agent=agent, risk=risk, source=source, ok=True,
+             duration_ms=round((_time.time() - _start) * 1000), arg_keys=list(args.keys()))
         try:
             from memory.memory import log_action
             inverse_tool, inverse_args = _inverse_for(name, args)
@@ -170,6 +185,8 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
         return result
     except Exception as e:
         err = f"Tool '{name}' failed: {e}"
+        _obs("tool.failed", level="error", tool=name, agent=agent, risk=risk, source=source,
+             duration_ms=round((_time.time() - _start) * 1000), error=str(e))
         try:
             from memory.memory import log_action
             log_action(name, args, err, success=False, agent=agent, risk=risk)
