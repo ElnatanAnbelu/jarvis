@@ -646,6 +646,43 @@ def get_recent_actions(limit: int = 20) -> str:
     return "\n".join(lines)
 
 
+def get_recent_actions_list(limit: int = 20) -> list:
+    """Return last N tool executions as structured rows for the control room UI.
+
+    Rows are dicts {id, ts, tool, success, reverted}, newest first, so the UI can
+    render per-row state and an Undo affordance. The `reverted` column is part of
+    the ledger migration; if an older DB predates it we degrade to 0 rather than
+    raising. Kept separate from get_recent_actions() (text, used by prompts)."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute(
+            "SELECT id, timestamp, tool_name, success, reverted "
+            "FROM actions_performed ORDER BY id DESC LIMIT ?",
+            (limit,)
+        )
+        rows = c.fetchall()
+    except Exception:
+        # Older schema without the `reverted` column — fall back gracefully.
+        c.execute(
+            "SELECT id, timestamp, tool_name, success "
+            "FROM actions_performed ORDER BY id DESC LIMIT ?",
+            (limit,)
+        )
+        rows = [(r[0], r[1], r[2], r[3], 0) for r in c.fetchall()]
+    conn.close()
+    return [
+        {
+            "id": rid,
+            "ts": ts,
+            "tool": tool,
+            "success": bool(success),
+            "reverted": bool(reverted),
+        }
+        for rid, ts, tool, success, reverted in rows
+    ]
+
+
 # ── Scheduled Tasks ────────────────────────────────────────────────────────────
 
 def add_scheduled_task(name: str, description: str, schedule: str) -> str:

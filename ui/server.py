@@ -36,7 +36,7 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 # Routes that are reachable WITHOUT the session token. Page routes need to be
 # loadable so they can receive the token; /api/status is an unauthenticated
 # health check. Everything else requires auth.
-_EXEMPT_PATHS = frozenset({"/", "/bubble", "/favicon.ico", "/api/status"})
+_EXEMPT_PATHS = frozenset({"/", "/bubble", "/control", "/favicon.ico", "/api/status"})
 
 
 def _token_ok():
@@ -1073,9 +1073,10 @@ def autonomy_undo():
 
 @app.route("/api/activity", methods=["GET"])
 def autonomy_activity():
-    """The 'while you were away' feed — read side; Block D styles it."""
-    from memory.memory import get_recent_actions
-    return jsonify({"recent": get_recent_actions(20)})
+    """The 'while you were away' feed — structured rows so the control room can
+    render per-row success/reverted state and an Undo button."""
+    from memory.memory import get_recent_actions_list
+    return jsonify({"recent": get_recent_actions_list(20)})
 
 
 @app.route("/api/status", methods=["GET"])
@@ -1129,6 +1130,11 @@ def jarvis_ui():
 @app.route("/bubble")
 def jarvis_bubble():
     return _serve_html_with_token("bubble.html")
+
+
+@app.route("/control")
+def jarvis_control():
+    return _serve_html_with_token("control.html")
 
 
 @app.route("/api/end_session", methods=["POST"])
