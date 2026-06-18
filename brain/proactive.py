@@ -39,7 +39,11 @@ def _send(message: str):
                 timeout=8,
             )
         except Exception:
-            pass
+            try:
+                from obs.log import log_exception
+                log_exception("proactive.telegram_send_failed", logger="proactive")
+            except Exception:
+                pass
 
 
 def _check_upcoming_events():
@@ -198,7 +202,11 @@ def _run_dynamic_task(task_id: int, description: str):
             _send(f"Scheduled task complete:\n{result[:400]}")
         update_task_last_run(task_id)
     except Exception:
-        pass
+        try:
+            from obs.log import log_exception
+            log_exception("proactive.dynamic_task_failed", logger="proactive", task_id=task_id)
+        except Exception:
+            pass
 
 
 def _register_dynamic_tasks():
