@@ -1041,6 +1041,7 @@ def autonomy_pending():
         "pending": get_pending_confirmations(),
         "paused": autonomy.is_paused(),
         "away": autonomy.is_away(),
+        "mode": autonomy.get_autonomy_mode(),
     })
 
 
