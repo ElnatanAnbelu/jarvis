@@ -313,17 +313,25 @@ class JsApi:
                     with tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                         tmp = f.name
                     wavfile.write(tmp, SR, audio)
-                    groq_key = _load_groq_key()
-                    if groq_key:
-                        from groq import Groq
-                        client = Groq(api_key=groq_key)
-                        with open(tmp, "rb") as fh:
-                            result = client.audio.transcriptions.create(
-                                model="whisper-large-v3-turbo",
-                                file=("audio.wav", fh, "audio/wav"),
-                                response_format="text",
-                            )
-                        text = (result or "").strip()
+                    # Prefer fully-local STT (offline, free); fall back to Groq when online.
+                    try:
+                        from voice import local_stt
+                        if local_stt.available():
+                            text = local_stt.transcribe(tmp)
+                    except Exception:
+                        text = ""
+                    if not text:
+                        groq_key = _load_groq_key()
+                        if groq_key:
+                            from groq import Groq
+                            client = Groq(api_key=groq_key)
+                            with open(tmp, "rb") as fh:
+                                result = client.audio.transcriptions.create(
+                                    model="whisper-large-v3-turbo",
+                                    file=("audio.wav", fh, "audio/wav"),
+                                    response_format="text",
+                                )
+                            text = (result or "").strip()
                     try:
                         os.unlink(tmp)
                     except Exception:
