@@ -85,12 +85,23 @@ class _FakeAutonomy:
     def __init__(self):
         self.paused = False
         self.away = False
+        self.mode = "supervised"
 
     def set_paused(self, v):
         self.paused = bool(v)
 
     def set_away(self, v):
         self.away = bool(v)
+
+    def get_autonomy_mode(self):
+        return self.mode
+
+    def set_autonomy_mode(self, m):
+        self.mode = "auto" if m == "auto" else "supervised"
+
+    def panic(self, minutes=1440):
+        self.paused = True
+        return "🛑 PANIC — paused all autonomy."
 
     def is_paused(self):
         return self.paused

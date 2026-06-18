@@ -143,6 +143,23 @@ def reject(confirm_id) -> str:
     return f"🚫 Rejected '{c['tool_name']}' (#{confirm_id}). Nothing was executed."
 
 
+def panic(minutes: int = 1440) -> str:
+    """Emergency stop: halt all autonomy (pause), reject everything queued, and
+    revert any reversible actions from the last `minutes`. The 'undo everything' button."""
+    set_paused(True)
+    rejected = 0
+    for c in memory.get_pending_confirmations():
+        memory.set_confirmation_status(c["id"], "rejected")
+        rejected += 1
+    reverted = memory.revert_recent(minutes)
+    try:
+        from obs.log import log_event
+        log_event("autonomy.panic", level="warning", rejected=rejected, window_min=minutes)
+    except Exception:
+        pass
+    return f"🛑 PANIC — paused all autonomy, rejected {rejected} pending action(s), {reverted}."
+
+
 def pending_summary() -> str:
     """Human-readable list of what's waiting on approval."""
     rows = memory.get_pending_confirmations()

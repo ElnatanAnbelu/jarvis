@@ -57,6 +57,7 @@ def _get_chat_id() -> str:
 # Single-word owner commands (no argument).
 _OWNER_COMMANDS_NOARG = {
     "pause", "resume", "away", "home", "back", "status", "pending",
+    "auto", "supervised", "panic",
 }
 # Owner commands that take a single integer id.
 _OWNER_COMMANDS_ARG = {"approve", "reject", "undo"}
@@ -165,10 +166,19 @@ def _handle_owner_command(cmd: str, arg):
     if cmd == "home":
         autonomy.set_away(False)
         return "🏠 Away-mode OFF."
+    if cmd == "auto":
+        autonomy.set_autonomy_mode("auto")
+        return "⚙️ Autonomy: AUTO — routine runs on its own; red-list still confirms."
+    if cmd == "supervised":
+        autonomy.set_autonomy_mode("supervised")
+        return "👀 Autonomy: SUPERVISED — I'll propose every action for your approval."
+    if cmd == "panic":
+        return autonomy.panic()
     if cmd == "status":
         paused = "yes" if autonomy.is_paused() else "no"
         away = "yes" if autonomy.is_away() else "no"
-        return f"Paused: {paused} · Away: {away}\n{autonomy.pending_summary()}"
+        mode = autonomy.get_autonomy_mode()
+        return f"Paused: {paused} · Away: {away} · Mode: {mode}\n{autonomy.pending_summary()}"
     if cmd == "pending":
         return autonomy.pending_summary()
 

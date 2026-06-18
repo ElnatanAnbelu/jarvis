@@ -999,6 +999,23 @@ def autonomy_resume():
     return jsonify({"paused": False})
 
 
+@app.route("/api/panic", methods=["POST"])
+def autonomy_panic():
+    """Emergency stop + undo-window — the panic button."""
+    from brain import autonomy
+    minutes = int((request.json or {}).get("minutes", 1440)) if request.is_json else 1440
+    return jsonify({"result": autonomy.panic(minutes)})
+
+
+@app.route("/api/mode", methods=["POST"])
+def autonomy_mode():
+    """Set the shakeout switch: {'mode': 'supervised'|'auto'}."""
+    from brain import autonomy
+    mode = (request.json or {}).get("mode", "supervised") if request.is_json else "supervised"
+    autonomy.set_autonomy_mode(mode)
+    return jsonify({"mode": autonomy.get_autonomy_mode()})
+
+
 @app.route("/api/away", methods=["POST"])
 def autonomy_away():
     """Set away mode. Body/query {"on": bool}; default toggles current state."""

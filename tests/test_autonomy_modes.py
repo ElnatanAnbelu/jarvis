@@ -78,6 +78,42 @@ def test_runner_respects_pause(db):
         autonomy.set_paused(False)
 
 
+def test_panic_halts_and_rejects_pending(db):
+    @registry.tool(description="panic probe", parameters={}, risk="low")
+    def _panic_probe():
+        return "ran"
+
+    try:
+        autonomy.set_autonomy_mode("supervised")
+        registry.execute_tool("_panic_probe", {}, source="autonomous")  # queued by supervised
+        assert len(memory.get_pending_confirmations()) == 1
+        out = autonomy.panic()
+        assert autonomy.is_paused() is True
+        assert len(memory.get_pending_confirmations()) == 0   # all rejected
+        assert "panic" in out.lower()
+    finally:
+        autonomy.set_paused(False)
+        registry.TOOL_REGISTRY.pop("_panic_probe", None)
+
+
+def test_revert_recent_undoes_reversible_actions(db):
+    sink = {}
+
+    @registry.tool(description="inverse", parameters={}, risk="low")
+    def _inv_probe():
+        sink["undone"] = True
+        return "undone"
+
+    try:
+        memory.log_action("did_thing", {}, "result", success=True,
+                          inverse_tool="_inv_probe", inverse_args={})
+        msg = memory.revert_recent(60)
+        assert sink.get("undone") is True
+        assert "reverted 1" in msg
+    finally:
+        registry.TOOL_REGISTRY.pop("_inv_probe", None)
+
+
 def test_source_threads_through_think(monkeypatch):
     """think(source=...) must reach the agent (which passes it to the gate)."""
     from brain import think as T, agent

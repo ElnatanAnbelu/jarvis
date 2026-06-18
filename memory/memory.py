@@ -1,7 +1,7 @@
 import sqlite3
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "jarvis.db"
@@ -449,6 +449,27 @@ def revert_action(action_id: int) -> str:
     conn.commit()
     conn.close()
     return f"Reverted action {action_id} ({tool_name}) via {inverse_tool}: {result}"
+
+
+def revert_recent(minutes: int = 1440) -> str:
+    """Revert every reversible (has an inverse, not yet reverted) action logged in
+    the last `minutes`. Used by the panic control."""
+    cutoff = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id FROM actions_performed "
+        "WHERE timestamp >= ? AND inverse_tool IS NOT NULL AND inverse_tool != '' "
+        "AND (reverted IS NULL OR reverted = 0) ORDER BY id DESC",
+        (cutoff,)
+    )
+    ids = [r[0] for r in c.fetchall()]
+    conn.close()
+    if not ids:
+        return "no reversible actions in that window"
+    for i in ids:
+        revert_action(i)
+    return f"reverted {len(ids)} action(s)"
 
 
 # ── Flags (booleans/strings over the meta table) ────────────────────────────────
