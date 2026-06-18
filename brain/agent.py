@@ -14,7 +14,7 @@ import re
 from brain import llm
 
 MAX_ROUNDS = int(os.environ.get("JARVIS_AGENT_MAX_ROUNDS", "8"))
-MAX_TOOLS = int(os.environ.get("JARVIS_AGENT_MAX_TOOLS", "24"))
+MAX_TOOLS = int(os.environ.get("JARVIS_AGENT_MAX_TOOLS", "14"))
 
 # Always-offered common tools; the rest are added per-request by relevance so
 # the local model isn't handed all ~130 schemas every call (a big speedup).
@@ -31,15 +31,30 @@ def enabled() -> bool:
     return llm.available() and llm.any_model_available()
 
 
+# Lean persona for the local model — a small local LLM doesn't need (and is
+# slowed badly by) the full multi-file prompt stack. Keep the load-bearing
+# behaviors; drop the bulk. Grounding context is appended, capped, below.
+_LEAN_PERSONA = (
+    "You are JARVIS, Elnatan's personal AI assistant — sharp, concise, loyal, with a touch "
+    "of dry wit (the MCU JARVIS). Address him as 'sir'. Keep replies short and direct. "
+    "Call a tool ONLY when the request needs an action or a lookup; for plain conversation "
+    "or arithmetic, just answer — do not call a tool. Never invent facts about Elnatan's life, "
+    "people, money, or schedule; if you don't have it, say so plainly."
+)
+_CTX_CAP = int(os.environ.get("JARVIS_LOCAL_CTX_CAP", "2500"))
+
+
 def _system_for(agent: str, user_input: str) -> str:
-    """Persona system prompt + dynamic vault/facts/business/history context (reused from think.py)."""
-    from brain.think import _agent_system, _build_context
-    sys = _agent_system(agent)
+    """Lean persona + a CAPPED slice of vault/facts grounding (fast-tier friendly)."""
+    parts = [_LEAN_PERSONA]
     try:
+        from brain.think import _build_context
         ctx = _build_context(user_input, include_history=True)
+        if ctx:
+            parts.append(ctx[:_CTX_CAP])
     except Exception:
-        ctx = ""
-    return (sys + "\n\n" + ctx) if ctx else sys
+        pass
+    return "\n\n".join(parts)
 
 
 def _select_tools(user_input: str, agent: str, k: int = MAX_TOOLS) -> list:
