@@ -565,6 +565,16 @@ class VaultManager:
                 existing_path.write_text(updated, encoding="utf-8")
                 new_hash = self._compute_hash(self._body_only(updated))
                 self._update_frontmatter_field(existing_path, "jarvis_last_hash", new_hash)
+        elif action == "delete":
+            # Reversible delete: archive the note rather than destroy it (audit H14 —
+            # this branch was missing, so delete proposals silently no-op'd).
+            existing_path = self._resolve_note_path(target)
+            if not (existing_path and existing_path.exists()):
+                self._update_proposal_status(p, "stale")
+                return f"Proposal {proposal_id} is stale — target '{target}' not found to delete."
+            archive_dir = self.vault_path / "_Archive" / "deleted"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            existing_path.rename(archive_dir / existing_path.name)
 
         self._update_proposal_status(p, "approved")
         self._log_activity("approve", target, "human", f"Approved proposal {proposal_id}")

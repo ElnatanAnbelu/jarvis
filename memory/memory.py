@@ -472,6 +472,36 @@ def revert_recent(minutes: int = 1440) -> str:
     return f"reverted {len(ids)} action(s)"
 
 
+def forget_subject(identifier: str) -> str:
+    """Right-to-be-forgotten across jarvis.db — purge a person/topic from
+    conversations, facts, and the action ledger. (Vault/observations purge is
+    layered on top by the caller.) Refuses dangerously-broad identifiers."""
+    ident = (identifier or "").strip()
+    if len(ident) < 3:
+        return "Refusing to forget — give a specific name/identifier (3+ chars)."
+    like = f"%{ident}%"
+    counts = {}
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("DELETE FROM conversations WHERE content LIKE ?", (like,))
+        counts["conversations"] = c.rowcount
+        c.execute("DELETE FROM facts WHERE key LIKE ? OR value LIKE ?", (like, like))
+        counts["facts"] = c.rowcount
+        c.execute("DELETE FROM actions_performed WHERE args LIKE ? OR result LIKE ?", (like, like))
+        counts["actions"] = c.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    total = sum(counts.values())
+    try:
+        from obs.log import log_event
+        log_event("privacy.forget_subject", level="warning", subject=ident, removed=total, by_store=counts)
+    except Exception:
+        pass
+    return f"Forgot '{ident}' from local memory: removed {total} record(s) — {counts}."
+
+
 # ── Flags (booleans/strings over the meta table) ────────────────────────────────
 
 def get_flag(key: str, default=None):
