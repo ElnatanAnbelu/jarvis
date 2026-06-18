@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>JARVIS · COMMAND DECK</title>
+<style>
+  /* ============================================================
+     JARVIS — COMMAND DECK
+     Mission-control density. Local AI assistant. Addresses you as "sir".
+     Single-file, offline. System fonts only.
+     ============================================================ */
+
+  :root {
+    /* Palette — deep space console */
+    --bg-0:        #04070d;
+    --bg-1:        #070c16;
+    --bg-2:        #0a121f;
+    --panel:       #0b1421;
+    --panel-2:     #0d182a;
+    --line:        #15263d;
+    --line-soft:   #0f1d30;
+    --grid:        rgba(45, 116, 200, 0.05);
+
+    --ink:         #e7f1ff;
+    --ink-dim:     #8aa1c0;
+    --ink-faint:   #506586;
+    --ink-ghost:   #33445e;
+
+    --arc:         #36b8ff;   /* JARVIS arc-reactor blue */
+    --arc-deep:    #1c84d6;
+    --arc-glow:    rgba(54, 184, 255, 0.55);
+    --cyan:        #58f5ff;
+
+    --amber:       #ffb648;
+    --gold:        #ffd166;
+    --red:         #ff5a5f;
+    --red-deep:    #c8323a;
+    --green:       #38e0a0;
+    --violet:      #a98bff;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+
+    --r: 14px;
+    --r-sm: 9px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 700px at 78% -10%, rgba(36,124,200,0.16), transparent 60%),
+      radial-gradient(900px 600px at 0% 110%, rgba(28,90,160,0.10), transparent 55%),
+      var(--bg-0);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Faint engineering grid behind everything */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 46px 46px;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: radial-gradient(circle at 50% 38%, #000 35%, transparent 92%);
+  }
+  /* Scanline shimmer */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px);
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: overlay;
+  }
+
+  .deck {
+    position: relative;
+    z-index: 2;
+    max-width: 1640px;
+    margin: 0 auto;
+    padding: 20px 26px 120px;
+  }
+
+  /* ============================================================
+     TOP BAR — flight-deck header
+     ============================================================ */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 14px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background:
+      linear-gradient(180deg, rgba(20,40,66,0.55), rgba(8,15,26,0.7));
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(120,180,255,0.06), 0 18px 50px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+  .topbar::before {
+    content:"";
+    position:absolute; left:0; top:0; bottom:0; width:3px;
+    background: linear-gradient(180deg, var(--arc), transparent);
+    box-shadow: 0 0 16px var(--arc-glow);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 240px;
+  }
+  .brand .mark {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 1.5px solid var(--arc);
+    display: grid; place-items: center;
+    position: relative;
+    box-shadow: 0 0 14px var(--arc-glow), inset 0 0 10px rgba(54,184,255,0.25);
+  }
+  .brand .mark::after {
+    content:""; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--arc); box-shadow: 0 0 12px var(--arc);
+  }
+  .brand h1 {
+    font-family: var(--mono);
+    font-size: 16px;
+    letter-spacing: 5px;
+    font-weight: 600;
+  }
+  .brand h1 span { color: var(--arc); }
+  .brand .sub {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 2.5px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  .topbar .spacer { flex: 1; }
+
+  /* status pills (mode indicators) */
+  .pillset { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 1.5px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink-dim);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .2s, color .2s, background .2s;
+    user-select: none;
+  }
+  .pill:hover { border-color: var(--arc-deep); color: var(--ink); }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); }
+  .pill.on  { border-color: rgba(56,224,160,0.4); color: var(--green); background: rgba(56,224,160,0.07); }
+  .pill.on .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .pill.warn { border-color: rgba(255,182,72,0.4); color: var(--amber); background: rgba(255,182,72,0.07); }
+  .pill.warn .dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .pill .lbl { color: var(--ink-faint); }
+  .pill.on .lbl, .pill.warn .lbl { opacity: .7; color: inherit; }
+
+  .clock {
+    font-family: var(--mono);
+    text-align: right;
+    line-height: 1.25;
+  }
+  .clock .t { font-size: 17px; letter-spacing: 2px; color: var(--ink); }
+  .clock .d { font-size: 9.5px; letter-spacing: 2px; color: var(--ink-faint); }
+
+  /* ============================================================
+     PANIC BAR
+     ============================================================ */
+  .panicbar {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 18px;
+    border-radius: var(--r);
+    border: 1px solid rgba(255,90,95,0.28);
+    background:
+      linear-gradient(180deg, rgba(40,12,16,0.6), rgba(14,8,10,0.55));
+    box-shadow: inset 0 0 26px rgba(255,90,95,0.06);
+  }
+  .panic-btn {
+    font-family: var(--mono);
+    letter-spacing: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    border: 1px solid rgba(255,90,95,0.7);
+    background:
+      radial-gradient(120% 140% at 30% 0%, #ff6b70, var(--red-deep));
+    padding: 13px 28px;
+    border-radius: 11px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 12px;
+    box-shadow: 0 0 0 1px rgba(255,90,95,0.25), 0 12px 30px rgba(200,40,46,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
+    position: relative;
+    transition: transform .08s ease, box-shadow .2s;
+    animation: panicGlow 3.2s ease-in-out infinite;
+  }
+  @keyframes panicGlow {
+    0%,100% { box-shadow: 0 0 0 1px rgba(255,90,95,0.25), 0 12px 30px rgba(200,40,46,0.35), inset 0 1px 0 rgba(255,255,255,0.25); }
+    50%     { box-shadow: 0 0 0 1px rgba(255,90,95,0.5), 0 14px 40px rgba(255,90,95,0.55), inset 0 1px 0 rgba(255,255,255,0.3); }
+  }
+  .panic-btn:hover { transform: translateY(-1px); }
+  .panic-btn:active { transform: translateY(1px) scale(.99); }
+  .panic-btn .ring {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2.5px solid #fff; position: relative;
+  }
+  .panic-btn .ring::after { content:""; position:absolute; inset:4px; border-radius:50%; background:#fff; }
+
+  .panic-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); line-height: 1.5; }
+  .panic-meta b { color: var(--red); letter-spacing: 1px; }
+  .panic-meta .undo-window {
+    display:inline-block; margin-left: 4px;
+    color: var(--gold);
+  }
+  .panicbar .spacer { flex: 1; }
+  .halt-note {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+    color: var(--ink-faint); text-align: right; line-height: 1.6;
+  }
+  .halt-note b { color: var(--ink-dim); }
+
+  /* ============================================================
+     STATUS LINE — "What I'm doing now"
+     ============================================================ */
+  .nowbar {
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background:
+      linear-gradient(110deg, rgba(20,60,100,0.4), rgba(9,16,28,0.65) 60%);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .nowbar::after {
+    content:""; position:absolute; inset:0;
+    background: linear-gradient(90deg, transparent, rgba(54,184,255,0.07), transparent);
+    transform: translateX(-100%);
+    animation: sweep 6s linear infinite;
+  }
+  @keyframes sweep { to { transform: translateX(100%); } }
+
+  .now-wave {
+    display:flex; align-items:flex-end; gap: 3px; height: 30px; width: 56px; flex: 0 0 auto;
+  }
+  .now-wave i {
+    width: 4px; background: var(--arc); border-radius: 2px;
+    box-shadow: 0 0 8px var(--arc-glow);
+    animation: eq 1.1s ease-in-out infinite;
+  }
+  .now-wave i:nth-child(1){ animation-delay: 0s; }
+  .now-wave i:nth-child(2){ animation-delay: .15s; }
+  .now-wave i:nth-child(3){ animation-delay: .3s; }
+  .now-wave i:nth-child(4){ animation-delay: .45s; }
+  .now-wave i:nth-child(5){ animation-delay: .6s; }
+  .now-wave i:nth-child(6){ animation-delay: .25s; }
+  .now-wave i:nth-child(7){ animation-delay: .5s; }
+  @keyframes eq { 0%,100%{ height: 6px; opacity:.5;} 50%{ height: 28px; opacity:1;} }
+
+  .now-text { flex: 1; }
+  .now-text .k {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 3px;
+    color: var(--arc); text-transform: uppercase; margin-bottom: 5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .now-text .k::before {
+    content:""; width:6px; height:6px; border-radius:50%; background: var(--arc);
+    box-shadow: 0 0 10px var(--arc); animation: pulse 1.6s ease-in-out infinite;
+  }
+  .now-text .v { font-size: 18px; font-weight: 500; letter-spacing: .2px; }
+  .now-text .v .quiet { color: var(--ink-dim); font-weight: 400; }
+  .now-text .progress {
+    margin-top: 10px; height: 4px; border-radius: 4px;
+    background: var(--line-soft); overflow: hidden; max-width: 420px;
+  }
+  .now-text .progress i {
+    display:block; height:100%; width: 74%;
+    background: linear-gradient(90deg, var(--arc-deep), var(--cyan));
+    box-shadow: 0 0 12px var(--arc-glow);
+    animation: barpulse 2.6s ease-in-out infinite;
+  }
+  @keyframes barpulse { 0%,100%{ opacity:.85;} 50%{ opacity:1;} }
+  .now-stat {
+    font-family: var(--mono); text-align: right; min-width: 130px;
+    border-left: 1px solid var(--line); padding-left: 18px;
+  }
+  .now-stat .n { font-size: 22px; color: var(--green); letter-spacing: 1px; }
+  .now-stat .n b { color: var(--amber); }
+  .now-stat .l { font-size: 9px; letter-spacing: 2px; color: var(--ink-faint); margin-top: 3px; }
+
+  /* ============================================================
+     GRID LAYOUT
+     ============================================================ */
+  .grid {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 1.15fr 1.45fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .tile {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background:
+      linear-gradient(180deg, rgba(15,26,44,0.7), rgba(8,14,24,0.78));
+    box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(120,180,255,0.04);
+    overflow: hidden;
+    position: relative;
+  }
+  .tile::before {
+    content:""; position:absolute; top:0; left:14px; right:14px; height:1px;
+    background: linear-gradient(90deg, transparent, rgba(54,184,255,0.25), transparent);
+  }
+  .tile-h {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--line-soft);
+    background: rgba(8,14,24,0.4);
+  }
+  .tile-h .ic {
+    width: 24px; height: 24px; border-radius: 7px; flex: 0 0 auto;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--arc);
+  }
+  .tile-h .title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 2.5px;
+    text-transform: uppercase; color: var(--ink); font-weight: 600;
+  }
+  .tile-h .meta {
+    margin-left: auto; font-family: var(--mono); font-size: 10px;
+    letter-spacing: 1.5px; color: var(--ink-faint);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tile-h .meta .count {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 8px; color: var(--ink-dim);
+  }
+  .tile-h .meta .count.hot { color: var(--amber); border-color: rgba(255,182,72,0.4); }
+  .tile-body { padding: 14px 16px 16px; }
+
+  /* ---- corner registration ticks (deck flavor) ---- */
+  .tile .tick { position:absolute; width:7px; height:7px; opacity:.5; }
+  .tile .tick.tl { top:7px; left:7px; border-top:1px solid var(--arc-deep); border-left:1px solid var(--arc-deep); }
+  .tile .tick.tr { top:7px; right:7px; border-top:1px solid var(--arc-deep); border-right:1px solid var(--arc-deep); }
+  .tile .tick.bl { bottom:7px; left:7px; border-bottom:1px solid var(--arc-deep); border-left:1px solid var(--arc-deep); }
+  .tile .tick.br { bottom:7px; right:7px; border-bottom:1px solid var(--arc-deep); border-right:1px solid var(--arc-deep); }
+
+  /* ============================================================
+     PENDING APPROVALS
+     ============================================================ */
+  .approval {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    border-radius: var(--r-sm);
+    background: linear-gradient(180deg, rgba(30,22,8,0.35), rgba(10,14,22,0.5));
+    padding: 13px 14px;
+    margin-bottom: 11px;
+    position: relative;
+    transition: transform .25s, opacity .25s, border-color .2s;
+  }
+  .approval:last-child { margin-bottom: 0; }
+  .approval.danger { border-left-color: var(--red); background: linear-gradient(180deg, rgba(40,12,16,0.4), rgba(10,14,22,0.5)); }
+  .approval.resolved { opacity: 0; transform: translateX(40px); pointer-events: none; height: 0; padding: 0; margin: 0; border: 0; overflow: hidden; }
+
+  .approval .row1 { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+  .approval .tag {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 1.5px;
+    padding: 3px 7px; border-radius: 5px; text-transform: uppercase;
+    border: 1px solid var(--line);
+  }
+  .approval .tag.redlist { color: var(--red); border-color: rgba(255,90,95,0.45); background: rgba(255,90,95,0.08); }
+  .approval .tag.money   { color: var(--gold); border-color: rgba(255,209,102,0.45); background: rgba(255,209,102,0.07); }
+  .approval .tag.vip     { color: var(--violet); border-color: rgba(169,139,255,0.45); background: rgba(169,139,255,0.08); }
+  .approval .ago { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); }
+  .approval .what { font-size: 14.5px; font-weight: 500; line-height: 1.35; }
+  .approval .what .amt { font-family: var(--mono); color: var(--gold); }
+  .approval .ctx {
+    font-size: 12px; color: var(--ink-dim); margin-top: 5px; line-height: 1.5;
+    font-family: var(--mono);
+  }
+  .approval .ctx .channel { color: var(--arc); }
+  .approval .acts { display: flex; gap: 9px; margin-top: 12px; }
+  .btn {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px;
+    padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--ink-dim);
+    transition: all .15s; flex: 1; text-align: center; font-weight: 600;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.approve { color: var(--green); border-color: rgba(56,224,160,0.4); background: rgba(56,224,160,0.07); }
+  .btn.approve:hover { background: rgba(56,224,160,0.16); box-shadow: 0 6px 18px rgba(56,224,160,0.18); }
+  .btn.reject { color: var(--red); border-color: rgba(255,90,95,0.4); background: rgba(255,90,95,0.06); }
+  .btn.reject:hover { background: rgba(255,90,95,0.15); box-shadow: 0 6px 18px rgba(255,90,95,0.18); }
+  .btn.ghost { flex: 0 0 auto; color: var(--ink-faint); }
+  .btn.ghost:hover { color: var(--ink); border-color: var(--arc-deep); }
+
+  .empty-approvals {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+    text-align: center; padding: 22px 0; letter-spacing: 1px; display: none;
+  }
+  .empty-approvals.show { display: block; }
+
+  /* ============================================================
+     ACTIVITY FEED
+     ============================================================ */
+  .feed { position: relative; padding-left: 4px; }
+  .feed-item {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    gap: 12px;
+    align-items: start;
+    padding: 11px 4px 12px 0;
+    border-bottom: 1px solid var(--line-soft);
+    position: relative;
+  }
+  .feed-item:last-child { border-bottom: 0; }
+  .feed-item .ts {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint);
+    letter-spacing: 0.5px; padding-top: 2px;
+    border-right: 1px solid var(--line-soft); padding-right: 10px;
+  }
+  .feed-item .body .act { font-size: 13.5px; line-height: 1.45; }
+  .feed-item .body .act .who { color: var(--arc); font-family: var(--mono); font-size: 12px; }
+  .feed-item .body .act .obj { color: var(--ink); }
+  .feed-item .body .sub {
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint);
+    margin-top: 4px; letter-spacing: .3px;
+  }
+  .feed-item .body .sub .ok { color: var(--green); }
+  .feed-item .ico {
+    width: 22px; height: 22px; border-radius: 6px;
+    display: grid; place-items: center; flex: 0 0 auto;
+    font-size: 11px; border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--arc); position: absolute; left: -28px; top: 11px;
+  }
+  .undo {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+    padding: 6px 11px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-faint);
+    transition: all .15s; white-space: nowrap; align-self: center;
+  }
+  .undo:hover { color: var(--gold); border-color: rgba(255,209,102,0.45); background: rgba(255,209,102,0.07); }
+  .undo.done { color: var(--green); border-color: rgba(56,224,160,0.4); pointer-events: none; }
+
+  /* ============================================================
+     SYSTEM HEALTH
+     ============================================================ */
+  .health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat {
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--panel-2); padding: 11px 12px;
+  }
+  .stat .l { font-family: var(--mono); font-size: 9px; letter-spacing: 2px; color: var(--ink-faint); text-transform: uppercase; }
+  .stat .v { font-size: 14px; margin-top: 6px; display: flex; align-items: center; gap: 7px; }
+  .stat .v .mono { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .stat .v.green { color: var(--green); }
+  .stat .v.amber { color: var(--amber); }
+  .stat .gdot { width: 8px; height: 8px; border-radius: 50%; flex:0 0 auto; }
+  .gdot.g { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .gdot.a { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+
+  .integrations { margin-top: 12px; }
+  .integrations .ihead {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 2px;
+    color: var(--ink-faint); text-transform: uppercase; margin-bottom: 9px;
+  }
+  .irow {
+    display: flex; align-items: center; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft); font-size: 13px;
+  }
+  .irow:last-child { border-bottom: 0; }
+  .irow .nm { flex: 1; }
+  .irow .glyph { width: 18px; text-align: center; font-family: var(--mono); color: var(--ink-dim); }
+  .irow .state { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; display:flex; align-items:center; gap:7px; }
+  .irow .state.up { color: var(--green); }
+  .irow .state.off { color: var(--ink-faint); }
+  .irow .state .b { width: 7px; height: 7px; border-radius: 50%; }
+  .irow .state.up .b { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .irow .state.off .b { background: var(--ink-ghost); }
+
+  /* cpu / mem mini gauges */
+  .gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .gauge { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 11px; background: var(--panel-2); }
+  .gauge .gl { font-family: var(--mono); font-size: 9px; letter-spacing: 2px; color: var(--ink-faint); display:flex; justify-content:space-between; }
+  .gauge .gl b { color: var(--arc); }
+  .gauge .track { height: 5px; border-radius: 4px; background: var(--line-soft); margin-top: 8px; overflow: hidden; }
+  .gauge .track i { display: block; height: 100%; background: linear-gradient(90deg, var(--arc-deep), var(--cyan)); box-shadow: 0 0 8px var(--arc-glow); }
+
+  /* full-width lower row */
+  .lower {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap: 16px;
+  }
+
+  /* telemetry strip */
+  .telemetry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+  .tcell {
+    padding: 4px 16px; border-right: 1px solid var(--line-soft);
+  }
+  .tcell:last-child { border-right: 0; }
+  .tcell .tl { font-family: var(--mono); font-size: 9px; letter-spacing: 2px; color: var(--ink-faint); text-transform: uppercase; }
+  .tcell .tv { font-family: var(--mono); font-size: 21px; letter-spacing: 1px; margin-top: 6px; color: var(--ink); }
+  .tcell .tv small { font-size: 11px; color: var(--ink-faint); letter-spacing:0; }
+  .tcell .td { font-size: 10px; margin-top: 3px; }
+  .tcell .td.up { color: var(--green); }
+  .tcell .td.dn { color: var(--red); }
+  .tcell .spark { display:flex; align-items:flex-end; gap:2px; height:18px; margin-top:8px; }
+  .tcell .spark i { width: 3px; background: var(--arc-deep); border-radius:2px; opacity:.6; }
+
+  /* memory / context tile */
+  .ctx-line {
+    display:flex; align-items:center; gap: 10px; padding: 9px 0;
+    border-bottom: 1px solid var(--line-soft); font-size: 12.5px;
+  }
+  .ctx-line:last-child { border-bottom:0; }
+  .ctx-line .kk { font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px; color: var(--ink-faint); width: 92px; text-transform: uppercase; flex:0 0 auto; }
+  .ctx-line .vv { color: var(--ink-dim); }
+  .ctx-line .vv b { color: var(--ink); }
+
+  /* ============================================================
+     THE ORB — always-on, pinned corner
+     ============================================================ */
+  .orb-dock {
+    position: fixed;
+    right: 26px; bottom: 26px;
+    z-index: 50;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .orb-caption {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+    color: var(--ink-dim); text-align: right; line-height: 1.5;
+    background: rgba(8,14,24,0.7); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 13px; backdrop-filter: blur(6px);
+    max-width: 200px;
+  }
+  .orb-caption b { color: var(--arc); }
+  .orb-caption .listening { color: var(--green); }
+
+  .orb-wrap { position: relative; width: 80px; height: 80px; flex: 0 0 auto; cursor: pointer; }
+  .orb {
+    position: absolute; inset: 0; border-radius: 50%;
+    background:
+      radial-gradient(circle at 38% 32%, #bff0ff 0%, var(--cyan) 16%, var(--arc) 40%, var(--arc-deep) 70%, #0a3a63 100%);
+    box-shadow:
+      0 0 26px var(--arc-glow),
+      0 0 60px rgba(54,184,255,0.35),
+      inset 0 0 22px rgba(255,255,255,0.35),
+      inset 0 -10px 24px rgba(6,40,70,0.6);
+    animation: breathe 4.2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%,100% { transform: scale(1);    box-shadow: 0 0 22px var(--arc-glow), 0 0 50px rgba(54,184,255,0.3), inset 0 0 20px rgba(255,255,255,0.3), inset 0 -10px 24px rgba(6,40,70,0.6); }
+    50%     { transform: scale(1.06); box-shadow: 0 0 34px var(--arc-glow), 0 0 78px rgba(54,184,255,0.5), inset 0 0 26px rgba(255,255,255,0.45), inset 0 -10px 24px rgba(6,40,70,0.6); }
+  }
+  /* orbiting ring */
+  .orb-ring {
+    position: absolute; inset: -8px; border-radius: 50%;
+    border: 1px solid rgba(54,184,255,0.25);
+    animation: spin 9s linear infinite;
+  }
+  .orb-ring::before {
+    content:""; position:absolute; top:-3px; left: 50%; width:5px; height:5px;
+    border-radius:50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan);
+    transform: translateX(-50%);
+  }
+  .orb-ring.r2 { inset: -14px; border-color: rgba(54,184,255,0.12); animation-duration: 14s; animation-direction: reverse; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* pulse halo on activity */
+  .orb-pulse {
+    position:absolute; inset:0; border-radius:50%;
+    border: 1px solid var(--arc);
+    animation: halo 4.2s ease-out infinite;
+  }
+  @keyframes halo {
+    0% { transform: scale(1); opacity: .6; }
+    70%,100% { transform: scale(1.9); opacity: 0; }
+  }
+  .orb-wrap:hover .orb { animation-duration: 1.6s; }
+
+  /* small voice bars inside dock when "speaking" */
+
+  /* ============================================================
+     TOAST (panic / undo feedback)
+     ============================================================ */
+  .toast {
+    position: fixed; left: 50%; bottom: 30px; transform: translate(-50%, 140%);
+    z-index: 80;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
+    background: rgba(10,16,28,0.95); border: 1px solid var(--arc-deep);
+    color: var(--ink); padding: 13px 22px; border-radius: 11px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.6), 0 0 24px var(--arc-glow);
+    transition: transform .35s cubic-bezier(.2,.9,.3,1.3);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+  .toast.danger { border-color: var(--red); box-shadow: 0 18px 50px rgba(0,0,0,0.6), 0 0 24px rgba(255,90,95,0.5); }
+  .toast .dotz { width:9px; height:9px; border-radius:50%; background: var(--arc); box-shadow:0 0 10px var(--arc); }
+  .toast.danger .dotz { background: var(--red); box-shadow:0 0 10px var(--red); }
+
+  @keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+  /* PANIC engaged screen-edge alert */
+  body.panic-engaged { animation: panicFlash 1.2s ease; }
+  @keyframes panicFlash {
+    0%,100% { box-shadow: none; }
+    25%,75% { box-shadow: inset 0 0 120px rgba(255,90,95,0.4); }
+  }
+
+  /* ============================================================
+     RESPONSIVE
+     ============================================================ */
+  @media (max-width: 1180px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .grid .tile.health { grid-column: span 2; }
+    .lower { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .deck { padding: 14px 14px 130px; }
+    .grid, .health-grid, .telemetry { grid-template-columns: 1fr; }
+    .grid .tile.health { grid-column: auto; }
+    .topbar { flex-wrap: wrap; }
+    .brand { min-width: 100%; }
+    .nowbar { flex-wrap: wrap; }
+    .now-stat { border-left: 0; padding-left: 0; }
+    .telemetry { gap: 1px; }
+    .tcell { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+    .orb-caption { display: none; }
+    .clock { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="deck">
+
+    <!-- ====================== TOP BAR ====================== -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <h1>J·A·R·V·I·<span>S</span></h1>
+          <div class="sub">COMMAND DECK · LOCAL OPERATOR</div>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="pillset">
+        <span class="pill on" id="pill-online"><span class="dot"></span><span class="lbl">LINK</span>&nbsp;ONLINE</span>
+        <span class="pill on" id="pill-mode"><span class="dot"></span><span class="lbl">MODE</span>&nbsp;SUPERVISED</span>
+        <span class="pill warn" id="pill-presence"><span class="dot"></span><span class="lbl">YOU</span>&nbsp;AWAY</span>
+        <span class="pill on" id="pill-secrets"><span class="dot"></span><span class="lbl">VAULT</span>&nbsp;SECRETS OK</span>
+      </div>
+
+      <div class="clock">
+        <div class="t" id="clock-t">--:--:--</div>
+        <div class="d" id="clock-d">SYNCING…</div>
+      </div>
+    </header>
+
+    <!-- ====================== PANIC BAR ====================== -->
+    <section class="panicbar">
+      <button class="panic-btn" id="panicBtn">
+        <span class="ring"></span>PANIC · HALT ALL
+      </button>
+      <div class="panic-meta">
+        Emergency stop — freezes every action in flight and opens a<br>
+        <b>90-SECOND UNDO WINDOW</b><span class="undo-window">· nothing commits during halt</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="halt-note">
+        actions in flight: <b id="inflight">2</b><br>
+        reversible ledger: <b>14 entries</b>
+      </div>
+    </section>
+
+    <!-- ====================== NOW BAR ====================== -->
+    <section class="nowbar">
+      <div class="now-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="now-text">
+        <div class="k">What I'm doing now</div>
+        <div class="v">Triaging your inbox, sir — <span class="quiet">3 handled, 1 flagged for you, drafting a reply to Maersk logistics.</span></div>
+        <div class="progress"><i></i></div>
+      </div>
+      <div class="now-stat">
+        <div class="n">3<b>·1</b></div>
+        <div class="l">HANDLED · NEEDS YOU</div>
+      </div>
+    </section>
+
+    <!-- ====================== MAIN GRID ====================== -->
+    <main class="grid">
+
+      <!-- ===== PENDING APPROVALS ===== -->
+      <section class="tile approvals">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="tile-h">
+          <div class="ic">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          </div>
+          <span class="title">Pending Approvals</span>
+          <span class="meta"><span class="count hot" id="approvalCount">3 WAITING</span></span>
+        </div>
+        <div class="tile-body" id="approvalList">
+
+          <div class="approval danger" data-id="wire">
+            <div class="row1">
+              <span class="tag redlist">RED-LIST</span>
+              <span class="tag money">PAYMENT</span>
+              <span class="ago">flagged 4m ago</span>
+            </div>
+            <div class="what">Send <span class="amt">€400.00</span> to supplier · Lindqvist Components AB</div>
+            <div class="ctx"><span class="channel">[banking]</span> Invoice #INV-2261 · matches PO-884 · funds available</div>
+            <div class="acts">
+              <button class="btn approve" onclick="resolve('wire','Authorized — wiring €400.00 to Lindqvist, sir.')">APPROVE</button>
+              <button class="btn reject"  onclick="resolve('wire','Held. I will not send the payment.')">REJECT</button>
+              <button class="btn ghost" onclick="toast('Opening invoice + PO side-by-side, sir.')">REVIEW</button>
+            </div>
+          </div>
+
+          <div class="approval" data-id="vip">
+            <div class="row1">
+              <span class="tag vip">VIP</span>
+              <span class="tag">DRAFT READY</span>
+              <span class="ago">flagged 11m ago</span>
+            </div>
+            <div class="what">Reply to VIP: <b>Nitsuh</b> — re: Thursday board deck</div>
+            <div class="ctx"><span class="channel">[gmail]</span> "Confirmed for 3pm. Deck attached — see slide 4 for the revised burn."</div>
+            <div class="acts">
+              <button class="btn approve" onclick="resolve('vip','Reply sent to Nitsuh, sir.')">APPROVE &amp; SEND</button>
+              <button class="btn reject"  onclick="resolve('vip','Discarded the draft.')">DISCARD</button>
+              <button class="btn ghost" onclick="toast('Opening editor — you can revise before sending, sir.')">EDIT</button>
+            </div>
+          </div>
+
+          <div class="approval" data-id="cal">
+            <div class="row1">
+              <span class="tag">CALENDAR</span>
+              <span class="ago">flagged 19m ago</span>
+            </div>
+            <div class="what">Decline overlapping invite · "Growth sync" 3:30pm</div>
+            <div class="ctx"><span class="channel">[calendar]</span> Conflicts with board prep. Suggested decline note attached.</div>
+            <div class="acts">
+              <button class="btn approve" onclick="resolve('cal','Declined with your note, sir.')">DECLINE</button>
+              <button class="btn reject"  onclick="resolve('cal','Left it on your calendar.')">KEEP BOTH</button>
+            </div>
+          </div>
+
+          <div class="empty-approvals" id="emptyApprovals">QUEUE CLEAR · standing by, sir.</div>
+        </div>
+      </section>
+
+      <!-- ===== ACTIVITY FEED ===== -->
+      <section class="tile feed-tile">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="tile-h">
+          <div class="ic">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+          </div>
+          <span class="title">Activity · While You Were Away</span>
+          <span class="meta"><span class="count">LAST 2H</span></span>
+        </div>
+        <div class="tile-body">
+          <div class="feed">
+
+            <div class="feed-item">
+              <div class="ts">14:52:08</div>
+              <div class="body">
+                <div class="act"><span class="who">JARVIS</span> &nbsp;<span class="obj">Archived 7 newsletters &amp; receipts from inbox</span></div>
+                <div class="sub">gmail · rules: <span class="ok">low-risk</span> · 0 needed you</div>
+              </div>
+              <button class="undo" onclick="undo(this,'Restored 7 messages to inbox, sir.')">UNDO</button>
+            </div>
+
+            <div class="feed-item">
+              <div class="ts">14:39:41</div>
+              <div class="body">
+                <div class="act"><span class="who">JARVIS</span> &nbsp;<span class="obj">Drafted reply to Maersk — held for your review</span></div>
+                <div class="sub">gmail · status: <span class="ok">draft saved</span> · not sent</div>
+              </div>
+              <button class="undo" onclick="undo(this,'Draft deleted, sir.')">UNDO</button>
+            </div>
+
+            <div class="feed-item">
+              <div class="ts">14:21:09</div>
+              <div class="body">
+                <div class="act"><span class="who">JARVIS</span> &nbsp;<span class="obj">Snoozed iMessage from "Mum" → 6:00pm reminder</span></div>
+                <div class="sub">imessage · reversible · reminder set</div>
+              </div>
+              <button class="undo" onclick="undo(this,'Snooze cancelled, sir.')">UNDO</button>
+            </div>
+
+            <div class="feed-item">
+              <div class="ts">13:58:33</div>
+              <div class="body">
+                <div class="act"><span class="who">JARVIS</span> &nbsp;<span class="obj">Booked 30m focus block · "Board deck" 2–2:30pm</span></div>
+                <div class="sub">calendar · <span class="ok">confirmed</span> · invitees: you</div>
+              </div>
+              <button class="undo" onclick="undo(this,'Focus block removed, sir.')">UNDO</button>
+            </div>
+
+            <div class="feed-item">
+              <div class="ts">13:40:55</div>
+              <div class="body">
+                <div class="act"><span class="who">JARVIS</span> &nbsp;<span class="obj">Paid recurring AWS invoice · $112.40 (pre-approved)</span></div>
+                <div class="sub">banking · auto-rule: trusted vendor · <span class="ok">settled</span></div>
+              </div>
+              <button class="undo" onclick="undo(this,'Reversal requested — refund window open, sir.')">UNDO</button>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== SYSTEM HEALTH ===== -->
+      <section class="tile health">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="tile-h">
+          <div class="ic">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10M12 6v6l4 2"/></svg>
+          </div>
+          <span class="title">System Health</span>
+          <span class="meta"><span class="count">ALL GREEN</span></span>
+        </div>
+        <div class="tile-body">
+
+          <div class="health-grid">
+            <div class="stat">
+              <div class="l">Model</div>
+              <div class="v"><span class="gdot g"></span><span class="mono">qwen2.5:7b</span></div>
+              <div class="l" style="margin-top:6px;color:var(--green)">· LOCAL · OLLAMA</div>
+            </div>
+            <div class="stat">
+              <div class="l">Inference</div>
+              <div class="v green"><span class="mono">on-device</span></div>
+              <div class="l" style="margin-top:6px;">0 cloud calls today</div>
+            </div>
+          </div>
+
+          <div class="gauges">
+            <div class="gauge">
+              <div class="gl"><span>GPU / NEURAL</span><b>41%</b></div>
+              <div class="track"><i style="width:41%"></i></div>
+            </div>
+            <div class="gauge">
+              <div class="gl"><span>CONTEXT MEM</span><b>6.8 / 16 GB</b></div>
+              <div class="track"><i style="width:43%"></i></div>
+            </div>
+          </div>
+
+          <div class="integrations">
+            <div class="ihead">Integrations</div>
+            <div class="irow"><span class="glyph">✉</span><span class="nm">Gmail</span><span class="state up"><span class="b"></span>CONNECTED ✓</span></div>
+            <div class="irow"><span class="glyph">◍</span><span class="nm">iMessage</span><span class="state up"><span class="b"></span>CONNECTED ✓</span></div>
+            <div class="irow"><span class="glyph">✈</span><span class="nm">Telegram</span><span class="state up"><span class="b"></span>CONNECTED ✓</span></div>
+            <div class="irow"><span class="glyph">◔</span><span class="nm">WhatsApp</span><span class="state off"><span class="b"></span>NOT LINKED —</span></div>
+          </div>
+
+          <div class="health-grid" style="margin-top:12px;">
+            <div class="stat">
+              <div class="l">Secrets Vault</div>
+              <div class="v green"><span class="gdot g"></span>SEALED · OK</div>
+            </div>
+            <div class="stat">
+              <div class="l">Safety Gate</div>
+              <div class="v green"><span class="gdot g"></span>ARMED</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </main>
+
+    <!-- ====================== LOWER ROW ====================== -->
+    <section class="lower">
+
+      <!-- telemetry strip -->
+      <section class="tile">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="tile-h">
+          <div class="ic">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </div>
+          <span class="title">Operations Telemetry · Today</span>
+          <span class="meta"><span class="count">SINCE 00:00</span></span>
+        </div>
+        <div class="tile-body">
+          <div class="telemetry">
+            <div class="tcell">
+              <div class="tl">Actions Taken</div>
+              <div class="tv">42</div>
+              <div class="td up">▲ 12 vs. yesterday</div>
+              <div class="spark"><i style="height:6px"></i><i style="height:11px"></i><i style="height:8px"></i><i style="height:14px"></i><i style="height:10px"></i><i style="height:17px"></i><i style="height:13px"></i><i style="height:18px"></i></div>
+            </div>
+            <div class="tcell">
+              <div class="tl">Messages Triaged</div>
+              <div class="tv">128</div>
+              <div class="td up">▲ inbox at zero</div>
+              <div class="spark"><i style="height:9px"></i><i style="height:7px"></i><i style="height:13px"></i><i style="height:11px"></i><i style="height:16px"></i><i style="height:9px"></i><i style="height:15px"></i><i style="height:12px"></i></div>
+            </div>
+            <div class="tcell">
+              <div class="tl">Awaiting You</div>
+              <div class="tv">3 <small>items</small></div>
+              <div class="td dn">▼ down from 7</div>
+              <div class="spark"><i style="height:17px"></i><i style="height:14px"></i><i style="height:12px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:6px"></i><i style="height:5px"></i><i style="height:4px"></i></div>
+            </div>
+            <div class="tcell">
+              <div class="tl">Time Saved</div>
+              <div class="tv">1h&nbsp;47m</div>
+              <div class="td up">▲ est. focus reclaimed</div>
+              <div class="spark"><i style="height:5px"></i><i style="height:8px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:15px"></i><i style="height:14px"></i><i style="height:18px"></i></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- memory / focus tile -->
+      <section class="tile">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="tile-h">
+          <div class="ic">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+          </div>
+          <span class="title">Standing Orders</span>
+          <span class="meta"><span class="count">ACTIVE</span></span>
+        </div>
+        <div class="tile-body">
+          <div class="ctx-line"><span class="kk">Watching</span><span class="vv"><b>VIP senders</b> · auto-flag, never auto-send</span></div>
+          <div class="ctx-line"><span class="kk">Auto-pay</span><span class="vv">trusted vendors <b>≤ $150</b> · log + notify</span></div>
+          <div class="ctx-line"><span class="kk">Quiet hrs</span><span class="vv"><b>22:00–07:00</b> · hold non-urgent</span></div>
+          <div class="ctx-line"><span class="kk">Escalate</span><span class="vv">anything money, legal, or family → <b>you</b></span></div>
+          <div class="ctx-line"><span class="kk">Next brief</span><span class="vv">evening digest at <b>18:00</b>, sir</span></div>
+        </div>
+      </section>
+    </section>
+
+  </div>
+
+  <!-- ====================== THE ORB ====================== -->
+  <div class="orb-dock" id="orbDock" title="Tap to speak, sir.">
+    <div class="orb-caption">
+      <b>JARVIS</b> · <span class="listening" id="orbState">listening</span><br>
+      &ldquo;At your service, sir.&rdquo;
+    </div>
+    <div class="orb-wrap" id="orbWrap">
+      <div class="orb-ring r2"></div>
+      <div class="orb-ring"></div>
+      <div class="orb-pulse"></div>
+      <div class="orb"></div>
+    </div>
+  </div>
+
+  <!-- ====================== TOAST ====================== -->
+  <div class="toast" id="toast"><span class="dotz"></span><span id="toastMsg">—</span></div>
+
+<script>
+  /* ---------- live clock ---------- */
+  const ct = document.getElementById('clock-t');
+  const cd = document.getElementById('clock-d');
+  function tick(){
+    const d = new Date();
+    const p = n => String(n).padStart(2,'0');
+    ct.textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+    cd.textContent = d.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'}).toUpperCase() + ' · LOCAL';
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---------- toast ---------- */
+  let toastTimer;
+  const toastEl = document.getElementById('toast');
+  const toastMsg = document.getElementById('toastMsg');
+  function toast(msg, danger){
+    toastMsg.textContent = msg;
+    toastEl.classList.toggle('danger', !!danger);
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toastEl.classList.remove('show'), 3200);
+  }
+
+  /* ---------- approvals ---------- */
+  function resolve(id, msg){
+    const card = document.querySelector('.approval[data-id="'+id+'"]');
+    if(!card) return;
+    card.classList.add('resolved');
+    setTimeout(()=>{
+      const remaining = document.querySelectorAll('.approval:not(.resolved)').length;
+      const counter = document.getElementById('approvalCount');
+      if(remaining <= 0){
+        counter.textContent = 'CLEAR';
+        counter.classList.remove('hot');
+        document.getElementById('emptyApprovals').classList.add('show');
+      } else {
+        counter.textContent = remaining + ' WAITING';
+      }
+    }, 280);
+    toast(msg);
+  }
+
+  /* ---------- undo ---------- */
+  function undo(btn, msg){
+    btn.textContent = 'UNDONE ✓';
+    btn.classList.add('done');
+    toast(msg);
+  }
+
+  /* ---------- panic ---------- */
+  const panicBtn = document.getElementById('panicBtn');
+  let halted = false;
+  panicBtn.addEventListener('click', ()=>{
+    halted = !halted;
+    document.body.classList.add('panic-engaged');
+    setTimeout(()=>document.body.classList.remove('panic-engaged'), 1200);
+    if(halted){
+      panicBtn.innerHTML = '<span class="ring"></span>HALTED · RESUME';
+      document.getElementById('inflight').textContent = '0';
+      document.getElementById('orbState').textContent = 'halted';
+      toast('All actions halted, sir. 90-second undo window is open.', true);
+    } else {
+      panicBtn.innerHTML = '<span class="ring"></span>PANIC · HALT ALL';
+      document.getElementById('inflight').textContent = '2';
+      document.getElementById('orbState').textContent = 'listening';
+      toast('Resuming operations, sir.');
+    }
+  });
+
+  /* ---------- mode pills toggle ---------- */
+  const mode = document.getElementById('pill-mode');
+  mode.addEventListener('click', ()=>{
+    const auto = mode.textContent.includes('SUPERVISED');
+    mode.innerHTML = auto
+      ? '<span class="dot"></span><span class="lbl">MODE</span>&nbsp;AUTO'
+      : '<span class="dot"></span><span class="lbl">MODE</span>&nbsp;SUPERVISED';
+    mode.classList.toggle('warn', auto);
+    mode.classList.toggle('on', !auto);
+    toast(auto ? 'Switched to Auto, sir — I will act and log.' : 'Back to Supervised — I will ask first, sir.');
+  });
+
+  const presence = document.getElementById('pill-presence');
+  presence.addEventListener('click', ()=>{
+    const away = presence.textContent.includes('AWAY');
+    presence.innerHTML = away
+      ? '<span class="dot"></span><span class="lbl">YOU</span>&nbsp;HOME'
+      : '<span class="dot"></span><span class="lbl">YOU</span>&nbsp;AWAY';
+    presence.classList.toggle('on', away);
+    presence.classList.toggle('warn', !away);
+    toast(away ? 'Welcome back, sir.' : 'Away-mode armed — I will be conservative, sir.');
+  });
+
+  /* ---------- orb tap ---------- */
+  const orb = document.getElementById('orbWrap');
+  orb.addEventListener('click', ()=>{
+    const s = document.getElementById('orbState');
+    s.textContent = 'listening…';
+    toast('Yes, sir? I am listening.');
+  });
+</script>
+</body>
+</html>
