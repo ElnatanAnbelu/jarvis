@@ -51,3 +51,11 @@ def list_known_people() -> str:
       risk="low")
 def triage_inbox(limit: int = 10) -> str:
     return comms.triage_inbox(limit)
+
+
+@tool(description="Forget a person/subject entirely — erase them from memory, facts, ledger, and archive their vault notes (irreversible-feeling; always confirms).",
+      parameters={"identifier": {"type": "string", "description": "Name, email, or phone of the subject to forget"}},
+      risk="red")
+def forget_person(identifier: str) -> str:
+    from brain.privacy import forget_subject
+    return forget_subject(identifier)

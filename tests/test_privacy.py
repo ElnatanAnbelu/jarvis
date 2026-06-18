@@ -41,3 +41,32 @@ def test_forget_subject_purges_all_stores(db):
 def test_forget_subject_refuses_broad_identifier(db):
     out = memory.forget_subject("a")
     assert "refusing" in out.lower()
+
+
+def test_full_forget_archives_vault_notes(tmp_path, monkeypatch):
+    # isolated db
+    p = str(tmp_path / "pv.db")
+    monkeypatch.setattr(memory, "DB_PATH", p)
+    monkeypatch.setattr(migrations, "DB_PATH", p)
+    memory.init_db()
+    # isolated vault
+    vault = tmp_path / "vault"
+    (vault / "Relationships").mkdir(parents=True)
+    note = vault / "Relationships" / "Mallory.md"
+    note.write_text("Notes about Mallory and the deal", encoding="utf-8")
+    keep = vault / "Relationships" / "Dana.md"
+    keep.write_text("Notes about Dana", encoding="utf-8")
+
+    from brain import privacy
+    monkeypatch.setattr(privacy, "VAULT", vault)
+    memory.save_message("user", "email Mallory tomorrow")
+
+    out = privacy.forget_subject("Mallory")
+    assert not note.exists()                                        # archived out
+    assert (vault / "_Archive" / "Forgotten" / "Mallory.md").exists()
+    assert keep.exists()                                            # unrelated untouched
+    assert "archived 1" in out.lower()
+    import sqlite3
+    conn = sqlite3.connect(p)
+    assert conn.execute("SELECT COUNT(*) FROM conversations WHERE content LIKE '%Mallory%'").fetchone()[0] == 0
+    conn.close()
