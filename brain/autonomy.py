@@ -70,6 +70,24 @@ def is_red(tool_name: str, declared_risk=None) -> bool:
     return declared_risk == "red" or tool_name in RED_LIST
 
 
+# Which arg carries the recipient, per send-type tool (for contact-aware gating).
+_RECIPIENT_ARGS = {
+    "send_email": ("to", "recipient", "email"),
+    "send_imessage": ("to", "recipient", "contact"),
+    "send_whatsapp": ("to", "number", "name", "contact"),
+    "send_whatsapp_by_name": ("name",),
+    "send_whatsapp_api": ("to", "number", "name"),
+}
+
+
+def _recipient_of(tool_name: str, args: dict) -> str:
+    for k in _RECIPIENT_ARGS.get(tool_name, ()):
+        v = (args or {}).get(k)
+        if v:
+            return str(v)
+    return ""
+
+
 # ── the gate ───────────────────────────────────────────────────────────────--
 def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user") -> dict:
     """Decide what happens to a tool call.
@@ -101,6 +119,25 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
         return {"action": "confirm",
                 "reason": f"Supervised mode — '{tool_name}' queued for your approval (#{cid}).",
                 "confirm_id": cid}
+
+    # Contact-aware: blocked recipients never auto-act; VIP/family confirm unless I'm present.
+    recipient = _recipient_of(tool_name, args)
+    if recipient:
+        from memory import people
+        flags = people.match(recipient)
+        if flags["blocked"]:
+            cid = memory.enqueue_confirmation(tool_name, args, agent=agent, risk="red",
+                                              reason=f"BLOCKED contact in '{tool_name}'")
+            return {"action": "confirm",
+                    "reason": f"'{recipient}' is on your blocklist — needs explicit approval (#{cid}).",
+                    "confirm_id": cid}
+        if (flags["vip"] or flags["family"]) and (source != "user" or is_away()):
+            who = "VIP" if flags["vip"] else "family"
+            cid = memory.enqueue_confirmation(tool_name, args, agent=agent, risk="red",
+                                              reason=f"{who} recipient in '{tool_name}'")
+            return {"action": "confirm",
+                    "reason": f"'{recipient}' is {who} — needs your approval (#{cid}).",
+                    "confirm_id": cid}
 
     if red and (is_away() or source == "external"):
         cid = memory.enqueue_confirmation(
