@@ -28,8 +28,20 @@
 - 4 design directions generated (`app/mockups/`); user picked **cinematic shell + clean panels**. Built `app/control.html` LIVE: polls `/api/pending|activity|status`, Approve/Reject/Undo/Panic/mode/away wired to real token-gated endpoints, always-on cyan orb. `/control` route + structured `/api/activity` + `memory.get_recent_actions_list`. Live-verified (200, token injected, endpoints authed). 273 green.
 - **Remaining P7 (tied to P2):** voice polish, goodnight/goodmorning rituals, greet-on-recognition, orb-in-app-shell decoupling.
 
-## P2 Voice / P3 Identity / P6 Domains — NOT STARTED (need user)
-- **P2** needs `faster-whisper` install + a **mic test with the user**.
-- **P3** needs **camera enrollment** of face/voice.
-- **P6** needs the user's **VIP list, family names, never-touch blocklist**, + `WHATSAPP_TOKEN`.
-## P8 — Privacy/backup — core done; remaining: vault + FAISS subject purge.
+## P6 — Domains (comms lead) — APPROVED
+- `memory/people.py` VIP/family/blocklist registry wired into `autonomy.gate` (blocked never auto-acts; VIP/family sends confirm unless present). `brain/domains/comms.py` triage (spam/important/routine, VIP-aware). `people_tools` (add_vip/family/block/list/triage_inbox). Business/school reuse the same pattern; live execution needs the user's account creds + `WHATSAPP_TOKEN`.
+
+## P3 — Identity lock — APPROVED
+- `security/identity.py`: salted-hash PIN, trusted-session TTL, lock, graceful face/voice (degrade → PIN/Telegram). Telegram lock/unlock/setpin; `/api/identity` + `/api/lock`. **Needs user: camera/voice enrollment** to turn on biometrics (PIN/Telegram path works now).
+
+## P2 — Fully-local voice — APPROVED (STT) / partial (TTS)
+- `voice/local_stt.py` (faster-whisper, offline) wired local-first into the VAD path with Groq fallback; installed + pinned + unit-tested. **TTS:** Kokoro (local) is already the `/api/tts` default; making `voice/speak.py` Kokoro-first + the cloned "Sir" voice + the end-to-end **mic test** is the remaining bit (needs the user's mic).
+
+## P7-extra — Rituals — APPROVED
+- `brain/rituals.py` greeting (surfaces only what needs the user) + goodnight/goodmorning; Telegram + `/api/identity` greeting.
+
+## P8 — Privacy/backup — APPROVED
+- Core (db forget + encrypted backup + silent-delete fix) + full `brain/privacy.forget_subject` (db purge + vault-note archive + FAISS invalidation) + `forget_person` tool (red-list).
+
+## Build status: 297 tests green · all 9 phases' core delivered + committed.
+**Still needs the user (hardware/data/creds):** mic test (P2 TTS clone), camera enrollment (P3 biometrics), live account creds + VIP/family/blocklist data + `WHATSAPP_TOKEN` (P6 live), secret rotation (Order 0, done per user).
