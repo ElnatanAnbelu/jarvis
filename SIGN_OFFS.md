@@ -11,6 +11,18 @@
 - **Channels — APPROVED** — Telegram `approve/reject/pause/resume/away/home/status/pending/undo` + owner allowlist (C4 partial); `ui/server.py` routes `/api/pause|resume|away|pending|approve|reject|undo|activity` (token-gated); control tools (`tool_undo/pause/resume/set_away/safety_status`).
 - **Adversarial (§6.4) — APPROVED** — executed end-to-end: away+red→enqueue→approve→executes; reject→never runs; pause→autonomous denied/user allowed; external red→approval even when home. 240/240 tests green, zero regressions.
 - **Outstanding (→ Block C):** inbound handlers (telegram/whatsapp/email router→think→execute_tool) must pass `source="external"` so external-triggered red actions always confirm even when NOT away. The gate supports it; the inbound wiring is Block C. Away-mode (primary while-away scenario) is fully covered now.
-## Block B — Telegram away-channel — NOT STARTED
-## Block C — Autonomy engine + Comms — NOT STARTED
-## Block D — Always-on orb + away-report — NOT STARTED
+## P0 — Make it RUN — APPROVED
+- Consolidated auth into `brain/auth.py`; fixed the `(key,is_oauth)` tuple-as-`api_key` crash class (vision/docs/briefings/computer-use). App boots + serves; previously-crashing path degrades gracefully. 246/246 green; live-verified.
+
+## P1 — The Local Brain — APPROVED
+- `brain/llm.py` (local Ollama client) + `brain/agent.py` (single-JARVIS LLM-with-tools loop). Retired the cloud brain for JARVIS; fully local. Model-tier router (qwen2.5:7b fast / qwen3:14b complex) + relevance tool-routing (≤14 of ~130 tools/call) + lean system prompt. Offline vault embeddings (no HF hang). **Eval gate PASSED 100%** (tool-selection/restraint/anti-hallucination). **Latency validated: 92s→6.8s, 34s→3.5s, 38s→5.3s (~10x) — the lag is fixed.** 259/259 green.
+
+## P4 — Observability — APPROVED
+- `obs/log.py` structured JSON logging + correlation IDs + heartbeat/liveness; `execute_tool` emits tool.executed/denied/confirm_required/failed (the autonomy audit trail); `/api/status` daemon liveness; key silent-failure points in proactive now logged. 256/256 green.
+
+## P5 — Autonomy engine + away-channel — APPROVED (core); enhancements pending
+- `brain/runner.py` goal-driven autonomous runner (source=autonomous, respects pause). `autonomy.autonomy_mode` **supervised→auto shakeout switch** (default supervised = propose everything). Source threaded user→think→agent→gate; `/api/whatsapp` tagged `source="external"` (closes C4). **Panic** (`autonomy.panic` + `/api/panic` + Telegram `panic`): halt + reject-pending + revert-window. Telegram `auto`/`supervised`; `/api/mode`. 266/266 green.
+- **Pending P5 enhancements (follow-on):** presence detection (`brain/presence.py`), away-mode batch-scan loop, "what I did" digests. (Controls + engine + gating are done; these are conveniences.)
+
+## P2 Voice / P3 Identity / P6 Domains / P7 UI / P8 Privacy — NOT STARTED
+- P2 needs a `faster-whisper` install + a **mic test with the user**. P7 needs the user to **pick a design direction**. Both gated on user input.
