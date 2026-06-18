@@ -28,10 +28,12 @@ from urllib.parse import urlsplit
 
 app = Flask(__name__)
 
-# Per-process session token. Regenerated every time the server starts, so a
-# token captured from one run is useless against the next. Injected into the
-# served HTML and required on every non-exempt API call.
-SESSION_TOKEN = secrets.token_urlsafe(32)
+# Session token, PERSISTED across restarts (gitignored 0600 file) so an
+# already-open client (orb/HUD/control room) isn't silently 403'd — and muted —
+# every time the server restarts. Still required on every non-exempt API call;
+# same-origin is still enforced.
+from session_token import load_or_create_token
+SESSION_TOKEN = load_or_create_token()
 
 # Routes that are reachable WITHOUT the session token. Page routes need to be
 # loadable so they can receive the token; /api/status is an unauthenticated

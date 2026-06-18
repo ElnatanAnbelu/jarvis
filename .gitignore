@@ -4,6 +4,7 @@ google_credentials.json
 google_token.json
 *token*.json
 *_token.json
+.session_token
 contacts.json
 *.pem
 *.key

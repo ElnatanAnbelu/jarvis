@@ -1174,7 +1174,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 /* ── AUTH (per-process session token injected by the server) ───────────── */
 const JT = window.__JARVIS_TOKEN__ || '';
 function authedUrl(u){ return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(JT); }
-function jfetch(u, opts){ opts = opts || {}; opts.headers = Object.assign({}, opts.headers, {'X-JARVIS-Token': JT}); return fetch(u, opts); }
+function jfetch(u, opts){ opts = opts || {}; opts.headers = Object.assign({}, opts.headers, {'X-JARVIS-Token': JT}); return fetch(u, opts).then(function(r){ if(r.status===403 && !window._tok403){ window._tok403=1; location.reload(); } return r; }); }
 
 /* ── DISPLAY SURFACE ──────────────────────────────────────────────────── */
 let _lastShowPayload = null;

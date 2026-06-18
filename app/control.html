@@ -713,7 +713,12 @@
   function jfetch(u, opts){
     opts = opts || {};
     opts.headers = Object.assign({}, opts.headers, { 'X-JARVIS-Token': JT });
-    return fetch(u, opts);
+    // Self-heal a stale token (e.g. after a server restart): reload once to pick
+    // up the freshly-injected token instead of silently 403-ing forever.
+    return fetch(u, opts).then(function(r){
+      if (r.status === 403 && !window._tok403) { window._tok403 = 1; location.reload(); }
+      return r;
+    });
   }
   function postJSON(u, body){
     return jfetch(u, {
