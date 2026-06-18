@@ -259,6 +259,11 @@ def start_proactive_scheduler(hud_queue=None):
                 heartbeat("scheduler")
             except Exception:
                 pass
+            try:
+                from brain.presence import auto_update_away
+                auto_update_away()  # presence-based away-mode
+            except Exception:
+                pass
             schedule.run_pending()
             time.sleep(60)
 

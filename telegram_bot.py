@@ -57,7 +57,7 @@ def _get_chat_id() -> str:
 # Single-word owner commands (no argument).
 _OWNER_COMMANDS_NOARG = {
     "pause", "resume", "away", "home", "back", "status", "pending",
-    "auto", "supervised", "panic",
+    "auto", "supervised", "panic", "digest",
 }
 # Owner commands that take a single integer id.
 _OWNER_COMMANDS_ARG = {"approve", "reject", "undo"}
@@ -174,6 +174,9 @@ def _handle_owner_command(cmd: str, arg):
         return "👀 Autonomy: SUPERVISED — I'll propose every action for your approval."
     if cmd == "panic":
         return autonomy.panic()
+    if cmd == "digest":
+        from brain.runner import build_digest
+        return build_digest()
     if cmd == "status":
         paused = "yes" if autonomy.is_paused() else "no"
         away = "yes" if autonomy.is_away() else "no"

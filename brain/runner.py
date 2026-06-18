@@ -8,6 +8,18 @@ what the proactive scheduler and away-mode loop call instead of plain think().
 from brain import agent, autonomy
 
 
+def build_digest(limit: int = 15) -> str:
+    """A 'here's what I handled while you were away' summary from the action ledger."""
+    try:
+        from memory.memory import get_recent_actions
+        acts = get_recent_actions(limit)
+    except Exception:
+        acts = ""
+    if not acts:
+        return "Nothing to report, sir — no autonomous actions logged."
+    return "Here's what I handled, sir:\n" + acts
+
+
 def run_goal(goal: str, label: str = "") -> str:
     """Execute one autonomous goal end-to-end (planning + gated tool use)."""
     try:
