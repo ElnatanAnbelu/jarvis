@@ -1021,7 +1021,14 @@ def api_identity():
     """Authenticate the owner: {'pin': '...'} (biometric tried first). Opens a trusted session."""
     from security import identity
     pin = (request.json or {}).get("pin") if request.is_json else None
-    return jsonify(identity.authenticate(pin=pin))
+    res = identity.authenticate(pin=pin)
+    if res.get("ok"):
+        try:
+            from brain.rituals import greeting
+            res["greeting"] = greeting()
+        except Exception:
+            pass
+    return jsonify(res)
 
 
 @app.route("/api/lock", methods=["POST"])

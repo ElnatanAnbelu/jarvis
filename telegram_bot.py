@@ -57,7 +57,7 @@ def _get_chat_id() -> str:
 # Single-word owner commands (no argument).
 _OWNER_COMMANDS_NOARG = {
     "pause", "resume", "away", "home", "back", "status", "pending",
-    "auto", "supervised", "panic", "digest", "lock",
+    "auto", "supervised", "panic", "digest", "lock", "goodnight", "goodmorning",
 }
 # Owner commands that take a single integer id.
 _OWNER_COMMANDS_ARG = {"approve", "reject", "undo"}
@@ -192,6 +192,12 @@ def _handle_owner_command(cmd: str, arg):
     if cmd == "setpin":
         from security import identity
         return identity.set_pin(arg)
+    if cmd == "goodnight":
+        from brain.rituals import goodnight
+        return goodnight()
+    if cmd == "goodmorning":
+        from brain.rituals import goodmorning
+        return goodmorning()
     if cmd == "status":
         paused = "yes" if autonomy.is_paused() else "no"
         away = "yes" if autonomy.is_away() else "no"
