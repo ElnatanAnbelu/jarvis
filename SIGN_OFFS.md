@@ -24,5 +24,12 @@
 - `brain/runner.py` goal-driven autonomous runner (source=autonomous, respects pause). `autonomy.autonomy_mode` **supervised→auto shakeout switch** (default supervised = propose everything). Source threaded user→think→agent→gate; `/api/whatsapp` tagged `source="external"` (closes C4). **Panic** (`autonomy.panic` + `/api/panic` + Telegram `panic`): halt + reject-pending + revert-window. Telegram `auto`/`supervised`; `/api/mode`. 266/266 green.
 - **Pending P5 enhancements (follow-on):** presence detection (`brain/presence.py`), away-mode batch-scan loop, "what I did" digests. (Controls + engine + gating are done; these are conveniences.)
 
-## P2 Voice / P3 Identity / P6 Domains / P7 UI / P8 Privacy — NOT STARTED
-- P2 needs a `faster-whisper` install + a **mic test with the user**. P7 needs the user to **pick a design direction**. Both gated on user input.
+## P7 — Control room (UI) — APPROVED (core)
+- 4 design directions generated (`app/mockups/`); user picked **cinematic shell + clean panels**. Built `app/control.html` LIVE: polls `/api/pending|activity|status`, Approve/Reject/Undo/Panic/mode/away wired to real token-gated endpoints, always-on cyan orb. `/control` route + structured `/api/activity` + `memory.get_recent_actions_list`. Live-verified (200, token injected, endpoints authed). 273 green.
+- **Remaining P7 (tied to P2):** voice polish, goodnight/goodmorning rituals, greet-on-recognition, orb-in-app-shell decoupling.
+
+## P2 Voice / P3 Identity / P6 Domains — NOT STARTED (need user)
+- **P2** needs `faster-whisper` install + a **mic test with the user**.
+- **P3** needs **camera enrollment** of face/voice.
+- **P6** needs the user's **VIP list, family names, never-touch blocklist**, + `WHATSAPP_TOKEN`.
+## P8 — Privacy/backup — core done; remaining: vault + FAISS subject purge.
