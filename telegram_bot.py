@@ -57,10 +57,12 @@ def _get_chat_id() -> str:
 # Single-word owner commands (no argument).
 _OWNER_COMMANDS_NOARG = {
     "pause", "resume", "away", "home", "back", "status", "pending",
-    "auto", "supervised", "panic", "digest",
+    "auto", "supervised", "panic", "digest", "lock",
 }
 # Owner commands that take a single integer id.
 _OWNER_COMMANDS_ARG = {"approve", "reject", "undo"}
+# Owner commands that take a free-text argument (e.g. a PIN).
+_OWNER_COMMANDS_TEXT = {"unlock", "setpin"}
 
 
 def parse_owner_command(text: str):
@@ -102,6 +104,9 @@ def parse_owner_command(text: str):
         return (cmd, None)
 
     if cmd in _OWNER_COMMANDS_ARG:
+        return (cmd, rest)
+
+    if cmd in _OWNER_COMMANDS_TEXT:
         return (cmd, rest)
 
     return None
@@ -177,6 +182,16 @@ def _handle_owner_command(cmd: str, arg):
     if cmd == "digest":
         from brain.runner import build_digest
         return build_digest()
+    if cmd == "lock":
+        from security import identity
+        return identity.lock()
+    if cmd == "unlock":
+        from security import identity
+        res = identity.authenticate(pin=arg)
+        return "🔓 Unlocked, sir — welcome back." if res["ok"] else "That didn't match, sir."
+    if cmd == "setpin":
+        from security import identity
+        return identity.set_pin(arg)
     if cmd == "status":
         paused = "yes" if autonomy.is_paused() else "no"
         away = "yes" if autonomy.is_away() else "no"

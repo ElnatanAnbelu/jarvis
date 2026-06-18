@@ -1016,6 +1016,20 @@ def autonomy_mode():
     return jsonify({"mode": autonomy.get_autonomy_mode()})
 
 
+@app.route("/api/identity", methods=["POST"])
+def api_identity():
+    """Authenticate the owner: {'pin': '...'} (biometric tried first). Opens a trusted session."""
+    from security import identity
+    pin = (request.json or {}).get("pin") if request.is_json else None
+    return jsonify(identity.authenticate(pin=pin))
+
+
+@app.route("/api/lock", methods=["POST"])
+def api_lock():
+    from security import identity
+    return jsonify({"result": identity.lock(), "trusted": identity.is_trusted()})
+
+
 @app.route("/api/away", methods=["POST"])
 def autonomy_away():
     """Set away mode. Body/query {"on": bool}; default toggles current state."""
