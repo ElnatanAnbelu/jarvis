@@ -123,9 +123,17 @@ def approve(confirm_id) -> str:
     if c.get("status") != "pending":
         return f"Action #{confirm_id} is already {c.get('status')}."
     from brain.tools.registry import execute_tool  # guarded: avoid circular import
+    # get_confirmation already returns args as a parsed dict; tolerate a raw string too.
+    args = c.get("args")
+    if isinstance(args, str):
+        try:
+            args = json.loads(args or "{}")
+        except Exception:
+            args = {}
+    elif not isinstance(args, dict):
+        args = {}
     try:
-        result = execute_tool(c["tool_name"], json.loads(c.get("args") or "{}"),
-                              agent=c.get("agent"), _bypass_gate=True)
+        result = execute_tool(c["tool_name"], args, agent=c.get("agent"), _bypass_gate=True)
         memory.set_confirmation_status(confirm_id, "executed", result=str(result)[:500])
         return f"✅ Approved & executed '{c['tool_name']}' (#{confirm_id}): {str(result)[:200]}"
     except Exception as e:  # noqa: BLE001 — surface, don't swallow

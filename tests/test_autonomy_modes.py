@@ -96,6 +96,27 @@ def test_panic_halts_and_rejects_pending(db):
         registry.TOOL_REGISTRY.pop("_panic_probe", None)
 
 
+def test_approve_executes_with_nonempty_args(db):
+    """Regression: approve must run the tool with its REAL (non-empty) args.
+    (The bug: json.loads on an already-parsed dict; only empty args slipped through.)"""
+    got = {}
+
+    @registry.tool(description="probe", parameters={"path": {"type": "string", "description": "p"}}, risk="red")
+    def _approve_probe(path):
+        got["path"] = path
+        return "listed " + path
+
+    try:
+        cid = memory.enqueue_confirmation("_approve_probe", {"path": "/tmp"},
+                                          agent="JARVIS", risk="red", reason="qa")
+        out = autonomy.approve(cid)
+        assert got.get("path") == "/tmp"                       # executed WITH real args
+        assert "executed" in out.lower()
+        assert memory.get_confirmation(cid)["status"] == "executed"
+    finally:
+        registry.TOOL_REGISTRY.pop("_approve_probe", None)
+
+
 def test_revert_recent_undoes_reversible_actions(db):
     sink = {}
 
