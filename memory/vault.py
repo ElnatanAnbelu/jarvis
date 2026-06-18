@@ -13,6 +13,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+# ── Local embedding model (offline, cached once) ─────────────────────────────────
+# The vault RAG embedder used to be re-created on every search AND did a network
+# HEAD check to huggingface.co on load — which hung the brain and broke offline use.
+# Load it ONCE, fully offline from the local cache (P1: fully-local + fast grounding).
+_EMBED_MODEL = None
+
+
+def _get_embed_model():
+    global _EMBED_MODEL
+    if _EMBED_MODEL is None:
+        import os as _os
+        _os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        _os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        from sentence_transformers import SentenceTransformer
+        _EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _EMBED_MODEL
+
+
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 DEFAULT_VAULT_PATH = Path.home() / "Documents" / "SecondBrain"
@@ -759,7 +777,6 @@ class VaultManager:
         try:
             import numpy as np
             import faiss
-            from sentence_transformers import SentenceTransformer
         except ImportError:
             return  # gracefully skip if not installed
         chunks, titles = [], []
@@ -780,7 +797,7 @@ class VaultManager:
                     continue
         if not chunks:
             return
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = _get_embed_model()
         emb = model.encode(chunks, normalize_embeddings=True, show_progress_bar=False)
         emb = np.array(emb, dtype="float32")
         index = faiss.IndexFlatIP(emb.shape[1])
@@ -816,8 +833,7 @@ class VaultManager:
 
     def _faiss_search(self, query: str, max_results: int = 3) -> str:
         import numpy as np
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = _get_embed_model()
         q = np.array(model.encode([query], normalize_embeddings=True), dtype="float32")
         with self._index_lock:
             scores, indices = self._index.search(q, min(max_results * 3, len(self._chunks)))

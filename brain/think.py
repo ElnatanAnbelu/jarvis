@@ -1149,6 +1149,19 @@ def _think_agent(user_input: str, model: str, agent: str) -> str:
 
 def think(user_input: str, model: str = None, agent: str = "JARVIS") -> str:
     agent = (agent or "JARVIS").upper()
+    # Fully-local single-JARVIS brain (P1): collapse all agents into one local JARVIS.
+    try:
+        from brain import agent as _local
+        if _local.enabled():
+            r = expand_abbreviations(_local.run(user_input, agent="JARVIS", source="user"))
+            save_message("jarvis", r)
+            try:
+                learn(user_input, r)
+            except Exception:
+                pass
+            return r
+    except Exception:
+        pass  # local brain unavailable → existing cloud/fallback chain below
     if agent != "JARVIS":
         return _think_agent(user_input, model or select_agent_model(user_input), agent)
     chosen_model = model or select_model(user_input)
@@ -1319,6 +1332,32 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS"):
     from brain.tools import execute_tool
 
     agent = (agent or "JARVIS").upper()
+    # Fully-local single-JARVIS brain (P1).
+    try:
+        from brain import agent as _local
+        _use_local = _local.enabled()
+    except Exception:
+        _use_local = False
+    if _use_local:
+        _chunks = []
+        try:
+            for _c in _local.run_stream(user_input, agent="JARVIS", source="user"):
+                _chunks.append(_c)
+                yield _c
+        except Exception:
+            pass
+        if _chunks:
+            _full = "".join(_chunks)
+            try:
+                save_message("jarvis", expand_abbreviations(_full))
+            except Exception:
+                pass
+            try:
+                learn(user_input, _full)
+            except Exception:
+                pass
+            return
+        # local produced nothing → fall through to the cloud/fallback path
     auth_key, is_oauth = _get_auth_key()
     chosen_model = model or (select_model(user_input) if agent == "JARVIS" else select_agent_model(user_input))
 
