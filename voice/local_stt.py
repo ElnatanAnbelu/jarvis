@@ -7,8 +7,11 @@ The transcription path prefers this when JARVIS_LOCAL_STT != "0".
 import os
 
 _MODEL = None
-_MODEL_NAME = os.environ.get("JARVIS_WHISPER_MODEL", "small.en")
+# tiny.en is the snappy default (small.en ran ~single-threaded = far too slow here);
+# bump via JARVIS_WHISPER_MODEL=base.en for more accuracy if your CPU has headroom.
+_MODEL_NAME = os.environ.get("JARVIS_WHISPER_MODEL", "tiny.en")
 _DISABLED = os.environ.get("JARVIS_LOCAL_STT", "1") == "0"
+_THREADS = int(os.environ.get("JARVIS_WHISPER_THREADS", str(max(4, (os.cpu_count() or 4)))))
 
 
 def available() -> bool:
@@ -25,7 +28,7 @@ def _get_model():
     global _MODEL
     if _MODEL is None:
         from faster_whisper import WhisperModel
-        _MODEL = WhisperModel(_MODEL_NAME, device="auto", compute_type="int8")
+        _MODEL = WhisperModel(_MODEL_NAME, device="cpu", compute_type="int8", cpu_threads=_THREADS)
     return _MODEL
 
 
