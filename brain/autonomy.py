@@ -206,6 +206,18 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
                 "reason": "Alfred is paused — the kill-switch is active. Resume to allow actions.",
                 "confirm_id": None}
 
+    # Hard-stop (plan §3): a regrettable or self-doxxing outbound message is HELD — even
+    # for a present owner — and released only with a PIN (the heavier gate). A non-user
+    # source can never clear it. This is the line Alfred holds even when told.
+    try:
+        from brain import judgment
+        _hard, _hreason = judgment.is_hard_stop(tool_name, args)
+    except Exception:
+        _hard, _hreason = False, ""
+    if _hard:
+        cid = memory.enqueue_confirmation(tool_name, args, agent=agent, risk="hard_stop", reason=_hreason)
+        return {"action": "confirm", "reason": f"{_hreason} (#{cid})", "confirm_id": cid}
+
     # Shakeout: an autonomous action in a still-SUPERVISED domain proposes for
     # approval; once that domain is flipped to 'auto' it executes (red-list/money
     # still gate). Per-domain so 'comms' can be auto while 'money' stays supervised.
@@ -319,15 +331,16 @@ def approve(confirm_id, pin=None) -> str:
             args = {}
     elif not isinstance(args, dict):
         args = {}
-    # A money move ≥ the threshold needs a fresh PIN even at approval time.
-    if needs_pin(c["tool_name"], args):
+    # A money move ≥ the threshold OR a hard-stop (regrettable/self-doxxing send) needs a
+    # fresh PIN even at approval time — the heavier gate (plan §3).
+    if needs_pin(c["tool_name"], args) or c.get("risk") == "hard_stop":
         from security import identity
         if not pin or not identity.verify_pin(str(pin)):
             memory.set_confirmation_status(confirm_id, "pending")  # un-claim so it can be retried with a PIN
             if not identity.has_pin():
-                return (f"#{confirm_id} is a money move ≥ ${MONEY_CONFIRM_THRESHOLD_USD:.0f} and needs a PIN, "
-                        f"but no PIN is set — set one first, sir.")
-            return f"#{confirm_id} needs your PIN to approve a money move ≥ ${MONEY_CONFIRM_THRESHOLD_USD:.0f}."
+                return (f"#{confirm_id} needs your PIN to override, sir — but no PIN is set. "
+                        f"Set one first.")
+            return f"#{confirm_id} needs your PIN to approve, sir."
     try:
         result = execute_tool(c["tool_name"], args, agent=c.get("agent"), _bypass_gate=True)
         memory.set_confirmation_status(confirm_id, "executed", result=str(result)[:500])
