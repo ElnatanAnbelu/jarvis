@@ -4,6 +4,12 @@ _Consistency sweep of the master plan, cross-checked against the real code. Most
 
 **Verified ground truth:** vault = `~/Desktop/SecondBrain`; 139 `@tool` registrations; ~320 test functions; RED_LIST lacks git_branch/commit/diff; memory uses Anthropic Haiku + wiki uses Groq (cloud — to be localized); computer_agent is Sonnet cloud-only.
 
+## ✅ RESOLVED (owner decisions, 2026-06-19)
+- **#15 Money PIN threshold —** PIN required on ANY money action ≥ ~$100 (strictest; no tap-only money tier). `MONEY_CONFIRM_THRESHOLD_USD = 100`. Folded into master-plan §11-P2.
+- **#11 Telegram —** NOT retired; demoted to the brain-free **dormant fail-safe transport** (kill-switch / sentinel / degraded alerts), since iMessage's chat.db polling needs the macOS Messages stack that'd be down in a crisis. iMessage = everyday channel. Folded into master-plan §Surfaces.
+
+_Remaining items below are naming/consistency fixes + builder-gaps to fold in at build time (no further owner decision needed unless noted)._
+
 All key claims verified. Confirmed findings:
 - `git_branch`/`git_commit`/`git_diff` are **NOT** in `RED_LIST` (only `control_screen`, money tools, etc. shown) — the Self-Dev section is correct that this is a hole, but §11-P3 wrongly implies the firewall already covers it.
 - `memory/memory.py` uses **Anthropic Haiku** (`claude-haiku-4-5`), `memory/wiki.py` uses **Groq** — the Memory section correctly distinguishes these, but §11 omits both as a build item.

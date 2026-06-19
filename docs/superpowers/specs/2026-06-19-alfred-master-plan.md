@@ -1115,7 +1115,7 @@ The loop is: **wake/click → listening → local STT → `session.turn_stream(s
 
 ## 2. iMESSAGE — the away-channel (fully replaces Telegram)
 
-**Decision:** iMessage **replaces Telegram entirely** — every capability `telegram_bot.py` has today moves to iMessage, plus more. Telegram was a placeholder away-channel; Elnatan lives on iPhone/iMessage (interrogation §14, §20), so the owner-handle-locked iMessage channel becomes *the* remote surface. `telegram_bot.py` is retired (kept only as a reference/disabled fallback, mirroring how the cloud brain path is kept-but-disabled).
+**Decision (LOCKED):** iMessage becomes *the* everyday remote surface — every capability `telegram_bot.py` has today moves to iMessage, plus more (Elnatan lives on iPhone/iMessage, §14/§20). **Telegram is NOT retired — it is demoted to the brain-free dormant fail-safe transport.** Rationale: the iMessage channel polls `chat.db`, which needs the full macOS Messages stack — exactly what's down in a degraded/crashed state. So Telegram (an independent network channel that doesn't depend on the Mac's Messages stack) is *retained, silent day-to-day*, and carries only fail-safe traffic: the kill-switch/panic, the "I'm alive" sentinel, and degraded-mode alerts (see the Resilience section, R1). Day-to-day owner comms = iMessage; emergency/last-resort = Telegram.
 
 **What exists to build on:** `control/messages.py` already sends iMessages (`send_imessage`, AppleScript, with the `_osa_str` injection guard) and reads them (`read_imessages`). What's missing is an **inbound away-channel**: a poller that watches incoming iMessages and feeds the owner's commands/chat into the brain. That's the new core.
 
@@ -1791,13 +1791,13 @@ Sequencing rationale: (P0) prove and *lock* speed, because every later phase ris
 - **Shippable:** Yes — independently lands as "JARVIS is now Alfred and sounds like Alfred."
 
 ### P2 — The Money & Approval Gate, to his exact spec
-- **Goal:** Make the universal gate match his stated lines precisely so autonomy can widen safely: **confirm over ~$100 (USD/ETB equiv)**, **send-as-him always drafts-first**, heavier gate (PIN/2FA) above a higher threshold, one-line restated-intent confirm normally.
+- **Goal:** Make the universal gate match his stated lines precisely so autonomy can widen safely: **confirm over ~$100 (USD/ETB equiv)**, **send-as-him always drafts-first**, **any money action ≥ ~$100 requires a fresh PIN** (owner's LOCKED, strictest choice — NO tap-only money tier above $100), one-line restated-intent confirm for non-money red-list.
 - **Deliverables:**
-  - Money threshold in `brain/autonomy.py`: extract the amount from money/finance tool args; **< $100 may flow in auto-mode, ≥ $100 always confirms**; a second, higher threshold escalates to a **PIN-gated** confirm (ties into `security/identity.py` `verify_pin`). ETB↔USD conversion constant, owner-editable.
+  - Money threshold in `brain/autonomy.py`: extract the amount from money/finance tool args; **< ~$100 may flow in auto-mode; ≥ ~$100 ALWAYS requires a fresh PIN-gated confirm** (single line, no second higher tier — ties into `security/identity.py` `verify_pin`). `MONEY_CONFIRM_THRESHOLD_USD = 100`, owner-editable, with an ETB↔USD conversion constant.
   - **Drafts-first for send-as-him** is non-negotiable and explicit: every `send_imessage`/email-send tool returns a *draft* into `pending_confirmations` first; nothing leaves as him unseen (this is his #1 trust-breaker). Stays drafts-first even in auto-mode early on; per-domain flip to auto-send is a later, deliberate owner action.
   - One-line restated-intent confirm format ("Sir — send '…' to Bruce? Y/N") as the normal weight; PIN/2FA path for above-threshold.
   - Per-domain supervised↔auto map persisted (start fully supervised everywhere; flip per domain as trust is earned).
-- **Acceptance:** A $120 action confirms even in auto/at-home; a $400 action demands PIN; a send-as-him action *always* drafts first regardless of mode; under-$100 in an auto domain flows without prompt.
+- **Acceptance:** Any money action ≥ ~$100 demands a fresh PIN even in auto/at-home (a $120 action → PIN, not a tap); a send-as-him action *always* drafts first regardless of mode; under-~$100 in an auto domain flows without prompt.
 - **Verification:** Extend `tests/test_risk_gate.py` / `test_autonomy_modes.py` with threshold, ETB, PIN-escalation, and drafts-first cases; the existing fail-closed and "red-list always confirms for autonomous/external" tests stay green.
 - **Shippable:** Yes — gate-only change, fully testable offline.
 
