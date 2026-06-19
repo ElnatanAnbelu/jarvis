@@ -7,6 +7,11 @@ source venv/bin/activate
 
 # Kill any existing instances
 pkill -f "ui/server.py" 2>/dev/null
+# Tear down stale TTS daemons too — they used to orphan across restarts and pile
+# up (each holds its model in RAM), leaving stale sockets that cause /api/tts
+# connection-refused. The server self-heals the socket, but reap the processes.
+pkill -f "kokoro_daemon.py" 2>/dev/null
+pkill -f "clone_daemon.py" 2>/dev/null
 # Hygiene: tear down any stray cloudflared from a previous (now-removed) tunnel.
 pkill -f "cloudflared" 2>/dev/null
 sleep 1

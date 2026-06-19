@@ -934,9 +934,14 @@
       var nodeCls = reverted ? 'node done' : (ok ? 'node done' : 'node fail');
       var result = reverted ? 'reverted' : (ok ? 'completed' : 'failed');
       var textCls = ok ? '' : ' class="fail"';
+      // Only offer Undo when the backend says the action is actually reversible
+      // (has a recorded inverse, succeeded, not already reverted). Otherwise show
+      // nothing rather than a button that just reports "no inverse".
       var undoBtn = reverted
         ? '<span class="undo done">✓ Reverted</span>'
-        : '<span class="undo" data-undo="' + esc(r.id) + '">↺ Undo</span>';
+        : (r.reversible
+            ? '<span class="undo" data-undo="' + esc(r.id) + '">↺ Undo</span>'
+            : '');
       return (
         '<div class="feed-item">' +
           '<span class="' + nodeCls + '"></span>' +

@@ -9,11 +9,23 @@ import os
 import socket
 import json
 import struct
+import atexit
+import signal
 import threading
 import numpy as np
 from pathlib import Path
 
 SOCKET_PATH = str(Path(__file__).parent / "kokoro.sock")
+
+
+def _cleanup_socket(*_a):
+    """Remove our Unix socket on exit so a dead daemon doesn't leave a stale
+    .sock that the server connects to and gets ECONNREFUSED from."""
+    try:
+        if os.path.exists(SOCKET_PATH):
+            os.unlink(SOCKET_PATH)
+    except Exception:
+        pass
 VOICE_DIR   = Path(__file__).parent
 MODEL_PATH  = str(VOICE_DIR / "kokoro-v1.0.onnx")
 VOICES_PATH = str(VOICE_DIR / "voices-v1.0.bin")
@@ -107,6 +119,9 @@ def main():
     server.bind(SOCKET_PATH)
     os.chmod(SOCKET_PATH, 0o666)
     server.listen(10)
+    # Clean the socket up on normal exit and on SIGTERM (how start.sh/pkill stop us).
+    atexit.register(_cleanup_socket)
+    signal.signal(signal.SIGTERM, lambda *_: (_cleanup_socket(), sys.exit(0)))
     print(f"Listening on {SOCKET_PATH}", flush=True)
 
     while True:

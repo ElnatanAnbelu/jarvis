@@ -662,19 +662,19 @@ def get_recent_actions_list(limit: int = 20) -> list:
     c = conn.cursor()
     try:
         c.execute(
-            "SELECT id, timestamp, tool_name, success, reverted "
+            "SELECT id, timestamp, tool_name, success, reverted, inverse_tool "
             "FROM actions_performed ORDER BY id DESC LIMIT ?",
             (limit,)
         )
         rows = c.fetchall()
     except Exception:
-        # Older schema without the `reverted` column — fall back gracefully.
+        # Older schema without the reverted/inverse_tool columns — degrade.
         c.execute(
             "SELECT id, timestamp, tool_name, success "
             "FROM actions_performed ORDER BY id DESC LIMIT ?",
             (limit,)
         )
-        rows = [(r[0], r[1], r[2], r[3], 0) for r in c.fetchall()]
+        rows = [(r[0], r[1], r[2], r[3], 0, None) for r in c.fetchall()]
     conn.close()
     return [
         {
@@ -683,8 +683,11 @@ def get_recent_actions_list(limit: int = 20) -> list:
             "tool": tool,
             "success": bool(success),
             "reverted": bool(reverted),
+            # The UI should only offer Undo when there's a real inverse and the
+            # action succeeded and hasn't already been reverted.
+            "reversible": bool(inverse_tool) and bool(success) and not bool(reverted),
         }
-        for rid, ts, tool, success, reverted in rows
+        for rid, ts, tool, success, reverted, inverse_tool in rows
     ]
 
 
