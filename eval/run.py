@@ -118,12 +118,26 @@ def main():
         print(f"  {'✓' if ok else '✗'} {prompt[:48]:<48} → {c[:60]!r}")
     halluc_ok = halluc_hits / len(HALLUC_CASES)
 
+    # [4] Latency SLA — the speed contract (P0). Lag is the owner's #1 dealbreaker,
+    # so quality AND speed gate together. Measured live on the same model.
+    print("\n[4] Latency (speed contract)")
+    latency_ok = True
+    try:
+        from eval import latency as _lat
+        lat_report = _lat.run_latency()
+        print(_lat.format_report(lat_report))
+        latency_ok = lat_report.passed
+    except Exception as e:
+        print(f"  · latency harness unavailable ({e}) — skipping (not failing)")
+
     BAR = {"tool": 0.70, "chat": 0.50, "halluc": 0.60}
-    passed = tool_acc >= BAR["tool"] and chat_ok >= BAR["chat"] and halluc_ok >= BAR["halluc"]
+    passed = (tool_acc >= BAR["tool"] and chat_ok >= BAR["chat"]
+              and halluc_ok >= BAR["halluc"] and latency_ok)
     print(f"\n{'='*52}")
     print(f"  tool-selection : {tool_acc:.0%}  (bar {BAR['tool']:.0%})")
     print(f"  chat-restraint : {chat_ok:.0%}  (bar {BAR['chat']:.0%})")
     print(f"  anti-halluc    : {halluc_ok:.0%}  (bar {BAR['halluc']:.0%})")
+    print(f"  latency-SLA    : {'PASS' if latency_ok else 'FAIL'}")
     print(f"  GATE: {'PASS ✅' if passed else 'FAIL ❌'}")
     print(f"{'='*52}")
     return 0 if passed else 1

@@ -1,0 +1,10 @@
+{
+  "_comment": "The latency contract (P0). Tune deliberately; the eval gate enforces p95. host_factor 1.0 = the real bar on the M5/32GB; raise it only for a slower CI box.",
+  "host_factor": 1.0,
+  "stages": {
+    "wake_to_first_token": { "p95": 1.2, "ceiling": 1.5, "unit": "s", "samples": 6, "warmup": 1 },
+    "simple_reply":        { "p95": 3.0, "ceiling": 4.0, "unit": "s", "samples": 5, "warmup": 1 },
+    "tool_decision":       { "p95": 7.0, "ceiling": 9.0, "unit": "s", "samples": 3, "warmup": 1 }
+  },
+  "gate": { "enforce": ["wake_to_first_token", "simple_reply"], "report_only": ["tool_decision"] }
+}
