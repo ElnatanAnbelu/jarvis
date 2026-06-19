@@ -1251,5 +1251,12 @@ if __name__ == "__main__":
     threading.Thread(target=_start_clone_daemon, daemon=True).start()
     # Start Kokoro TTS daemon (fallback preset voices, fast)
     threading.Thread(target=_start_kokoro_daemon, daemon=True).start()
+    # iMessage away-channel — Alfred's PRIMARY remote surface (Telegram is fail-safe).
+    # Self-guards: the loop no-ops unless ALFRED_IMESSAGE_OWNER is configured.
+    try:
+        import imessage_channel
+        threading.Thread(target=imessage_channel.run_loop, daemon=True).start()
+    except Exception:
+        pass
     print("Alfred API running on port 8080")
     app.run(host="127.0.0.1", port=8080, debug=False, use_reloader=False, threaded=True)

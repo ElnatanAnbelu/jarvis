@@ -256,35 +256,58 @@ def _is_personal_topic(note_title: str) -> bool:
     return any(topic in lower for topic in _PERSONAL_NOTE_TOPICS)
 
 
-def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
-    """Background: extract facts, route to personal brain or project wiki."""
-    groq_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if not groq_key:
-        return
-
-    prompt = f"""You are a memory extractor for a personal AI. Read this conversation and extract ONLY concrete, lasting facts worth remembering long-term (ignore small talk, questions with no new info, or things already obvious).
+def _extract_prompt(user_msg: str, jarvis_msg: str) -> str:
+    return f"""You are a memory extractor for a personal AI. Read this conversation and extract ONLY concrete, lasting facts worth remembering long-term (ignore small talk, questions with no new info, or things already obvious).
 
 For each fact, output exactly:
 NOTE: <note title>
 FACT: <one-line fact>
 
-Use simple note titles like: Goals, Family, Health, Interests, Decisions, Elnatan (for personal facts about the user), or technical topics like: JARVIS, Tools, Architecture, Addis Market (for project/code facts).
+Use simple note titles like: Goals, Family, Health, Interests, Decisions, Elnatan (for personal facts about the user), or technical topics like: Alfred, Tools, Architecture, Addis Market (for project/code facts).
 Output nothing if there's nothing worth saving.
 
 USER: {user_msg}
-JARVIS: {jarvis_msg}
+ALFRED: {jarvis_msg}
 """
+
+
+def _run_extractor(prompt: str) -> str:
+    """Run the memory-extraction prompt LOCALLY by default (offline purity). Falls
+    back to cloud Groq only when the local model is unavailable AND the cloud escape
+    hatch is opted-in (JARVIS_ALLOW_CLOUD_BRAIN=1 + a GROQ key)."""
+    # Local-first.
     try:
+        from brain import llm
+        if llm.any_model_available():
+            out = llm.chat([{"role": "user", "content": prompt}], temperature=0)
+            return (out.get("content") or "").strip()
+    except Exception:
+        pass
+    # Opt-in cloud fallback.
+    try:
+        from brain.agent import cloud_reasoning_allowed
+        if not cloud_reasoning_allowed():
+            return ""
+        groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+        if not groq_key:
+            return ""
         from groq import Groq
         client = Groq(api_key=groq_key)
         resp = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            max_tokens=300,
-            temperature=0,
+            model="llama-3.1-8b-instant", max_tokens=300, temperature=0,
             messages=[{"role": "user", "content": prompt}],
         )
-        text = (resp.choices[0].message.content or "").strip()
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return ""
 
+
+def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
+    """Background: extract facts (LOCAL model), route to personal brain or project wiki."""
+    text = _run_extractor(_extract_prompt(user_msg, jarvis_msg))
+    if not text:
+        return
+    try:
         current_note = None
         for line in text.splitlines():
             line = line.strip()

@@ -120,9 +120,19 @@ def _execute_action(action: dict) -> str:
 
 
 def _call_claude(task: str, screenshot_b64: str, history: list) -> list:
-    """Send screenshot + task to Claude, get back list of actions."""
+    """Send screenshot + task to Claude, get back list of actions.
+
+    Computer-use needs reliable vision-grounded reasoning, which the local models
+    don't yet provide — so this is a CLOUD path, off by default for offline purity.
+    It runs only when the cloud escape-hatch is opted-in (JARVIS_ALLOW_CLOUD_BRAIN=1).
+    (Every action it returns is still red-listed / confirm-only downstream.)"""
     from brain.think import CLAUDE_MODELS
     from brain.auth import make_client
+    from brain.agent import cloud_reasoning_allowed
+
+    if not cloud_reasoning_allowed():
+        return [{"action": "done", "note": "Computer-use is a cloud capability and "
+                 "cloud reasoning is off (set JARVIS_ALLOW_CLOUD_BRAIN=1 to enable), sir."}]
 
     client = make_client()
     if client is None:
