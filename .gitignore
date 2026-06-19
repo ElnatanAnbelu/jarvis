@@ -78,3 +78,8 @@ dist/
 JARVIS.app/
 jarvis_app.log
 flask.log
+
+# Native launcher app (regenerate via scripts/build_app.sh)
+/Alfred.app/
+/JARVIS.app/
+/dist/

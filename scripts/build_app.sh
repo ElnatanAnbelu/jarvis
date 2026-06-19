@@ -1,86 +1,52 @@
 #!/usr/bin/env bash
-# scripts/build_app.sh
-# Builds, signs, installs, and TCC-resets JARVIS.app.
-# Run: bash scripts/build_app.sh
-# Re-run any time you change app/main.py or jarvis.spec.
+# scripts/build_app.sh — build Alfred.app as a thin native LAUNCHER.
+#
+# This does NOT freeze the code (the old PyInstaller freeze is exactly what rotted
+# the previous JARVIS.app to 3-week-old code). Alfred.app simply double-clicks into
+# the LIVE source — ./venv/bin/python app/main.py — so it is ALWAYS current, tiny,
+# and reliable. Mic/camera prompts attribute to "Alfred" via the Info.plist usage
+# strings + an ad-hoc signature.
 set -euo pipefail
 
-JARVIS_HOME="${JARVIS_HOME:-$HOME/jarvis}"
-VENV="$JARVIS_HOME/venv"
-PYINSTALLER="$VENV/bin/pyinstaller"
-ENTITLEMENTS="$JARVIS_HOME/app/jarvis.entitlements"
-DIST="$JARVIS_HOME/dist/JARVIS.app"
-DEST="$JARVIS_HOME/JARVIS.app"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP="$ROOT/Alfred.app"
 
-echo ""
-echo "╔══════════════════════════════════════╗"
-echo "║     JARVIS App Builder               ║"
-echo "╚══════════════════════════════════════╝"
-echo "  Project:  $JARVIS_HOME"
-echo "  venv:     $VENV"
-echo ""
+echo "Building Alfred.app (launcher) → $APP"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-# ── 1. Prerequisites ──────────────────────────────────────────────────────────
-if [ ! -x "$PYINSTALLER" ]; then
-    echo "ERROR: PyInstaller not found at $PYINSTALLER"
-    echo "Run:  $VENV/bin/pip install pyinstaller"
-    exit 1
-fi
-if [ ! -f "$JARVIS_HOME/app/main.py" ]; then
-    echo "ERROR: $JARVIS_HOME/app/main.py not found."
-    echo "Is JARVIS_HOME set correctly? (current: $JARVIS_HOME)"
-    exit 1
-fi
-if [ ! -f "$ENTITLEMENTS" ]; then
-    echo "ERROR: Entitlements file not found at $ENTITLEMENTS"
-    exit 1
-fi
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Alfred</string>
+  <key>CFBundleDisplayName</key><string>Alfred</string>
+  <key>CFBundleExecutable</key><string>Alfred</string>
+  <key>CFBundleIdentifier</key><string>com.elnatan.alfred</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Alfred listens for your voice so you can speak to him.</string>
+  <key>NSCameraUsageDescription</key><string>Alfred sees you to recognise your presence and face.</string>
+</dict>
+</plist>
+PLIST
 
-# ── 2. Build ──────────────────────────────────────────────────────────────────
-echo "[1/5] Building frozen app with PyInstaller..."
-cd "$JARVIS_HOME"
-"$PYINSTALLER" --clean -y jarvis.spec
-echo "      Build complete → $DIST"
+cat > "$APP/Contents/MacOS/Alfred" <<LAUNCH
+#!/bin/bash
+# Alfred — launches the live source (never frozen, never stale).
+cd "$ROOT" || exit 1
+exec ./venv/bin/python app/main.py >> /tmp/alfred_app.log 2>&1
+LAUNCH
+chmod +x "$APP/Contents/MacOS/Alfred"
 
-# ── 3. Sign ───────────────────────────────────────────────────────────────────
-echo ""
-echo "[2/5] Code-signing with entitlements (ad-hoc)..."
-codesign --force --deep --sign - \
-    --entitlements "$ENTITLEMENTS" \
-    --identifier com.elnatan.jarvis \
-    "$DIST"
-echo "      Signed OK"
+# Ad-hoc sign so macOS attributes mic/camera prompts to "Alfred".
+codesign --force --deep --sign - --identifier com.elnatan.alfred "$APP" 2>/dev/null \
+  && echo "  signed (ad-hoc)" || echo "  (codesign skipped)"
+tccutil reset Camera      com.elnatan.alfred 2>/dev/null || true
+tccutil reset Microphone  com.elnatan.alfred 2>/dev/null || true
 
-# ── 4. Install ────────────────────────────────────────────────────────────────
-echo ""
-echo "[3/5] Installing JARVIS.app to $DEST..."
-rm -rf "$DEST"
-cp -R "$DIST" "$DEST"
-echo "      Installed OK"
-
-# ── 5. Reset TCC ──────────────────────────────────────────────────────────────
-echo ""
-echo "[4/5] Resetting TCC entries for com.elnatan.jarvis..."
-tccutil reset Camera      com.elnatan.jarvis 2>/dev/null || true
-tccutil reset Microphone  com.elnatan.jarvis 2>/dev/null || true
-echo "      TCC reset OK"
-
-# ── 6. Done ───────────────────────────────────────────────────────────────────
-echo ""
-echo "[5/5] Done!"
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  NEXT STEP: Launch JARVIS.app and grant permissions"
-echo ""
-echo "  Option A (GUI):  double-click ~/jarvis/JARVIS.app"
-echo "  Option B (CLI):  open '$DEST'"
-echo ""
-echo "  When macOS asks, click ALLOW for:"
-echo "    • Camera"
-echo "    • Microphone"
-echo ""
-echo "  Both prompts should say 'JARVIS wants access to...'."
-echo "  If they say 'Python wants access', something went wrong —"
-echo "  re-run this script."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
+echo "Done → double-click $APP (grant Camera + Microphone when asked)."
