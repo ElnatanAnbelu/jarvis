@@ -50,5 +50,12 @@ A multi-agent audit (adversarially verified; 6 false alarms refuted) found the s
 - **P2** `panic()`/Undo truly reverts file ops (real inverses + pre-write snapshot; revert bypasses the gate but not the firewall).
 - **Gates** offline-purity (no cloud LLM in the reasoning path unless `JARVIS_ALLOW_CLOUD_BRAIN=1`); `scripts/audit.py` rewritten for the local architecture (and no longer writes to the sacred vault).
 
-## Build status: 334 tests green · all 9 phases + post-audit hardening delivered + committed.
+## Post-audit hardening, round 2 — APPROVED (second deep audit: 18 verified defects, all fixed)
+A second multi-agent audit probed the dimensions the first didn't (autonomy approve/execute loop, agent-loop robustness, concurrency, prompt-injection INTO the local brain, memory/vault integrity). 18 confirmed real (6 refuted); all fixed + regression-tested:
+- **P0** red-list **always confirms** for autonomous/external sources even at home/auto (was only away/external — autonomous money/shell/delete auto-fired).
+- **P1** prompt-injection containment (source taint-escalates to external after any untrusted-content read, so injected text can't drive an ungated red-list call); blocking `think()` never cascades to the cloud brain on a local hiccup (+ source threaded through cloud fallbacks); `forget_subject` now purges **all** stores (wiki vault + FAISS, observations.db, people + life tables, normalized fact keys); `consolidate_facts` is non-destructive (deletes only snapshotted ids + safety floor) and offline-gated.
+- **P2** `approve()` atomic-claim (no concurrent double-execute) + pause-guard (no post-panic execution); panic/revert no longer oscillates on a double-press and reports honest counts.
+- **P3** agent-loop + confirmation-queue dedup; default persona carries an anti-injection clause; vault/wiki FAISS search snapshots arrays under the lock.
+
+## Build status: 350 tests green · all 9 phases + two rounds of post-audit hardening delivered + committed.
 **Still needs the user (hardware/data/creds):** mic test (P2 TTS clone), camera enrollment (P3 biometrics), live account creds + VIP/family/blocklist data + `WHATSAPP_TOKEN` (P6 live), secret rotation (Order 0, done per user).
