@@ -3,17 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ALFRED — Waking</title>
+<title>ALFRED — Booting</title>
 <style>
   /* ============================================================
-     ALFRED — BOOT SCREEN  ·  direction: WIREFRAME-SPHERE
+     ALFRED — BOOT SCREEN  ·  direction: ARC-REACTOR
      Single file. No external resources. Fully offline.
-     Canvas hero = a slowly spinning cyan wireframe globe
-     (latitude/longitude lines + a front-lit point cloud),
-     wrapped in counter-rotating HUD orbital rings. CSS owns the
-     wordmark, scanlines, grid, edge readouts, and the typed
-     butler boot sequence.
-     Visual tokens match app/control.html exactly.
+     Canvas hero = concentric counter-rotating rings + breathing
+     core (the Iron Man arc-reactor boot feel). CSS for wordmark,
+     scanlines, grid, edge readouts, and the typed butler sequence.
      ============================================================ */
 
   :root {
@@ -102,39 +99,27 @@
     align-items: center; justify-content: center;
   }
 
-  /* ---------- Canvas wireframe sphere ---------- */
-  .globe-wrap {
+  /* ---------- Canvas reactor ---------- */
+  .reactor-wrap {
     position: relative;
-    width: min(58vmin, 560px);
-    height: min(58vmin, 560px);
+    width: min(56vmin, 540px);
+    height: min(56vmin, 540px);
     display: grid; place-items: center;
   }
-  #globe { width: 100%; height: 100%; display: block; }
+  #reactor { width: 100%; height: 100%; display: block; }
 
   /* soft bloom behind canvas */
-  .globe-wrap::before {
-    content: ""; position: absolute; inset: -6%;
-    background: radial-gradient(circle at 50% 50%, rgba(79,247,255,0.15), transparent 60%);
+  .reactor-wrap::before {
+    content: ""; position: absolute; inset: -8%;
+    background: radial-gradient(circle at 50% 50%, rgba(79,247,255,0.16), transparent 60%);
     filter: blur(8px); pointer-events: none;
     animation: bloom 4.6s ease-in-out infinite;
   }
   @keyframes bloom { 0%,100%{opacity:.7; transform:scale(1)} 50%{opacity:1; transform:scale(1.04)} }
 
-  /* rotating HUD corner brackets that frame the globe */
-  .globe-frame { position: absolute; inset: -4%; pointer-events: none; }
-  .gb {
-    position: absolute; width: 34px; height: 34px;
-    border: 1.4px solid var(--cyan-line-hi);
-    filter: drop-shadow(0 0 5px rgba(79,247,255,0.4));
-  }
-  .gb.tl { top: 0; left: 0; border-right: none; border-bottom: none; }
-  .gb.tr { top: 0; right: 0; border-left: none; border-bottom: none; }
-  .gb.bl { bottom: 0; left: 0; border-right: none; border-top: none; }
-  .gb.br { bottom: 0; right: 0; border-left: none; border-top: none; }
-
   /* ---------- Wordmark ---------- */
   .wordmark {
-    margin-top: clamp(18px, 3.6vh, 42px);
+    margin-top: clamp(20px, 4vh, 46px);
     text-align: center;
     pointer-events: none;
     opacity: 0; transform: translateY(8px);
@@ -144,7 +129,7 @@
 
   .wordmark h1 {
     font-family: var(--mono);
-    font-size: clamp(38px, 7.2vmin, 90px);
+    font-size: clamp(38px, 7.4vmin, 92px);
     font-weight: 600;
     letter-spacing: clamp(10px, 2.2vmin, 26px);
     color: var(--cyan-soft);
@@ -184,7 +169,7 @@
 
   /* ---------- Boot sequence (butler voice) ---------- */
   .boot {
-    margin-top: clamp(16px, 3vh, 32px);
+    margin-top: clamp(18px, 3.2vh, 34px);
     min-height: 1.5em;
     font-size: clamp(11px, 1.7vmin, 15px);
     letter-spacing: 1.4px;
@@ -228,7 +213,7 @@
   .r-bl { bottom: 26px; left: 30px; text-align: left; }
   .r-br { bottom: 26px; right: 30px; text-align: right; }
 
-  /* corner brackets (screen frame) */
+  /* corner brackets */
   .bracket {
     position: fixed; z-index: 4; width: 38px; height: 38px; pointer-events: none;
     border: 1px solid var(--cyan-line-hi); opacity: 0.7;
@@ -238,7 +223,7 @@
   .b-bl { bottom: 18px; left: 18px;  border-right: none; border-top: none; }
   .b-br { bottom: 18px; right: 18px; border-left: none;  border-top: none; }
 
-  /* progress meter (bottom center) */
+  /* progress meter sitting just under the readouts (bottom center) */
   .meter {
     position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px;
     z-index: 4; width: min(46vw, 460px);
@@ -264,7 +249,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .scanlines, .sweep, .globe-wrap::before, .wordmark h1 { animation: none !important; }
+    .scanlines, .sweep, .reactor-wrap::before, .wordmark h1 { animation: none !important; }
   }
 </style>
 </head>
@@ -282,17 +267,17 @@
   <div class="readout r-tr">
     <div><span class="lbl">CORTEX</span> <span class="val">qwen2.5:7b</span></div>
     <div><span class="lbl">LINK</span> <span class="val">offline · 0 cloud</span></div>
-    <div class="small-hide"><span class="lbl">SPIN</span> <span class="val" id="spinVal">12.4 rpm</span></div>
+    <div class="small-hide"><span class="lbl">TEMP</span> <span class="val" id="coreTemp">37.0°</span></div>
   </div>
   <div class="readout r-bl">
     <div><span class="lbl">GATE</span> <span class="amb">SUPERVISED</span></div>
-    <div class="small-hide"><span class="lbl">LAT</span> <span class="val" id="latVal">+00.0°</span></div>
-    <div class="small-hide"><span class="lbl">LON</span> <span class="val" id="lonVal">+000.0°</span></div>
+    <div class="small-hide"><span class="lbl">LAT</span> <span class="val" id="latVal">04.6 ms</span></div>
+    <div class="small-hide"><span class="lbl">COORD</span> <span class="val">51.5074N · 0.1278W</span></div>
   </div>
   <div class="readout r-br">
     <div><span class="lbl">MEM</span> <span class="val" id="memVal">12,408 facts</span></div>
     <div class="small-hide"><span class="lbl">RAG</span> <span class="val">FAISS · armed</span></div>
-    <div class="small-hide"><span class="lbl">NODES</span> <span class="val" id="nodeVal">1,184</span></div>
+    <div class="small-hide"><span class="lbl">PWR</span> <span class="val" id="pwrVal">100%</span></div>
   </div>
 
   <div class="bracket b-tl"></div>
@@ -302,14 +287,8 @@
 
   <!-- HERO -->
   <div class="stage">
-    <div class="globe-wrap">
-      <canvas id="globe" width="1120" height="1120"></canvas>
-      <div class="globe-frame">
-        <span class="gb tl"></span>
-        <span class="gb tr"></span>
-        <span class="gb bl"></span>
-        <span class="gb br"></span>
-      </div>
+    <div class="reactor-wrap">
+      <canvas id="reactor" width="1080" height="1080"></canvas>
     </div>
 
     <div class="wordmark">
@@ -340,8 +319,8 @@
   const reduce = window.matchMedia &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ===================== CANVAS WIREFRAME SPHERE ===================== */
-  const cv  = document.getElementById("globe");
+  /* ===================== CANVAS ARC-REACTOR ===================== */
+  const cv  = document.getElementById("reactor");
   const ctx = cv.getContext("2d");
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -360,232 +339,199 @@
   const AMBER   = "#ffb547";
   const TAU = Math.PI * 2;
 
-  // --- build the sphere as a lat/long vertex grid (unit sphere) ---
-  const LAT = 22;  // parallels (bands)
-  const LON = 34;  // meridians (segments)
-  const grid = [];
-  for (let i = 0; i <= LAT; i++) {
-    const theta = (i / LAT) * Math.PI - Math.PI / 2;   // -90°..+90°
-    const ct = Math.cos(theta), st = Math.sin(theta);
-    const row = [];
-    for (let j = 0; j <= LON; j++) {
-      const phi = (j / LON) * TAU;
-      row.push({ x: ct * Math.cos(phi), y: st, z: ct * Math.sin(phi) });
-    }
-    grid.push(row);
-  }
+  // ring layers: counter-rotating at different speeds
+  // r = radius fraction, w = lineWidth, speed (rad/s), dir, dash, color, alpha, gap arcs
+  const rings = [
+    { r: 0.96, w: 1.0, sp: 0.05,  dir:  1, color: CY_DEEP, a: 0.30, gaps: 3, gw: 0.16 },
+    { r: 0.88, w: 1.6, sp: 0.16,  dir: -1, color: CY,      a: 0.55, gaps: 4, gw: 0.10 },
+    { r: 0.78, w: 1.0, sp: 0.28,  dir:  1, color: CY,      a: 0.35, ticks: 60, tickLen: 0.035 },
+    { r: 0.68, w: 2.2, sp: 0.22,  dir: -1, color: CY_SOFT, a: 0.7,  gaps: 6, gw: 0.06, glow: 14 },
+    { r: 0.58, w: 1.0, sp: 0.40,  dir:  1, color: CY,      a: 0.28, ticks: 36, tickLen: 0.05 },
+    { r: 0.50, w: 1.4, sp: 0.34,  dir: -1, color: CY,      a: 0.5,  gaps: 3, gw: 0.20 },
+    { r: 0.40, w: 1.0, sp: 0.62,  dir:  1, color: CY_SOFT, a: 0.55, ticks: 24, tickLen: 0.06 },
+  ];
 
-  const FOCAL = 2.7; // perspective depth
-  // reusable projected-point buffer (avoids per-frame allocation)
-  const P = [];
-  for (let i = 0; i <= LAT; i++) {
-    P.push(new Array(LON + 1).fill(0).map(() => ({ sx: 0, sy: 0, depth: 0 })));
-  }
+  // small orbiting nodes on a couple of rings
+  const orbiters = [
+    { r: 0.88, sp: 0.16, dir: -1, off: 0,        size: 3.4, color: CY,    glow: 12 },
+    { r: 0.88, sp: 0.16, dir: -1, off: Math.PI,  size: 2.4, color: CY,    glow: 8  },
+    { r: 0.68, sp: 0.22, dir:  1, off: 1.1,      size: 3.0, color: CY_SOFT, glow: 12 },
+    { r: 0.50, sp: 0.34, dir: -1, off: 2.4,      size: 2.6, color: CY,    glow: 10 },
+    { r: 0.40, sp: 0.62, dir:  1, off: 0.7,      size: 2.2, color: AMBER, glow: 14 }, // the single amber node
+  ];
 
-  function project(x, y, z, cx, cy, R, out) {
-    const s = FOCAL / (FOCAL - z * 0.9);   // nearer points scale up slightly
-    out.sx = cx + x * R * s;
-    out.sy = cy + y * R * s;
-    out.depth = (z + 1) / 2;               // 0 (back) .. 1 (front)
-  }
-
-  // a flat HUD orbital ring: own-plane circle, spun about Y, tilted about X
-  function drawOrbit(cx, cy, R, rad, squashTilt, spin, color, width, ticks, t) {
+  function drawRing(cx, cy, R, ring, t) {
+    const rot = ring.sp * ring.dir * t;
     ctx.save();
-    const cs = Math.cos(spin), sn = Math.sin(spin);
-    const tc = Math.cos(squashTilt), ts = Math.sin(squashTilt);
-    const segs = 130;
-    ctx.beginPath();
-    for (let k = 0; k <= segs; k++) {
-      const a = (k / segs) * TAU;
-      let px = Math.cos(a), pz = Math.sin(a);
-      // spin in-plane about Y
-      const sx = px * cs + pz * sn;
-      let sz = -px * sn + pz * cs;
-      // tilt to lay the ring down
-      const fy = sz * ts;
-      const fz = sz * tc;
-      const sc = FOCAL / (FOCAL - fz * 0.9);
-      const X = cx + sx * rad * sc;
-      const Y = cy + fy * rad * sc;
-      if (k === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * DPR;
-    ctx.stroke();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.lineWidth = ring.w * DPR;
+    ctx.strokeStyle = ring.color;
+    ctx.globalAlpha = ring.a;
+    if (ring.glow) { ctx.shadowColor = ring.color; ctx.shadowBlur = ring.glow * DPR; }
 
-    if (ticks) {
-      for (let m = 0; m < ticks; m++) {
-        const a = (m / ticks) * TAU;
-        const px = Math.cos(a), pz = Math.sin(a);
-        const sx = px * cs + pz * sn;
-        const sz = -px * sn + pz * cs;
-        const fy = sz * ts, fz = sz * tc;
-        const sc = FOCAL / (FOCAL - fz * 0.9);
-        const bright = (fz + 1) / 2;
-        const X1 = cx + sx * rad * sc,           Y1 = cy + fy * rad * sc;
-        const X2 = cx + sx * rad * 1.04 * sc,    Y2 = cy + fy * rad * 1.04 * sc;
+    const rad = R * ring.r;
+
+    if (ring.gaps) {
+      // dashed/segmented ring: `gaps` evenly spaced gaps of width gw (radians)
+      const seg = TAU / ring.gaps;
+      const gap = ring.gw;
+      for (let i = 0; i < ring.gaps; i++) {
+        const a0 = i * seg + gap / 2;
+        const a1 = (i + 1) * seg - gap / 2;
         ctx.beginPath();
-        ctx.moveTo(X1, Y1); ctx.lineTo(X2, Y2);
-        ctx.strokeStyle = "rgba(79,247,255," + (0.05 + bright * 0.30).toFixed(3) + ")";
-        ctx.lineWidth = ((m % 9 === 0) ? 1.6 : 0.8) * DPR;
+        ctx.arc(0, 0, rad, a0, a1);
         ctx.stroke();
       }
+    } else if (ring.ticks) {
+      // tick-mark ring
+      ctx.beginPath();
+      const tl = rad * ring.tickLen;
+      for (let i = 0; i < ring.ticks; i++) {
+        const a = (i / ring.ticks) * TAU;
+        const x0 = Math.cos(a) * rad,        y0 = Math.sin(a) * rad;
+        const x1 = Math.cos(a) * (rad - tl), y1 = Math.sin(a) * (rad - tl);
+        ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      }
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, rad, 0, TAU);
+      ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  function drawOrbiter(cx, cy, R, o, t) {
+    const ang = o.off + o.sp * o.dir * t;
+    const rad = R * o.r;
+    const x = cx + Math.cos(ang) * rad;
+    const y = cy + Math.sin(ang) * rad;
+    ctx.save();
+    ctx.beginPath();
+    ctx.fillStyle = o.color;
+    ctx.shadowColor = o.color;
+    ctx.shadowBlur = o.glow * DPR;
+    ctx.globalAlpha = 0.95;
+    ctx.arc(x, y, o.size * DPR, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // crosshair / radial guide spokes that sweep
+  function drawSpokes(cx, cy, R, t) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.12);
+    ctx.strokeStyle = CY;
+    ctx.globalAlpha = 0.12;
+    ctx.lineWidth = 1 * DPR;
+    const inner = R * 0.42, outer = R * 0.92;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // a single bright scanning arc that races around the rim
+  function drawSweepArc(cx, cy, R, t) {
+    const head = (t * 1.4) % TAU;
+    const len = 0.6;
+    ctx.save();
+    ctx.translate(cx, cy);
+    const rad = R * 0.83;
+    ctx.lineWidth = 2.4 * DPR;
+    ctx.strokeStyle = CY_SOFT;
+    ctx.shadowColor = CY;
+    ctx.shadowBlur = 18 * DPR;
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(0, 0, rad, head - len, head);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // the breathing core
+  function drawCore(cx, cy, R, t, energy) {
+    const breathe = 0.5 + 0.5 * Math.sin(t * 1.6);
+    const baseR = R * 0.20 * (0.92 + 0.08 * breathe) * energy;
+
+    // outer halo
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 3.2);
+    halo.addColorStop(0,   "rgba(141,249,255,0.55)");
+    halo.addColorStop(0.35,"rgba(79,247,255,0.28)");
+    halo.addColorStop(1,   "rgba(79,247,255,0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, baseR * 3.2, 0, TAU); ctx.fill();
+
+    // triangular reactor coil (rotating) — the arc-reactor signature
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.5);
+    ctx.strokeStyle = CY_SOFT;
+    ctx.lineWidth = 2 * DPR;
+    ctx.shadowColor = CY; ctx.shadowBlur = 14 * DPR;
+    ctx.globalAlpha = 0.85 * energy;
+    const coilR = baseR * 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 3; i++) {
+      const a = (i / 3) * TAU - Math.PI / 2;
+      const x = Math.cos(a) * coilR, y = Math.sin(a) * coilR;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.rotate(-t * 1.0);
+    ctx.globalAlpha = 0.6 * energy;
+    ctx.beginPath();
+    for (let i = 0; i <= 3; i++) {
+      const a = (i / 3) * TAU + Math.PI / 2;
+      const x = Math.cos(a) * coilR * 0.78, y = Math.sin(a) * coilR * 0.78;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // bright core disc
+    const disc = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR);
+    disc.addColorStop(0,   "#ffffff");
+    disc.addColorStop(0.3, "#d8fdff");
+    disc.addColorStop(0.7, "#4ff7ff");
+    disc.addColorStop(1,   "rgba(24,168,196,0.3)");
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(cx, cy, baseR, 0, TAU); ctx.fill();
     ctx.restore();
   }
 
   /* ===================== ANIMATION LOOP ===================== */
-  const start = performance.now();
-  let energy = 0;   // 0 → 1 power-up ramp
-
-  let liveLat = "+00.0°", liveLon = "+000.0°";
+  let start = performance.now();
+  let energy = 0;             // 0 → 1 power-up ramp
 
   function frame(now) {
     const t = (now - start) / 1000;
-    energy += (1 - energy) * 0.014;
+    energy += (1 - energy) * 0.012;   // smooth ramp toward full power
     if (energy > 0.999) energy = 1;
 
     const W = cv.width, H = cv.height;
     const cx = W / 2, cy = H / 2;
-    const R = Math.min(W, H) * 0.34;
+    const R = Math.min(W, H) * 0.46;
 
     ctx.clearRect(0, 0, W, H);
 
-    // rotation: steady spin about Y, gentle axial wobble about X
-    const ry = t * 0.42;
-    const rx = -0.40 + Math.sin(t * 0.25) * 0.10;
-    const cyY = Math.cos(ry), syY = Math.sin(ry);
-    const cxX = Math.cos(rx), sxX = Math.sin(rx);
-
-    // transform + project every vertex into the buffer
-    for (let i = 0; i <= LAT; i++) {
-      for (let j = 0; j <= LON; j++) {
-        const v = grid[i][j];
-        // rotate Y
-        let x = v.x * cyY + v.z * syY;
-        const y0 = v.y;
-        let z = -v.x * syY + v.z * cyY;
-        // rotate X
-        const y = y0 * cxX - z * sxX;
-        z = y0 * sxX + z * cxX;
-        project(x, y, z, cx, cy, R, P[i][j]);
-      }
-    }
-
-    // --- atmosphere glow ---
-    const glow = ctx.createRadialGradient(cx, cy, R * 0.5, cx, cy, R * 1.75);
-    glow.addColorStop(0,    "rgba(79,247,255,0.10)");
-    glow.addColorStop(0.55, "rgba(24,168,196,0.05)");
-    glow.addColorStop(1,    "rgba(0,0,0,0)");
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(cx, cy, R * 1.75, 0, TAU); ctx.fill();
-    ctx.restore();
-
-    ctx.globalAlpha = energy;
-
-    // --- back HUD ring first (behind globe) ---
-    drawOrbit(cx, cy, R, R * 1.42, 1.16, t * 0.20, "rgba(79,247,255,0.14)", 1.0, 96, t);
-
-    // --- meridians (longitude lines) ---
-    for (let j = 0; j <= LON; j++) {
-      ctx.beginPath();
-      for (let i = 0; i <= LAT; i++) {
-        const p = P[i][j];
-        if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy);
-      }
-      const d = P[LAT >> 1][j].depth;          // equator-point depth
-      const a = 0.05 + d * d * 0.44;
-      ctx.strokeStyle = "rgba(79,247,255," + a.toFixed(3) + ")";
-      ctx.lineWidth = 1 * DPR;
-      ctx.stroke();
-    }
-
-    // --- parallels (latitude lines) ---
-    for (let i = 1; i < LAT; i++) {
-      ctx.beginPath();
-      let dsum = 0;
-      for (let j = 0; j <= LON; j++) {
-        const p = P[i][j];
-        if (j === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy);
-        dsum += p.depth;
-      }
-      const a = 0.04 + Math.pow(dsum / (LON + 1), 2) * 0.32;
-      ctx.strokeStyle = "rgba(79,247,255," + a.toFixed(3) + ")";
-      ctx.lineWidth = 1 * DPR;
-      ctx.stroke();
-    }
-
-    // --- bright equator band ---
-    const eq = LAT >> 1;
-    ctx.beginPath();
-    for (let j = 0; j <= LON; j++) {
-      const p = P[eq][j];
-      if (j === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy);
-    }
-    ctx.strokeStyle = "rgba(141,249,255,0.5)";
-    ctx.lineWidth = 1.5 * DPR;
-    ctx.stroke();
-
-    // --- front-lit vertex point cloud ---
-    for (let i = 0; i <= LAT; i += 2) {
-      for (let j = 0; j <= LON; j += 2) {
-        const p = P[i][j];
-        if (p.depth < 0.5) continue;
-        const b = (p.depth - 0.5) * 2;          // 0..1
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, (0.6 + b * 1.5) * DPR, 0, TAU);
-        ctx.fillStyle = "rgba(141,249,255," + (0.14 + b * 0.7).toFixed(3) + ")";
-        ctx.fill();
-      }
-    }
-
-    // --- one amber telemetry node riding the equator (the warm accent) ---
-    const aIdx = Math.floor(((t * 0.18) % 1) * LON);
-    const ap = P[eq][aIdx];
-    if (ap.depth > 0.48) {
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = AMBER;
-      ctx.shadowColor = AMBER; ctx.shadowBlur = 14 * DPR;
-      ctx.beginPath();
-      ctx.arc(ap.sx, ap.sy, 2.6 * DPR, 0, TAU);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // --- inner core disc ---
-    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.42);
-    core.addColorStop(0,   "rgba(255,255,255," + (0.85 * energy).toFixed(3) + ")");
-    core.addColorStop(0.3, "rgba(216,253,255," + (0.5 * energy).toFixed(3) + ")");
-    core.addColorStop(0.7, "rgba(79,247,255," + (0.22 * energy).toFixed(3) + ")");
-    core.addColorStop(1,   "rgba(79,247,255,0)");
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.fillStyle = core;
-    ctx.beginPath(); ctx.arc(cx, cy, R * 0.42, 0, TAU); ctx.fill();
-    ctx.restore();
-
-    // --- front HUD ring (over globe), counter-rotating + ticks ---
-    drawOrbit(cx, cy, R, R * 1.26, 1.16, -t * 0.55, "rgba(79,247,255,0.30)", 1.2, 64, t);
-
-    ctx.globalAlpha = 1;
-
-    // feed live coordinate readouts off the same rotation
-    liveLat = fmtDeg(Math.sin(t * 0.7) * 62, 4);
-    liveLon = fmtDeg(((t * 24) % 360) - 180, 5);
+    drawSpokes(cx, cy, R, t);
+    for (const ring of rings) drawRing(cx, cy, R, ring, t);
+    drawSweepArc(cx, cy, R, t);
+    for (const o of orbiters) drawOrbiter(cx, cy, R, o, t);
+    drawCore(cx, cy, R, t, energy);
 
     if (!reduce) requestAnimationFrame(frame);
   }
-
-  function fmtDeg(v, pad) {
-    const sign = v < 0 ? "−" : "+";
-    const s = Math.abs(v).toFixed(1).padStart(pad - 1, "0");
-    return sign + s + "°";
-  }
-
   if (reduce) { energy = 1; frame(performance.now()); }
   else requestAnimationFrame(frame);
 
@@ -595,8 +541,8 @@
     { text: "Mounting Second Brain…",                dwell: 520 },
     { text: "Indexing memory · FAISS RAG online.",   dwell: 520 },
     { text: "Identity verified · trusted session.",  dwell: 520 },
-    { text: "Safety gate armed.",                    dwell: 560 },
-    { text: "Good evening, sir. At your service.",   dwell: 1600, ready: true },
+    { text: "Safety gate armed.",                         dwell: 560 },
+    { text: "Good evening, sir. At your service.",        dwell: 1600, ready: true },
   ];
 
   const bootEl  = document.getElementById("boot");
@@ -605,7 +551,7 @@
   const barEl   = document.getElementById("bar");
   const pctEl   = document.getElementById("pct");
 
-  const TYPE_MS = 26;
+  const TYPE_MS = 26;       // per character
   let li = 0;
 
   function setProgress(p) {
@@ -623,10 +569,12 @@
     (function typeChar() {
       if (ci <= line.text.length) {
         textEl.textContent = line.text.slice(0, ci);
+        // progress tracks overall completion across all chars + lines
         const lineFrac = line.text.length ? ci / line.text.length : 1;
-        setProgress((li + lineFrac) / lines.length);
+        const overall = (li + lineFrac) / lines.length;
+        setProgress(overall);
         ci++;
-        setTimeout(typeChar, reduce ? 0 : TYPE_MS);
+        setTimeout(typeChar, TYPE_MS);
       } else {
         setProgress((li + 1) / lines.length);
         setTimeout(() => {
@@ -634,30 +582,27 @@
           if (li < lines.length) {
             typeLine();
           } else {
+            // settle on ready, then loop after a beat
             caretEl.style.opacity = "0.4";
             setTimeout(() => { li = 0; setProgress(0); typeLine(); }, 4200);
           }
-        }, reduce ? 200 : line.dwell);
+        }, line.dwell);
       }
     })();
   }
+  // kick off after the entrance animations
   setTimeout(typeLine, 1300);
 
   /* ===================== LIVE READOUT TICKERS ===================== */
   const latEl  = document.getElementById("latVal");
-  const lonEl  = document.getElementById("lonVal");
-  const spinEl = document.getElementById("spinVal");
+  const tempEl = document.getElementById("coreTemp");
   const memEl  = document.getElementById("memVal");
-  const nodeEl = document.getElementById("nodeVal");
   let memCount = 12408;
-  const t0 = performance.now();
 
   setInterval(() => {
-    const t = (performance.now() - t0) / 1000;
-    latEl.textContent  = liveLat;
-    lonEl.textContent  = liveLon;
-    spinEl.textContent = (12 + Math.sin(t * 0.8) * 0.9).toFixed(1) + " rpm";
-    nodeEl.textContent = (1184 + Math.floor(Math.sin(t) * 7)).toLocaleString();
+    const lat = (3.5 + Math.random() * 3.5).toFixed(1).padStart(4, "0");
+    latEl.textContent = lat + " ms";
+    tempEl.textContent = (36.6 + Math.random() * 0.9).toFixed(1) + "°";
     if (Math.random() < 0.4) {
       memCount += Math.floor(Math.random() * 3);
       memEl.textContent = memCount.toLocaleString() + " facts";

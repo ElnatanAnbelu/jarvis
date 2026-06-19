@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALFRED — Autonomous Life Operator</title>
+<style>
+  :root{
+    --bg:#000307; --bg-2:#02060d;
+    --cyan:#4ff7ff; --cyan-soft:#8df9ff; --cyan-deep:#18a8c4;
+    --cyan-line:rgba(79,247,255,0.22); --cyan-line-hi:rgba(79,247,255,0.55);
+    --ink:#cdeef6; --ink-dim:#6f97a6; --ink-faint:#46707e;
+    --amber:#ffb547;
+    --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;width:100%;overflow:hidden}
+  body{
+    background:
+      radial-gradient(1200px 900px at 50% 46%, #03101b 0%, var(--bg-2) 38%, var(--bg) 78%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--mono);
+    -webkit-font-smoothing:antialiased;
+    letter-spacing:.02em;
+    position:relative;
+  }
+
+  /* ---- ambient layers ---- */
+  .grid{
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(var(--cyan-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--cyan-line) 1px, transparent 1px);
+    background-size:46px 46px;
+    opacity:.10;
+    mask-image:radial-gradient(circle at 50% 47%, #000 0%, #000 42%, transparent 78%);
+    -webkit-mask-image:radial-gradient(circle at 50% 47%, #000 0%, #000 42%, transparent 78%);
+    animation:gridpulse 7s ease-in-out infinite;
+  }
+  @keyframes gridpulse{0%,100%{opacity:.07}50%{opacity:.14}}
+
+  .scanlines{
+    position:fixed; inset:0; pointer-events:none; z-index:40;
+    background:repeating-linear-gradient(to bottom,
+      rgba(79,247,255,0.035) 0px, rgba(79,247,255,0.035) 1px,
+      transparent 2px, transparent 4px);
+    mix-blend-mode:screen; opacity:.5;
+    animation:scandrift 12s linear infinite;
+  }
+  @keyframes scandrift{from{background-position-y:0}to{background-position-y:200px}}
+
+  .vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:41;
+    box-shadow:inset 0 0 240px 60px rgba(0,2,6,0.92);
+  }
+  /* faint rolling crt band */
+  .crtband{
+    position:fixed; left:0; right:0; height:160px; z-index:42; pointer-events:none;
+    background:linear-gradient(to bottom, transparent, rgba(79,247,255,0.045), transparent);
+    animation:crtroll 9s linear infinite; opacity:.6;
+  }
+  @keyframes crtroll{from{top:-160px}to{top:100%}}
+
+  /* ---- stage ---- */
+  .stage{position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center}
+  canvas#holo{position:absolute; inset:0; width:100%; height:100%; display:block}
+
+  /* center wordmark stack over the canvas */
+  .core{
+    position:relative; z-index:12; text-align:center;
+    transform:translateY(2px);
+    pointer-events:none;
+  }
+  .reactor-dot{
+    width:9px;height:9px;border-radius:50%;margin:0 auto 22px;
+    background:var(--cyan-soft);
+    box-shadow:0 0 14px 5px var(--cyan), 0 0 34px 10px rgba(79,247,255,0.5);
+    animation:beat 2.4s ease-in-out infinite;
+  }
+  @keyframes beat{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.45);opacity:1}}
+
+  .wordmark{
+    font-weight:600; font-size:clamp(40px, 9vw, 118px);
+    letter-spacing:clamp(10px,2.4vw,30px);
+    color:#eafcff; padding-left:clamp(10px,2.4vw,30px);
+    text-shadow:
+      0 0 8px rgba(79,247,255,.9),
+      0 0 26px rgba(79,247,255,.55),
+      0 0 60px rgba(79,247,255,.30);
+    line-height:1;
+  }
+  .wordmark .ch{display:inline-block; opacity:0; transform:translateY(14px); filter:blur(6px);
+    animation:reveal .7s cubic-bezier(.2,.7,.2,1) forwards}
+  .wordmark .ch:nth-child(1){animation-delay:.20s}
+  .wordmark .ch:nth-child(2){animation-delay:.31s}
+  .wordmark .ch:nth-child(3){animation-delay:.42s}
+  .wordmark .ch:nth-child(4){animation-delay:.53s}
+  .wordmark .ch:nth-child(5){animation-delay:.64s}
+  .wordmark .ch:nth-child(6){animation-delay:.75s}
+  @keyframes reveal{to{opacity:1;transform:translateY(0);filter:blur(0)}}
+
+  .sublabel{
+    margin-top:18px; font-size:clamp(9px,1.05vw,13px);
+    letter-spacing:clamp(5px,1.1vw,11px); padding-left:clamp(5px,1.1vw,11px);
+    color:var(--ink-dim); text-transform:uppercase;
+    opacity:0; animation:fadein 1s ease 1.05s forwards;
+  }
+  .sublabel b{color:var(--cyan-soft);font-weight:500}
+  @keyframes fadein{to{opacity:1}}
+
+  /* ---- boot console ---- */
+  .console{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:clamp(46px,9vh,108px); z-index:20;
+    width:min(560px,82vw); text-align:center;
+  }
+  .bootline{
+    font-size:clamp(11px,1.15vw,14px); letter-spacing:.06em;
+    color:var(--ink); min-height:1.4em;
+    text-shadow:0 0 10px rgba(79,247,255,.35);
+  }
+  .bootline .caret{
+    display:inline-block; width:8px; height:1.05em; vertical-align:-2px;
+    background:var(--cyan); margin-left:3px;
+    box-shadow:0 0 8px var(--cyan); animation:blink 1s steps(1) infinite;
+  }
+  .bootline.ready{color:var(--cyan-soft)}
+  .bootline.greet{color:var(--amber); text-shadow:0 0 12px rgba(255,181,71,.45)}
+  @keyframes blink{50%{opacity:0}}
+
+  .progwrap{
+    margin:16px auto 0; width:100%; height:2px; position:relative;
+    background:var(--cyan-line);
+  }
+  .progbar{position:absolute; inset:0 100% 0 0; right:auto;
+    background:linear-gradient(90deg,var(--cyan-deep),var(--cyan),var(--cyan-soft));
+    box-shadow:0 0 10px var(--cyan); width:0%;
+    transition:width .35s cubic-bezier(.3,.7,.2,1)}
+  .progmeta{
+    display:flex; justify-content:space-between; margin-top:9px;
+    font-size:10px; letter-spacing:.16em; color:var(--ink-faint); text-transform:uppercase;
+  }
+  .progmeta .pct{color:var(--cyan-soft)}
+
+  /* ---- corner / edge readouts ---- */
+  .hud{position:fixed; z-index:25; font-size:10px; letter-spacing:.14em;
+    color:var(--ink-faint); text-transform:uppercase; line-height:1.85;
+    opacity:0; animation:fadein 1.4s ease .4s forwards}
+  .hud .k{color:var(--ink-dim)}
+  .hud .v{color:var(--cyan-soft)}
+  .hud .amber{color:var(--amber)}
+  .tl{top:26px; left:30px}
+  .tr{top:26px; right:30px; text-align:right}
+  .bl{bottom:26px; left:30px}
+  .br{bottom:26px; right:30px; text-align:right}
+
+  .hud .bar{display:inline-block; width:74px; height:5px; vertical-align:middle;
+    margin-left:8px; background:var(--cyan-line); position:relative; overflow:hidden}
+  .hud .bar i{position:absolute; inset:0 30% 0 0;
+    background:linear-gradient(90deg,var(--cyan-deep),var(--cyan)); box-shadow:0 0 6px var(--cyan);
+    animation:sweepbar 3.6s ease-in-out infinite alternate}
+  @keyframes sweepbar{from{right:64%}to{right:6%}}
+
+  .ticker{
+    position:fixed; left:0; right:0; bottom:0; z-index:24; height:22px;
+    border-top:1px solid var(--cyan-line);
+    background:linear-gradient(to top, rgba(2,6,13,.9), transparent);
+    overflow:hidden; opacity:0; animation:fadein 1.4s ease .8s forwards;
+  }
+  .ticker .run{
+    position:absolute; white-space:nowrap; top:50%; transform:translateY(-50%);
+    font-size:9.5px; letter-spacing:.22em; color:var(--ink-faint); text-transform:uppercase;
+    animation:run 38s linear infinite;
+  }
+  .ticker .run b{color:var(--cyan-deep);font-weight:500}
+  .ticker .run .a{color:var(--amber)}
+  @keyframes run{from{transform:translate(0,-50%)}to{transform:translate(-50%,-50%)}}
+
+  /* boot flash on load */
+  .flash{position:fixed;inset:0;z-index:60;background:#cffaff;pointer-events:none;
+    animation:flash 1.1s ease forwards}
+  @keyframes flash{0%{opacity:0}6%{opacity:.5}100%{opacity:0}}
+
+  @media (max-width:680px){
+    .tr,.tl{display:none}
+    .hud.br,.hud.bl{font-size:9px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001s!important;animation-iteration-count:1!important}
+  }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+
+  <div class="stage">
+    <canvas id="holo"></canvas>
+    <div class="core">
+      <div class="reactor-dot"></div>
+      <div class="wordmark" aria-label="ALFRED">
+        <span class="ch">A</span><span class="ch">L</span><span class="ch">F</span><span class="ch">R</span><span class="ch">E</span><span class="ch">D</span>
+      </div>
+      <div class="sublabel">Autonomous&nbsp;Life&nbsp;Operator&nbsp;&nbsp;·&nbsp;&nbsp;<b>fully local</b></div>
+    </div>
+  </div>
+
+  <!-- edge readouts -->
+  <div class="hud tl">
+    <div><span class="k">SYS</span> <span class="v">ALFRED-OS 4.8</span></div>
+    <div><span class="k">CORTEX</span> <span class="v">qwen2.5:7b · local</span></div>
+    <div><span class="k">LINK</span> <span class="v">offline / air-gapped</span></div>
+  </div>
+  <div class="hud tr">
+    <div><span class="k">SAFETY GATE</span> <span class="amber">ARMED</span></div>
+    <div><span class="k">MODE</span> <span class="v">supervised</span></div>
+    <div><span class="k">NODE</span> <span class="v">37.7749 -122.4194</span></div>
+  </div>
+  <div class="hud bl">
+    <div><span class="k">MEM</span> <span class="v" id="memval">—</span><span class="bar"><i></i></span></div>
+    <div><span class="k">RAG</span> <span class="v">FAISS · 12,418 idx</span></div>
+  </div>
+  <div class="hud br">
+    <div><span class="k">UPTIME</span> <span class="v" id="uptime">00:00:00</span></div>
+    <div><span class="k">THREADS</span> <span class="v" id="threads">0</span> active</div>
+  </div>
+
+  <!-- boot console -->
+  <div class="console">
+    <div class="bootline" id="boot"><span class="txt"></span><span class="caret"></span></div>
+    <div class="progwrap"><div class="progbar" id="prog"></div></div>
+    <div class="progmeta">
+      <span>SECURE BOOT</span>
+      <span class="pct" id="pct">0%</span>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="run">
+      MOUNT /SECONDBRAIN OK · IDENTITY PIN+TELEGRAM VERIFIED · AWAY-MODE SENTINEL ONLINE · 136 TOOLS REGISTERED · LEDGER REPLAY CLEAN · <b>RED-LIST GUARD ENGAGED</b> · UNDO WINDOW 60s · <span class="a">PANIC KILL-SWITCH READY</span> · PRESENCE: MAC IDLE 00:14 · KOKORO TTS WARM · WAKE WORD "HEY JARVIS" ARMED · &nbsp;&nbsp;&nbsp;
+      MOUNT /SECONDBRAIN OK · IDENTITY PIN+TELEGRAM VERIFIED · AWAY-MODE SENTINEL ONLINE · 136 TOOLS REGISTERED · LEDGER REPLAY CLEAN · <b>RED-LIST GUARD ENGAGED</b> · UNDO WINDOW 60s · <span class="a">PANIC KILL-SWITCH READY</span> · PRESENCE: MAC IDLE 00:14 · KOKORO TTS WARM · WAKE WORD "HEY JARVIS" ARMED · &nbsp;&nbsp;&nbsp;
+    </div>
+  </div>
+
+  <div class="scanlines"></div>
+  <div class="crtband"></div>
+  <div class="vignette"></div>
+  <div class="flash"></div>
+
+<script>
+(function(){
+  "use strict";
+  const C = document.getElementById('holo');
+  const ctx = C.getContext('2d');
+  let W, H, DPR, cx, cy, R;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    C.width = W * DPR; C.height = H * DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    cx = W/2; cy = H*0.47;
+    R = Math.min(W, H) * 0.36;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const CY = '79,247,255';
+  const AMBER = '255,181,71';
+  const start = performance.now();
+
+  // ---- callout labels (radial schematic annotations) ----
+  const callouts = [
+    {a:-0.55, label:'CORTEX', sub:'7B · 14B', side:1},
+    {a: 0.62, label:'SAFETY GATE', sub:'execute/confirm/deny', side:1},
+    {a: 2.15, label:'SECOND BRAIN', sub:'FAISS RAG', side:-1},
+    {a:-2.30, label:'AUTONOMY', sub:'goal runner', side:-1},
+    {a: 3.05, label:'PRESENCE', sub:'idle/lock', side:-1, amber:true}
+  ];
+
+  // assemble progress 0..1 over ~3.4s with a slight ease
+  function assemble(t){
+    const d = 3400;
+    const p = Math.min(t / d, 1);
+    return 1 - Math.pow(1 - p, 3); // easeOutCubic
+  }
+
+  function dashedArc(r, a0, a1, alpha, lw, dash){
+    ctx.save();
+    ctx.strokeStyle = 'rgba('+CY+','+alpha+')';
+    ctx.lineWidth = lw;
+    if(dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, a0, a1);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function ticks(r, count, len, rot, alpha){
+    ctx.save();
+    ctx.strokeStyle = 'rgba('+CY+','+alpha+')';
+    ctx.lineWidth = 1;
+    for(let i=0;i<count;i++){
+      const a = rot + (i/count)*Math.PI*2;
+      const big = i % 5 === 0;
+      const l = big ? len*1.9 : len;
+      const x0 = cx + Math.cos(a)*r, y0 = cy + Math.sin(a)*r;
+      const x1 = cx + Math.cos(a)*(r+l), y1 = cy + Math.sin(a)*(r+l);
+      ctx.globalAlpha = big ? 1 : 0.55;
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function radialGrid(r, count, rot, alpha){
+    ctx.save();
+    ctx.strokeStyle = 'rgba('+CY+','+alpha+')';
+    ctx.lineWidth = 1;
+    for(let i=0;i<count;i++){
+      const a = rot + (i/count)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a)*r*0.30, cy + Math.sin(a)*r*0.30);
+      ctx.lineTo(cx + Math.cos(a)*r, cy + Math.sin(a)*r);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function frame(now){
+    const t = now - start;
+    const T = t / 1000;
+    const asm = assemble(t);
+
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // ---- deep glow core ----
+    const coreR = R*0.16*(0.9 + 0.1*Math.sin(T*2.0));
+    const g = ctx.createRadialGradient(cx,cy,0,cx,cy,R*0.9);
+    g.addColorStop(0,'rgba('+CY+','+(0.16*asm)+')');
+    g.addColorStop(0.4,'rgba('+CY+','+(0.05*asm)+')');
+    g.addColorStop(1,'rgba('+CY+',0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx,cy,R*0.9,0,Math.PI*2); ctx.fill();
+
+    // bright core ring
+    ctx.save();
+    ctx.strokeStyle='rgba(141,249,255,'+(0.9*asm)+')';
+    ctx.lineWidth=2; ctx.shadowColor='rgba('+CY+',1)'; ctx.shadowBlur=22;
+    ctx.beginPath(); ctx.arc(cx,cy,coreR,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+
+    // ---- exploded concentric arcs (the hero rotation) ----
+    // each ring rotates at its own speed/direction, "explodes" outward as it assembles
+    const rings = [
+      {base:0.30, seg:[[0.2,2.0],[2.6,4.4],[4.8,6.0]], spd: 0.30, lw:1.4, al:0.55},
+      {base:0.46, seg:[[0.0,1.3],[1.8,3.1],[3.6,5.0],[5.4,6.1]], spd:-0.20, lw:1, al:0.42},
+      {base:0.62, seg:[[0.4,2.9],[3.4,5.9]], spd: 0.42, lw:2, al:0.7},
+      {base:0.80, seg:[[0.1,1.0],[1.4,2.3],[2.8,3.6],[4.0,5.0],[5.4,6.2]], spd:-0.14, lw:1, al:0.36},
+      {base:0.95, seg:[[0.0,1.6],[3.0,4.5]], spd: 0.24, lw:1.4, al:0.5}
+    ];
+    rings.forEach((ring,idx)=>{
+      const r = R*ring.base*(0.55 + 0.45*asm); // explode outward
+      const rot = T*ring.spd + idx;
+      ring.seg.forEach(s=>{
+        dashedArc(r, s[0]+rot, s[1]+rot, ring.al*asm, ring.lw);
+      });
+    });
+
+    // ---- radial gridlines (blueprint spokes) ----
+    radialGrid(R*0.95*asm, 24, T*0.06, 0.10*asm);
+    radialGrid(R*0.55*asm, 12, -T*0.10, 0.16*asm);
+
+    // ---- rotating tick bezels ----
+    ticks(R*0.70*asm, 60, 6, -T*0.10, 0.30*asm);
+    ticks(R*0.99*asm, 90, 5,  T*0.05, 0.18*asm);
+
+    // ---- dashed reticle box + crosshair ----
+    ctx.save();
+    ctx.strokeStyle='rgba('+CY+','+(0.30*asm)+')';
+    ctx.setLineDash([2,7]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(cx,cy,R*0.40*asm,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+
+    // ---- the scanning sweep line (radar) ----
+    const sweepA = T*1.1;
+    const sweepR = R*0.99*asm;
+    ctx.save();
+    const sg = ctx.createLinearGradient(cx,cy, cx+Math.cos(sweepA)*sweepR, cy+Math.sin(sweepA)*sweepR);
+    sg.addColorStop(0,'rgba('+CY+',0)');
+    sg.addColorStop(1,'rgba('+CY+','+(0.85*asm)+')');
+    ctx.strokeStyle=sg; ctx.lineWidth=2; ctx.shadowColor='rgba('+CY+',.8)'; ctx.shadowBlur=12;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(sweepA)*sweepR, cy+Math.sin(sweepA)*sweepR);
+    ctx.stroke();
+    // sweep fan trail
+    const fan = ctx.createRadialGradient(cx,cy,0,cx,cy,sweepR);
+    fan.addColorStop(0,'rgba('+CY+','+(0.05*asm)+')');
+    fan.addColorStop(1,'rgba('+CY+',0)');
+    ctx.fillStyle=fan;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,sweepR, sweepA-0.5, sweepA);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // ---- orbiting data nodes ----
+    ctx.globalCompositeOperation='lighter';
+    for(let i=0;i<7;i++){
+      const a = T*(0.3 + i*0.05)*(i%2?-1:1) + i*0.9;
+      const rr = R*(0.50 + (i%3)*0.16)*asm;
+      const x = cx+Math.cos(a)*rr, y = cy+Math.sin(a)*rr;
+      const isA = (i===4);
+      ctx.fillStyle = isA ? 'rgba('+AMBER+',.95)' : 'rgba(141,249,255,.95)';
+      ctx.shadowColor = isA ? 'rgba('+AMBER+',1)' : 'rgba('+CY+',1)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(x,y, isA?2.6:2, 0, Math.PI*2); ctx.fill();
+    }
+
+    // ---- callout labels (drawn in normal mode for crisp text) ----
+    ctx.globalCompositeOperation='source-over';
+    ctx.shadowBlur=0;
+    ctx.font='10px ' + getComputedStyle(document.body).fontFamily;
+    callouts.forEach((c,i)=>{
+      const ca = c.a + T*0.04;
+      const anchorR = R*0.99*asm;
+      const ax = cx+Math.cos(ca)*anchorR, ay = cy+Math.sin(ca)*anchorR;
+      const outR = anchorR + R*0.16;
+      const ox = cx+Math.cos(ca)*outR, oy = cy+Math.sin(ca)*outR;
+      const dir = ox > cx ? 1 : -1;
+      const ex = ox + dir*54;
+      const col = c.amber ? AMBER : CY;
+      const a = 0.7*asm;
+      // leader line: anchor -> elbow -> horizontal
+      ctx.strokeStyle='rgba('+col+','+a+')'; ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(ax,ay); ctx.lineTo(ox,oy); ctx.lineTo(ex,oy);
+      ctx.stroke();
+      // node dot at anchor
+      ctx.fillStyle='rgba('+col+','+a+')';
+      ctx.beginPath(); ctx.arc(ax,ay,2,0,Math.PI*2); ctx.fill();
+      // text
+      ctx.textAlign = dir>0 ? 'left' : 'right';
+      ctx.textBaseline='alphabetic';
+      const tx = dir>0 ? ex+6 : ex-6;
+      ctx.fillStyle='rgba('+(c.amber?AMBER:'234,252,255')+','+(0.92*asm)+')';
+      ctx.font='600 11px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillText(c.label, tx, oy-2);
+      ctx.fillStyle='rgba(111,151,166,'+(0.85*asm)+')';
+      ctx.font='9px ' + getComputedStyle(document.body).fontFamily;
+      ctx.fillText(c.sub, tx, oy+11);
+    });
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ===== boot console sequence =====
+  const lines = [
+    {t:'Initializing local cortex…', p:14},
+    {t:'Loading qwen2.5:7b · tier router online…', p:31},
+    {t:'Mounting Second Brain…', p:48},
+    {t:'Indexing FAISS · offline RAG ready…', p:63},
+    {t:'Registering 136 tools…', p:76},
+    {t:'Safety gate armed.', p:88},
+    {t:'Identity verified · PIN + Telegram.', p:96},
+    {t:'All systems nominal. At your service.', p:100, ready:true},
+    {t:'Good evening, sir.', p:100, greet:true, hold:2600}
+  ];
+  const txtEl = document.querySelector('#boot .txt');
+  const bootEl = document.getElementById('boot');
+  const progEl = document.getElementById('prog');
+  const pctEl  = document.getElementById('pct');
+  let li=0;
+
+  function typeLine(){
+    const line = lines[li];
+    bootEl.classList.toggle('ready', !!line.ready);
+    bootEl.classList.toggle('greet', !!line.greet);
+    let i=0; txtEl.textContent='';
+    // animate progress toward target
+    progEl.style.width = line.p + '%';
+    let pcur = parseInt(pctEl.textContent)||0;
+    const pstep = setInterval(()=>{
+      pcur += (line.p - pcur) > 1 ? Math.ceil((line.p-pcur)/4) : (line.p>pcur?1:0);
+      pctEl.textContent = pcur + '%';
+      if(pcur>=line.p) clearInterval(pstep);
+    },45);
+
+    const speed = line.greet ? 70 : 26;
+    const tick = setInterval(()=>{
+      txtEl.textContent = line.t.slice(0, ++i);
+      if(i>=line.t.length){
+        clearInterval(tick);
+        const hold = line.hold || 620;
+        setTimeout(()=>{
+          li = (li+1) % lines.length;
+          if(li===0){ // loop: reset progress visuals
+            progEl.style.width='0%'; pctEl.textContent='0%';
+          }
+          typeLine();
+        }, hold);
+      }
+    }, speed);
+  }
+  setTimeout(typeLine, 650);
+
+  // ===== live edge readouts =====
+  const upEl = document.getElementById('uptime');
+  const thEl = document.getElementById('threads');
+  const memEl = document.getElementById('memval');
+  const t0 = Date.now();
+  setInterval(()=>{
+    const s = Math.floor((Date.now()-t0)/1000);
+    const hh = String(Math.floor(s/3600)).padStart(2,'0');
+    const mm = String(Math.floor(s/60)%60).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    upEl.textContent = hh+':'+mm+':'+ss;
+    thEl.textContent = 3 + Math.floor(Math.random()*5);
+    memEl.textContent = (1.6 + Math.random()*0.5).toFixed(1)+' GB';
+  }, 900);
+})();
+</script>
+</body>
+</html>
