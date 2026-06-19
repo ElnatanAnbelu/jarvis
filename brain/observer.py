@@ -233,6 +233,10 @@ def _generate_insight(context, topic):
     if not api_key:
         return ""
     try:
+        # Fully-local default: don't reason over the user's data on a cloud model.
+        from brain.agent import cloud_reasoning_allowed
+        if not cloud_reasoning_allowed():
+            return ""
         import anthropic
         client = anthropic.Anthropic(auth_token=api_key) if is_oauth else anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(

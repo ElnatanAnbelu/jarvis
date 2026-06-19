@@ -175,6 +175,11 @@ def _competitor_scan():
 
         raw = "\n\n".join(all_results)[:8000]
 
+        # Fully-local default: skip cloud market-intel reasoning unless opted in.
+        from brain.agent import cloud_reasoning_allowed
+        if not cloud_reasoning_allowed():
+            return
+
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",

@@ -31,6 +31,24 @@ def enabled() -> bool:
     return llm.available() and llm.any_model_available()
 
 
+def cloud_reasoning_allowed() -> bool:
+    """Whether a CLOUD LLM may serve the reasoning/brain path.
+
+    Fully-local is the product default, so this is False whenever the local
+    brain is enabled — i.e. the cloud cascade, deep-research, document-gen,
+    team-mode, and background-daemon reasoning all stay off and the system
+    degrades to local/offline instead of silently calling Anthropic. The
+    documented 'cloud escape-hatch' is opt-in only: set JARVIS_ALLOW_CLOUD_BRAIN=1.
+
+    Note: cloud PERCEPTION fallbacks (vision Q&A, Groq STT) are a separate
+    capability — they are not the reasoning brain and are not governed here."""
+    if os.environ.get("JARVIS_ALLOW_CLOUD_BRAIN", "0") == "1":
+        return True
+    # Local brain on (default) → no cloud reasoning. Local brain explicitly
+    # disabled → cloud is the only brain, so allow it.
+    return os.environ.get("JARVIS_LOCAL_BRAIN", "1") == "0"
+
+
 # Lean persona for the local model — a small local LLM doesn't need (and is
 # slowed badly by) the full multi-file prompt stack. Keep the load-bearing
 # behaviors; drop the bulk. Grounding context is appended, capped, below.

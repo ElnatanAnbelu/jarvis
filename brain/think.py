@@ -1357,7 +1357,27 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS", sour
             except Exception:
                 pass
             return
-        # local produced nothing → fall through to the cloud/fallback path
+        # Local produced nothing. In fully-local mode (default) we must NOT fall
+        # to the cloud brain — retry once with a plain local LLM pass, else give
+        # a graceful offline note. Only fall through to cloud if explicitly
+        # allowed (JARVIS_ALLOW_CLOUD_BRAIN=1 / local brain disabled).
+        if not _local.cloud_reasoning_allowed():
+            _chunks = []
+            try:
+                for _c in _think_ollama_stream(user_input):
+                    _chunks.append(_c)
+                    yield _c
+            except Exception:
+                pass
+            if _chunks:
+                try:
+                    save_message("jarvis", "".join(_chunks))
+                except Exception:
+                    pass
+                return
+            yield "Sorry sir — I couldn't form a response locally just now. Mind trying again?"
+            return
+        # cloud reasoning allowed → fall through to the cloud/fallback path
     auth_key, is_oauth = _get_auth_key()
     chosen_model = model or (select_model(user_input) if agent == "JARVIS" else select_agent_model(user_input))
 

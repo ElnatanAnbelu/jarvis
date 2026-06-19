@@ -201,6 +201,7 @@ def route_stream(user_input: str, active_agent: str = None, image_b64: str = Non
       ('persist', name)   — server should remember this agent (None = clear)
     """
     from brain.think import think_stream
+    from brain.agent import cloud_reasoning_allowed as _cloud_ok
     from memory.wiki import learn
 
     # If an image was captured, route to vision model immediately
@@ -228,9 +229,9 @@ def route_stream(user_input: str, active_agent: str = None, image_b64: str = Non
         yield ("done", "Stopping.")
         return
 
-    # Work Together mode — all four agents
+    # Work Together mode — all four agents (cloud reasoning; off in local-only mode)
     from brain.team import is_work_together, work_together
-    if is_work_together(user_input):
+    if is_work_together(user_input) and _cloud_ok():
         full_parts = {}   # agent_name → list[str] of chunks
         current_agent = None
         for event_type, value in work_together(user_input):
@@ -249,9 +250,10 @@ def route_stream(user_input: str, active_agent: str = None, image_b64: str = Non
             # all_done is the terminal event, nothing to yield
         return
 
-    # Deep research request
+    # Deep research request (cloud reasoning; off in local-only mode → falls
+    # through to the local brain, which has its own web-search tools)
     from brain.research import is_research_request, deep_research
-    if is_research_request(user_input):
+    if is_research_request(user_input) and _cloud_ok():
         save_message("user", user_input)
         yield ("agent", "JARVIS")
         yield ("persist", None)
@@ -265,10 +267,11 @@ def route_stream(user_input: str, active_agent: str = None, image_b64: str = Non
         yield ("done", full)
         return
 
-    # Document generation request
+    # Document generation request (cloud reasoning; off in local-only mode →
+    # falls through to the local brain)
     from brain.reader import is_doc_gen_request, generate_document
     is_docgen, _ = is_doc_gen_request(user_input)
-    if is_docgen:
+    if is_docgen and _cloud_ok():
         save_message("user", user_input)
         yield ("agent", "JARVIS")
         yield ("persist", None)

@@ -129,7 +129,9 @@ RULES:
     try:
         from brain.think import CLAUDE_MODELS
         from brain.auth import make_client
-        client = make_client()
+        from brain.agent import cloud_reasoning_allowed
+        # Fully-local default: only use the cloud model for the briefing if opted in.
+        client = make_client() if cloud_reasoning_allowed() else None
         if client:
             resp = client.messages.create(
                 model=CLAUDE_MODELS["haiku"],
