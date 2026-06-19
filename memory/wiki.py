@@ -157,9 +157,12 @@ def search_relevant(query: str, max_results: int = 3, threshold: float = 0.25) -
         q_vec = model.encode([query], normalize_embeddings=True, show_progress_bar=False)
         q_vec = np.array(q_vec, dtype="float32")
 
-        k = min(max_results * 3, len(_chunks))  # fetch extras then dedupe by title
+        # Snapshot index + arrays together under the lock so a concurrent rebuild
+        # can't shrink them between search and dereference (stale IndexError).
         with _index_lock:
-            scores, indices = _index.search(q_vec, k)
+            index, chunks, titles = _index, _chunks, _titles
+            k = min(max_results * 3, len(chunks))  # fetch extras then dedupe by title
+            scores, indices = index.search(q_vec, k)
 
         seen_titles: set[str] = set()
         results: list[tuple[str, str, float]] = []
@@ -167,8 +170,8 @@ def search_relevant(query: str, max_results: int = 3, threshold: float = 0.25) -
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or score < threshold:
                 continue
-            title = _titles[idx]
-            chunk = _chunks[idx]
+            title = titles[idx]
+            chunk = chunks[idx]
             if title in seen_titles:
                 continue
             seen_titles.add(title)

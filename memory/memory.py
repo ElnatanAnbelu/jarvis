@@ -612,14 +612,28 @@ _CONFIRMATION_TERMINAL = {"approved", "rejected", "executed", "failed", "cancell
 
 
 def enqueue_confirmation(tool_name: str, args: dict, agent=None, risk=None, reason: str = "") -> int:
-    """Queue a risky tool call awaiting human approval. Returns the row id."""
+    """Queue a risky tool call awaiting human approval. Returns the row id.
+
+    Deduplicated: if an identical (tool_name, args) call is already pending, the
+    existing row id is returned instead of inserting a duplicate — so a model
+    stuck re-emitting the same red-list call (or a re-fired scheduled goal) can't
+    flood the approval queue with siblings the owner might approve twice."""
+    args_json = json.dumps(args)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    existing = c.execute(
+        "SELECT id FROM pending_confirmations "
+        "WHERE status='pending' AND tool_name=? AND args=? LIMIT 1",
+        (tool_name, args_json),
+    ).fetchone()
+    if existing:
+        conn.close()
+        return existing[0]
     c.execute(
         "INSERT INTO pending_confirmations "
         "(created_at, tool_name, args, agent, risk, reason, status) "
         "VALUES (?, ?, ?, ?, ?, ?, 'pending')",
-        (datetime.now().isoformat(), tool_name, json.dumps(args), agent, risk, reason)
+        (datetime.now().isoformat(), tool_name, args_json, agent, risk, reason)
     )
     row_id = c.lastrowid
     conn.commit()

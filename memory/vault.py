@@ -845,17 +845,22 @@ class VaultManager:
         import numpy as np
         model = _get_embed_model()
         q = np.array(model.encode([query], normalize_embeddings=True), dtype="float32")
+        # Snapshot index + arrays together UNDER the lock so a concurrent rebuild
+        # (which atomically rebinds self._index/_chunks/_titles) can't shrink the
+        # arrays between the search and the dereference → stale IndexError / wrong
+        # note. The locals stay consistent even after the rebuild swaps self.*.
         with self._index_lock:
-            scores, indices = self._index.search(q, min(max_results * 3, len(self._chunks)))
+            index, chunks, titles = self._index, self._chunks, self._titles
+            scores, indices = index.search(q, min(max_results * 3, len(chunks)))
         seen, results = set(), []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or score < 0.25:
                 continue
-            title = self._titles[idx]
+            title = titles[idx]
             if title in seen:
                 continue
             seen.add(title)
-            results.append(f"### {title}\n{self._chunks[idx]}")
+            results.append(f"### {title}\n{chunks[idx]}")
             if len(results) >= max_results:
                 break
         return "\n\n".join(results)
