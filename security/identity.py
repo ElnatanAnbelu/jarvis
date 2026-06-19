@@ -44,27 +44,82 @@ def verify_pin(pin: str) -> bool:
 
 
 # ── biometrics (best-effort; graceful when unavailable) ────────────────────────
-def verify_face() -> bool:
-    """Local face match against an enrolled encoding. False if unavailable/unenrolled."""
+def _enroll_dir():
+    import pathlib
+    d = pathlib.Path.home() / ".alfred" / "enroll"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def enroll_face(image_bgr) -> str:
+    """Store sir's reference face (a cv2 BGR frame). If face_recognition (dlib) is
+    installed, also store a strong 128-d encoding for real matching; otherwise the
+    image is kept for when that lib is added. Sets the enrolled flag."""
     try:
-        import face_recognition  # noqa: F401  (heavy/optional dep)
-        if not memory.get_flag("face_enrolled", False):
+        import cv2
+        path = str(_enroll_dir() / "face_ref.png")
+        cv2.imwrite(path, image_bgr)
+        memory.set_flag("face_enrolled", True)
+        memory.set_flag("face_ref_path", path)
+        try:
+            import face_recognition, numpy as np
+            rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+            encs = face_recognition.face_encodings(rgb)
+            if encs:
+                np.save(str(_enroll_dir() / "face_enc.npy"), encs[0])
+                memory.set_flag("face_encoding_ready", True)
+        except Exception:
+            pass
+        return "Face enrolled."
+    except Exception as e:
+        return f"Face enrollment failed: {e}"
+
+
+def enroll_voice(sample_paths) -> str:
+    """Store sir's reference voice samples (paths under the enroll dir). Sets the flag.
+    Strong speaker verification activates when an embedding lib (resemblyzer) is present;
+    the samples also feed the cloned voice."""
+    try:
+        memory.set_flag("voice_enrolled", True)
+        memory.set_flag("voice_ref_count", len(list(sample_paths)))
+        return "Voice enrolled."
+    except Exception as e:
+        return f"Voice enrollment failed: {e}"
+
+
+def verify_face() -> bool:
+    """STRONG local face match — real recognition via face_recognition (dlib) against the
+    enrolled 128-d encoding. If that lib isn't installed we DON'T fake it from mere face
+    presence (that would false-accept anyone) — we return False so the PIN/Telegram
+    fallback takes over. Never a hard failure."""
+    try:
+        if not memory.get_flag("face_encoding_ready", False):
             return False
-        # A real impl compares a fresh camera frame to the enrolled encoding here.
-        return False  # not enrolled in this environment → fall back
+        import os
+        enc_path = str(_enroll_dir() / "face_enc.npy")
+        if not os.path.exists(enc_path):
+            return False
+        import cv2, numpy as np, face_recognition
+        cap = cv2.VideoCapture(0)
+        ok, frame = cap.read()
+        cap.release()
+        if not ok or frame is None:
+            return False
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        live = face_recognition.face_encodings(rgb)
+        if not live:
+            return False
+        ref = np.load(enc_path)
+        return bool(face_recognition.compare_faces([ref], live[0], tolerance=0.5)[0])
     except Exception:
         return False
 
 
 def verify_voice() -> bool:
-    """Local speaker verification against an enrolled voiceprint. False if unavailable."""
-    try:
-        import resemblyzer  # noqa: F401  (optional dep)
-        if not memory.get_flag("voice_enrolled", False):
-            return False
-        return False
-    except Exception:
-        return False
+    """Strong speaker verification needs an embedding model (resemblyzer, not installed).
+    Until then this stays graceful-False so PIN/face carry identity — the enrolled voice
+    samples are kept for that upgrade and for the cloned voice."""
+    return False
 
 
 def biometrics_ready() -> bool:
