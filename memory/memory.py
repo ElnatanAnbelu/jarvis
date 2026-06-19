@@ -138,13 +138,28 @@ def save_fact(category: str, key: str, value: str):
 
 
 def consolidate_facts():
-    raw = get_facts()
-    if not raw or len(raw.splitlines()) < 4:
+    # Snapshot the facts WITH their ids so we can later delete ONLY the rows we
+    # read — any save_fact() that lands during the (multi-second) LLM call then
+    # survives instead of being wiped by a blanket DELETE.
+    conn = sqlite3.connect(DB_PATH)
+    snap = conn.execute("SELECT id, category, key, value FROM facts ORDER BY category").fetchall()
+    conn.close()
+    if len(snap) < 4:
         return
+    raw = "\n".join(f"[{cat}] {key}: {val}" for _id, cat, key, val in snap)
     try:
         import os, sys
         from pathlib import Path as _P
         sys.path.insert(0, str(_P(__file__).parent.parent))
+        # Fully-local default: NEVER ship the whole fact store to the cloud.
+        # Consolidation is a cloud-LLM feature; gate it behind the same switch as
+        # the reasoning path so a local-only install keeps facts on-device.
+        try:
+            from brain.agent import cloud_reasoning_allowed
+            if not cloud_reasoning_allowed():
+                return
+        except Exception:
+            return
         api_key = (
             os.environ.get("ANTHROPIC_API_KEY", "").strip() or
             os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip()
@@ -184,9 +199,24 @@ CLEANED:"""}],
                 continue
         if not new_facts:
             return
+        # Safety floor: a real consolidation dedups but shouldn't gut the store.
+        # If the model returned implausibly few facts (truncation at max_tokens,
+        # garbage output), KEEP the originals rather than risk silent data loss.
+        if len(new_facts) < max(1, len(snap) // 2):
+            try:
+                from obs.log import log_event
+                log_event("memory.consolidate_skipped", level="warning",
+                          had=len(snap), got=len(new_facts),
+                          reason="result too small — keeping originals")
+            except Exception:
+                pass
+            return
+        snap_ids = [row[0] for row in snap]
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("DELETE FROM facts")
+        # Delete ONLY the snapshotted rows; concurrent inserts during the LLM
+        # call are not in snap_ids and therefore survive.
+        c.executemany("DELETE FROM facts WHERE id = ?", [(i,) for i in snap_ids])
         now = datetime.now().isoformat()
         for category, key, value in new_facts:
             c.execute("INSERT INTO facts (category, key, value, updated_at) VALUES (?, ?, ?, ?)",
