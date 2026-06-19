@@ -99,18 +99,30 @@ def verify_face() -> bool:
         enc_path = str(_enroll_dir() / "face_enc.npy")
         if not os.path.exists(enc_path):
             return False
+        import time
         import cv2, numpy as np, face_recognition
         cap = cv2.VideoCapture(0)
-        ok, frame = cap.read()
+        for _ in range(20):                       # WARM UP — first frames are black
+            cap.read()
+            time.sleep(0.05)
+        live = None
+        for _ in range(60):                       # up to ~3s to get a well-lit face
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                continue
+            if float(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).mean()) < 15:
+                time.sleep(0.03)
+                continue
+            encs = face_recognition.face_encodings(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if encs:
+                live = encs[0]
+                break
+            time.sleep(0.03)
         cap.release()
-        if not ok or frame is None:
-            return False
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        live = face_recognition.face_encodings(rgb)
-        if not live:
+        if live is None:
             return False
         ref = np.load(enc_path)
-        return bool(face_recognition.compare_faces([ref], live[0], tolerance=0.5)[0])
+        return bool(face_recognition.compare_faces([ref], live, tolerance=0.5)[0])
     except Exception:
         return False
 
