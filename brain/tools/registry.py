@@ -142,8 +142,15 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
         try:
             from brain import autonomy
             decision = autonomy.gate(name, args, agent=agent, risk=risk, source=source)
-        except Exception:
-            decision = None  # gate unavailable → fail open to prior behavior
+        except Exception as gate_err:
+            # A safety gate MUST fail CLOSED. If gate() itself raises (schema
+            # drift, sqlite lock, import error, …) we do NOT run the tool — we
+            # deny it loudly. Failing open here would silently bypass red-list /
+            # away-mode / pause / blocklist for the highest-risk tools.
+            _obs("tool.gate_error", level="error", tool=name, agent=agent, risk=risk,
+                 source=source, error=str(gate_err))
+            decision = {"action": "deny",
+                        "reason": f"safety gate unavailable ({gate_err}) — failing closed"}
 
         if decision is not None:
             action = decision.get("action")

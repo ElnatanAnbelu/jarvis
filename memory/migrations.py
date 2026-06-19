@@ -74,10 +74,55 @@ def _migration_1(cur: sqlite3.Cursor):
     """)
 
 
+def _migration_2(cur: sqlite3.Cursor):
+    """Reconcile the `people` table schema collision.
+
+    Two modules historically declared `CREATE TABLE IF NOT EXISTS people` with
+    DIFFERENT columns: memory/life.py (name/relationship/notes/last_contact/
+    birthday) and memory/people.py (name/identifier/vip/family/blocked — the
+    SAFETY columns the contact-aware gate reads). Whichever ran first won, and
+    on the live DB life.py's create won, so people.list_people()'s
+    `SELECT ... identifier, vip, family, blocked` raised OperationalError. That
+    exception propagated into autonomy.gate(), which the registry swallowed and
+    FAILED OPEN — silently bypassing the safety gate for every send-with-a-
+    recipient. This migration makes the table the UNION of both schemas so both
+    modules work and the gate can never raise on a schema mismatch again.
+    """
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS people (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            identifier TEXT,
+            vip INTEGER DEFAULT 0,
+            family INTEGER DEFAULT 0,
+            blocked INTEGER DEFAULT 0,
+            relationship TEXT,
+            notes TEXT,
+            last_contact TEXT,
+            birthday TEXT,
+            created_at TEXT
+        )
+    """)
+    # Backfill whichever columns a pre-existing legacy table is missing.
+    for col, decl in (
+        ("identifier", "TEXT"),
+        ("vip", "INTEGER DEFAULT 0"),
+        ("family", "INTEGER DEFAULT 0"),
+        ("blocked", "INTEGER DEFAULT 0"),
+        ("relationship", "TEXT"),
+        ("notes", "TEXT"),
+        ("last_contact", "TEXT"),
+        ("birthday", "TEXT"),
+        ("created_at", "TEXT"),
+    ):
+        _add_column_if_missing(cur, "people", col, decl)
+
+
 # Ordered list of (version, sql_string_or_callable). Append new migrations with
 # strictly increasing version numbers; never edit or reorder shipped ones.
 MIGRATIONS = [
     (1, _migration_1),
+    (2, _migration_2),
 ]
 
 

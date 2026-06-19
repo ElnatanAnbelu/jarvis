@@ -27,6 +27,9 @@ RED_LIST = {
     "send_whatsapp_api",
     "send_whatsapp_by_name",
     "delete_file",
+    "write_file",      # can overwrite arbitrary files — confirm when away/external
+    "create_file",
+    "move_file",
     "run_shell",
     "execute_code",
     "git_push",

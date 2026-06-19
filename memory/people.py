@@ -49,10 +49,22 @@ def add_person(name: str, identifier: str = "", vip: bool = False,
 def list_people() -> list:
     init_people()
     conn = sqlite3.connect(memory.DB_PATH)
-    rows = conn.execute(
-        "SELECT name, identifier, vip, family, blocked FROM people ORDER BY name"
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            "SELECT name, identifier, vip, family, blocked FROM people ORDER BY name"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Legacy/partial schema (pre-migration). Run migrations and retry once;
+        # if it still can't read the safety columns, raise so the caller (the
+        # gate) fails CLOSED rather than silently losing VIP/family/blocked
+        # protection. Never swallow this into an all-False result.
+        from .migrations import run_migrations
+        run_migrations(memory.DB_PATH)
+        rows = conn.execute(
+            "SELECT name, identifier, vip, family, blocked FROM people ORDER BY name"
+        ).fetchall()
+    finally:
+        conn.close()
     return [{"name": n, "identifier": i, "vip": bool(v), "family": bool(f), "blocked": bool(b)}
             for n, i, v, f, b in rows]
 
