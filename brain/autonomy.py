@@ -45,6 +45,15 @@ RED_LIST = {
 # AND requires a fresh PIN to approve — even for a present user (owner's strictest
 # choice: "PIN on any money action ≥ ~$100"). Owner-editable via env.
 _MONEY_TOOLS = {"transfer_money", "make_payment", "pay_bill", "send_payment", "wire_money"}
+
+# Owner-operator tools: LOCAL code execution + computer control. The owner's explicit
+# choice is that THESE run frictionlessly for him (no confirm, even in away-mode) —
+# while injected/external content can NEVER run them and autonomous use still respects
+# the domain's auto/supervised flag. This is the "coding/computer operator should just
+# work" rule, kept safe by source: present-owner = go, external = always confirm.
+# (Outward/irreversible actions — send_*, git_push, money, delete — are NOT here; they
+# keep confirming. These three are local + owner-driven.)
+_OWNER_AUTO_TOOLS = {"execute_code", "run_shell", "control_screen"}
 MONEY_CONFIRM_THRESHOLD_USD = float(os.environ.get("JARVIS_MONEY_PIN_USD", "100"))
 _ETB_PER_USD = float(os.environ.get("JARVIS_ETB_PER_USD", "130"))
 _AMOUNT_KEYS = ("amount", "value", "sum", "total", "usd")
@@ -239,6 +248,28 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
         )
         return {"action": "confirm",
                 "reason": f"Money action ({amt_s}) needs your PIN to approve (#{cid}).",
+                "confirm_id": cid}
+
+    # Owner-operator tools (local code + computer control): the owner wants these
+    # frictionless. A PRESENT owner runs them immediately — even in away-mode (it's
+    # still him asking). AUTONOMOUS runs them only when the domain is flipped to
+    # 'auto' (supervised was already queued above). EXTERNAL/injected ALWAYS confirms
+    # — a poisoned email or web page can never run code or seize the mouse.
+    if tool_name in _OWNER_AUTO_TOOLS:
+        if source == "user":
+            return {"action": "execute",
+                    "reason": f"Owner-operator tool '{tool_name}' — running it, sir.",
+                    "confirm_id": None}
+        if source == "autonomous" and get_domain_mode(domain_of(tool_name)) == "auto":
+            return {"action": "execute",
+                    "reason": f"Auto ({domain_of(tool_name)}) — running '{tool_name}'.",
+                    "confirm_id": None}
+        cid = memory.enqueue_confirmation(
+            tool_name, args, agent=agent, risk="red",
+            reason=f"{source} requested '{tool_name}' (owner-operator tool)",
+        )
+        return {"action": "confirm",
+                "reason": f"'{tool_name}' from {source} needs your approval (#{cid}).",
                 "confirm_id": cid}
 
     # Red-list ALWAYS confirms unless it's a present human at home. A non-user

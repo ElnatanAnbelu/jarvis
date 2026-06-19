@@ -125,7 +125,12 @@ class JsApi:
                     pass
         except Exception:
             pass
-        # 3) HARD exit — terminates the whole process (wake listener, TTS daemons,
+        # 3) release the single-instance lock so the next launch starts cleanly.
+        try:
+            os.remove(_LOCK_PATH)
+        except Exception:
+            pass
+        # 4) HARD exit — terminates the whole process (wake listener, TTS daemons,
         #    GUI thread) even if destroy() hung. This is the line that makes the
         #    close button actually work, every time.
         import os as _os
@@ -647,8 +652,67 @@ def _screen_size():
         return 1440, 900
 
 
+_LOCK_PATH = os.path.join(os.path.expanduser("~"), ".alfred", "alfred.lock")
+
+
+def _alfred_already_running() -> int:
+    """PID of a live Alfred desktop instance other than us, or 0. Verifies the PID is
+    actually an app/main.py process (so a recycled PID can't false-positive)."""
+    try:
+        if not os.path.exists(_LOCK_PATH):
+            return 0
+        pid = int(open(_LOCK_PATH).read().strip() or "0")
+    except Exception:
+        return 0
+    if not pid or pid == os.getpid():
+        return 0
+    try:
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True)
+        return pid if "app/main.py" in out.stdout else 0
+    except Exception:
+        try:
+            os.kill(pid, 0)
+            return pid
+        except OSError:
+            return 0
+
+
+def _acquire_singleton() -> bool:
+    """ONE Alfred, ever. If one is already live, don't open a second window — its orb
+    is already on screen, in the same place. Brings the existing app to the front and
+    returns False (this invocation should exit). Returns True if we now hold the lock."""
+    import atexit
+    running = _alfred_already_running()
+    if running:
+        print(f"Alfred is already running (pid {running}) — its orb is on your screen. "
+              f"Not opening a second one, sir.", flush=True)
+        try:
+            subprocess.run(
+                ["osascript", "-e",
+                 f'tell application "System Events" to set frontmost of (first process '
+                 f'whose unix id is {running}) to true'],
+                capture_output=True,
+            )
+        except Exception:
+            pass
+        return False
+    try:
+        os.makedirs(os.path.dirname(_LOCK_PATH), exist_ok=True)
+        with open(_LOCK_PATH, "w") as f:
+            f.write(str(os.getpid()))
+        atexit.register(lambda: os.path.exists(_LOCK_PATH) and os.remove(_LOCK_PATH))
+    except Exception as e:
+        print(f"[singleton] couldn't write lock ({e}) — continuing.", flush=True)
+    return True
+
+
 def main():
     global _window, _bubble, _js_api
+
+    # ── ONE Alfred only ───────────────────────────────────────────────────────
+    if not _acquire_singleton():
+        return
 
     print("\n" + "="*60)
     print("Alfred — macOS Permission Notes")
@@ -658,7 +722,7 @@ def main():
     print("  2. Enable Microphone + Camera for:")
     print("     - Terminal (if running from terminal)")
     print("     - Python")
-    print("     - Or the JARVIS app if you built it as a .app")
+    print("     - Or the Alfred app if you built it as a .app")
     print("  3. Restart this app after changing permissions.")
     print()
     print("Still no microphone entry?")
@@ -686,7 +750,7 @@ def main():
     # ── Full HUD window — starts hidden; the bubble expands into it ──────────
     _window = webview.create_window(
         title="Alfred",
-        url=f"http://127.0.0.1:{FLASK_PORT}/",
+        url=f"http://127.0.0.1:{FLASK_PORT}/control",   # unified design: the control room
         width=900,
         height=720,
         min_size=(600, 500),
