@@ -38,7 +38,7 @@ SESSION_TOKEN = load_or_create_token()
 # Routes that are reachable WITHOUT the session token. Page routes need to be
 # loadable so they can receive the token; /api/status is an unauthenticated
 # health check. Everything else requires auth.
-_EXEMPT_PATHS = frozenset({"/", "/bubble", "/control", "/favicon.ico", "/api/status"})
+_EXEMPT_PATHS = frozenset({"/", "/bubble", "/control", "/boot", "/favicon.ico", "/api/status"})
 
 
 def _token_ok():
@@ -1097,10 +1097,11 @@ def favicon():
     return Response(status=204)
 
 
-def _serve_html_with_token(filename):
+def _serve_html_with_token(filename, redirect_to=None, redirect_ms=5200):
     """Read an HTML page, inject the per-process session token as a global, and
     serve it. The token lets same-origin page scripts authenticate their API
-    calls without exposing it to any other origin."""
+    calls without exposing it to any other origin. Optionally inject a timed
+    redirect (used by the boot splash to hand off to the control room)."""
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", filename)
     with open(path, "r", encoding="utf-8") as f:
         html = f.read()
@@ -1109,6 +1110,11 @@ def _serve_html_with_token(filename):
         + json.dumps(SESSION_TOKEN)
         + ';</script>'
     )
+    if redirect_to:
+        token_script += (
+            '<script>setTimeout(function(){location.replace('
+            + json.dumps(redirect_to) + ');}, ' + str(int(redirect_ms)) + ');</script>'
+        )
     # Inject right after the opening <head> so it runs before any page script.
     lower = html.lower()
     idx = lower.find("<head>")
@@ -1137,6 +1143,16 @@ def jarvis_bubble():
 @app.route("/control")
 def jarvis_control():
     return _serve_html_with_token("control.html")
+
+
+@app.route("/boot")
+def alfred_boot():
+    """A random one of Alfred's boot screens — he picks at his own will, a different
+    one each wake — that hands off to the control room when the sequence finishes."""
+    import random
+    choice = random.choice(["arc-reactor.html", "holo-schematic.html", "butler-elegant.html"])
+    return _serve_html_with_token(os.path.join("boot", choice),
+                                  redirect_to="/control", redirect_ms=5200)
 
 
 @app.route("/api/end_session", methods=["POST"])

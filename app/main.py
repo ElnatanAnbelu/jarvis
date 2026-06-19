@@ -750,7 +750,7 @@ def main():
     # ── Full HUD window — starts hidden; the bubble expands into it ──────────
     _window = webview.create_window(
         title="Alfred",
-        url=f"http://127.0.0.1:{FLASK_PORT}/control",   # unified design: the control room
+        url=f"http://127.0.0.1:{FLASK_PORT}/boot",   # random boot screen → control room
         width=900,
         height=720,
         min_size=(600, 500),
