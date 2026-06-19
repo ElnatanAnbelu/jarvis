@@ -101,7 +101,21 @@ def _trigger_caught_mistake() -> list:
     return out
 
 
-_TRIGGERS = (_trigger_active_goals, _trigger_open_tasks, _trigger_caught_mistake)
+def _trigger_morning() -> list:
+    """Morning prep (plan §1.2) — fired ONCE at sir's learned wake hour (end of quiet)."""
+    try:
+        from memory import rhythm
+        wake = rhythm.quiet_window()[1]   # the hour his quiet window ends = wake hour
+        if datetime.now().hour != wake:
+            return []
+        from brain import morning
+        card = morning.build_morning_prep()
+        return [card] if card else []
+    except Exception:
+        return []
+
+
+_TRIGGERS = (_trigger_morning, _trigger_active_goals, _trigger_open_tasks, _trigger_caught_mistake)
 
 
 def scan() -> list:
