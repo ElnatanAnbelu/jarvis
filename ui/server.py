@@ -239,8 +239,6 @@ def _speak(text, agent):
     pass  # TTS now handled by browser via /api/tts
 
 
-_active_agent = {"name": None}  # session state — which agent is currently active
-
 
 @app.route("/api/stream", methods=["GET"])
 def stream():
@@ -304,10 +302,10 @@ def stream():
 
         try:
             from brain.router import route_stream
-            agent = "JARVIS"
+            agent = "Alfred"
             full = ""
             last_done_sent = False
-            for event_type, value in route_stream(user_input, active_agent=_active_agent["name"], image_b64=image_b64):
+            for event_type, value in route_stream(user_input, image_b64=image_b64, source="user"):
                 if event_type == "agent":
                     agent = value
                     yield f"data: {json.dumps({'type': 'speaker', 'name': agent})}\n\n"
@@ -317,12 +315,10 @@ def stream():
                         yield f"data: {json.dumps({'type': 'text', 'chunk': stripped})}\n\n"
                 elif event_type == "done":
                     full = value
-                    # In work-together mode, each agent emits done separately
                     _vis = _classify_visibility(full, agent, "chat")
                     yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
                     last_done_sent = True
-                elif event_type == "persist":
-                    _active_agent["name"] = value  # update session
+                # 'persist' events are ignored now — there's only Alfred, no agent pinning.
             if not last_done_sent:
                 _vis = _classify_visibility(full, agent, "chat")
                 yield f"data: {json.dumps({'type': 'done', 'agent': agent, 'full': full, 'visibility': _vis['visibility'], 'tags': _vis['tags']})}\n\n"
@@ -333,14 +329,6 @@ def stream():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-
-
-@app.route("/api/active_agent", methods=["GET", "DELETE"])
-def active_agent_endpoint():
-    if request.method == "DELETE":
-        _active_agent["name"] = None
-        return jsonify({"status": "cleared"})
-    return jsonify({"agent": _active_agent["name"]})
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -374,28 +362,8 @@ def chat():
         greeting = think_jarvis(greeting_prompt, model="claude-haiku-4-5-20251001")
         if not greeting:
             greeting = f"Good {period}, sir. Systems are online."
-        threading.Thread(target=lambda: _speak(greeting, "JARVIS"), daemon=True).start()
-        return jsonify({"response": greeting, "agent": "JARVIS"})
-
-    # Work together — accumulate each agent's streamed chunks, return complete responses
-    from brain.team import is_work_together, work_together
-    if is_work_together(user_input):
-        responses = []
-        current_agent = None
-        agent_chunks = []
-        for event_type, value in work_together(user_input):
-            if event_type == "agent":
-                current_agent = value
-                agent_chunks = []
-            elif event_type == "chunk" and current_agent:
-                agent_chunks.append(value)
-            elif event_type == "done_agent":
-                if current_agent and agent_chunks:
-                    full = _strip_markdown("".join(agent_chunks).strip())
-                    responses.append({"agent": current_agent, "response": full})
-                current_agent = None
-                agent_chunks = []
-        return jsonify({"responses": responses})
+        threading.Thread(target=lambda: _speak(greeting, "Alfred"), daemon=True).start()
+        return jsonify({"response": greeting, "agent": "Alfred"})
 
     response, agent = _route(user_input)
     threading.Thread(target=lambda: _speak(response, agent), daemon=True).start()
