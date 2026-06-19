@@ -488,13 +488,40 @@ def forget_subject(identifier: str) -> str:
     counts = {}
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+
+    def _purge_text_table(table):
+        """Delete any row of `table` whose TEXT columns mention the subject.
+        Schema-agnostic (introspects columns) so people/goals/tasks/expenses are
+        all covered without hardcoding columns; tolerant of missing tables."""
+        try:
+            cols = [r[1] for r in c.execute("PRAGMA table_info(%s)" % table).fetchall()
+                    if (r[2] or "").upper() in ("TEXT", "")]
+            if not cols:
+                return
+            where = " OR ".join("%s LIKE ?" % col for col in cols)
+            c.execute("DELETE FROM %s WHERE %s" % (table, where), tuple(like for _ in cols))
+            if c.rowcount:
+                counts[table] = counts.get(table, 0) + c.rowcount
+        except Exception:
+            pass
+
     try:
         c.execute("DELETE FROM conversations WHERE content LIKE ?", (like,))
         counts["conversations"] = c.rowcount
         c.execute("DELETE FROM facts WHERE key LIKE ? OR value LIKE ?", (like, like))
         counts["facts"] = c.rowcount
+        # save_fact normalizes keys (lower, spaces→underscores), so a multi-word
+        # subject ("John Doe") lands under "john_doe_*" and the raw LIKE misses it.
+        norm = ident.strip().lower().replace(" ", "_")
+        if norm and norm != ident.lower():
+            c.execute("DELETE FROM facts WHERE key LIKE ?", ("%" + norm + "%",))
+            counts["facts"] += c.rowcount
         c.execute("DELETE FROM actions_performed WHERE args LIKE ? OR result LIKE ?", (like, like))
         counts["actions"] = c.rowcount
+        # People registry (phone/email/notes/relationship/flags) + life data that
+        # names the subject — all in this same jarvis.db, previously left intact.
+        for tbl in ("people", "goals", "tasks", "expenses"):
+            _purge_text_table(tbl)
         conn.commit()
     finally:
         conn.close()

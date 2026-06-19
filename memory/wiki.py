@@ -107,6 +107,15 @@ def _build_index():
         _last_build = datetime.now().timestamp()
 
 
+def invalidate_index():
+    """Force the next search to rebuild the index from disk. Used after notes are
+    removed (e.g. right-to-be-forgotten) so the in-RAM FAISS index can't keep
+    returning a purged subject's chunks."""
+    global _last_build
+    with _index_lock:
+        _last_build = 0.0
+
+
 def _ensure_index():
     """Kick off a background index build if stale. Never blocks the caller."""
     global _building

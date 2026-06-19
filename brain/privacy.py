@@ -50,10 +50,56 @@ def forget_subject(identifier: str) -> str:
     except Exception:
         pass
 
+    # 4. The wiki "_Memory" store is a SECOND markdown vault (generated, separate
+    #    from SecondBrain) with its own in-RAM FAISS index. Archive matching notes
+    #    and invalidate the index, else a forgotten subject keeps resurfacing in
+    #    prompts for up to the rebuild interval — and the on-disk note forever.
+    wiki_archived = 0
     try:
-        from obs.log import log_event
-        log_event("privacy.forget_subject_full", level="warning", subject=ident, vault_archived=archived)
+        from memory import wiki as _w
+        needle = ident.lower()
+        forgotten = _w.WIKI_PATH / ".forgotten"
+        for md in list(_w.WIKI_PATH.glob("*.md")):
+            try:
+                txt = md.read_text(encoding="utf-8", errors="ignore").lower()
+            except Exception:
+                continue
+            if needle in txt or needle in md.stem.lower():
+                forgotten.mkdir(parents=True, exist_ok=True)
+                dest = forgotten / md.name
+                if dest.exists():
+                    dest = forgotten / f"{md.stem}_{wiki_archived}{md.suffix}"
+                shutil.move(str(md), str(dest))
+                wiki_archived += 1
+        _w.invalidate_index()
     except Exception:
         pass
 
-    return f"{db_summary} Archived {archived} vault note(s) to _Archive/Forgotten, sir."
+    # 5. observations.db — staged email/sender content + auto-extracted personal
+    #    facts. Never purged before, so a "forgotten" contact's address/subject/
+    #    body excerpt survived at rest.
+    obs_removed = 0
+    try:
+        from memory import observations as _obs
+        like = f"%{ident}%"
+        with _obs._lock:
+            conn = _obs._get_conn()
+            cur = conn.execute(
+                "DELETE FROM observations WHERE content LIKE ? OR source_detail LIKE ? "
+                "OR relevance_hint LIKE ?",
+                (like, like, like),
+            )
+            obs_removed = cur.rowcount
+            conn.commit()
+    except Exception:
+        pass
+
+    try:
+        from obs.log import log_event
+        log_event("privacy.forget_subject_full", level="warning", subject=ident,
+                  vault_archived=archived, wiki_archived=wiki_archived, observations=obs_removed)
+    except Exception:
+        pass
+
+    return (f"{db_summary} Archived {archived} vault + {wiki_archived} wiki note(s); "
+            f"purged {obs_removed} observation(s), sir.")
