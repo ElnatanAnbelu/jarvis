@@ -55,6 +55,7 @@ voice/onnx_community/
 graphify-out/
 jarvis_charts/
 jarvis_reports/
+AUDIT_REPORT.md
 
 # ─── WhatsApp session (personal login data) ──────────────────────────────────
 whatsapp/.wwebjs_auth/
