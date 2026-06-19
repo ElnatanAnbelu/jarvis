@@ -15,6 +15,7 @@ Decisions are dicts: {"action": "execute"|"confirm"|"deny",
                       "reason": str, "confirm_id": int|None}
 """
 import json
+import os
 
 from memory import memory
 
@@ -39,6 +40,41 @@ RED_LIST = {
     "make_payment",
     "pay_bill",
 }
+
+# Money tools that MOVE money. A payment at/above this threshold ALWAYS confirms
+# AND requires a fresh PIN to approve — even for a present user (owner's strictest
+# choice: "PIN on any money action ≥ ~$100"). Owner-editable via env.
+_MONEY_TOOLS = {"transfer_money", "make_payment", "pay_bill", "send_payment", "wire_money"}
+MONEY_CONFIRM_THRESHOLD_USD = float(os.environ.get("JARVIS_MONEY_PIN_USD", "100"))
+_ETB_PER_USD = float(os.environ.get("JARVIS_ETB_PER_USD", "130"))
+_AMOUNT_KEYS = ("amount", "value", "sum", "total", "usd")
+
+
+def _amount_usd(args: dict):
+    """Best-effort USD amount from a money tool's args → float or None. Converts
+    when currency is ETB. Tolerates '$1,200.50'. Unparseable → None (treated as
+    PIN-required at the call site, i.e. fail safe)."""
+    if not isinstance(args, dict):
+        return None
+    raw = next((args[k] for k in _AMOUNT_KEYS if args.get(k) is not None), None)
+    if raw is None:
+        return None
+    try:
+        amt = float(str(raw).replace("$", "").replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    if str(args.get("currency", "")).strip().upper() in ("ETB", "BIRR"):
+        amt = amt / _ETB_PER_USD
+    return amt
+
+
+def needs_pin(tool_name: str, args: dict) -> bool:
+    """True if this is a money move at/above the PIN threshold (so approval needs
+    a fresh PIN). An unparseable amount on a money tool → True (fail safe)."""
+    if tool_name not in _MONEY_TOOLS:
+        return False
+    amt = _amount_usd(args)
+    return True if amt is None else amt >= MONEY_CONFIRM_THRESHOLD_USD
 
 
 # ── state ────────────────────────────────────────────────────────────────────
@@ -146,6 +182,20 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
                     "reason": f"'{recipient}' is {who} — needs your approval (#{cid}).",
                     "confirm_id": cid}
 
+    # Money: a payment at/above the PIN threshold ALWAYS confirms AND requires a
+    # fresh PIN to approve — even for a present user at home (owner's strictest
+    # choice). Smaller, known amounts fall through to the normal red-list logic.
+    if tool_name in _MONEY_TOOLS and needs_pin(tool_name, args):
+        amt = _amount_usd(args)
+        amt_s = f"${amt:.2f}" if amt is not None else "an unverified amount"
+        cid = memory.enqueue_confirmation(
+            tool_name, args, agent=agent, risk="red",
+            reason=f"money {amt_s} via '{tool_name}' — PIN required",
+        )
+        return {"action": "confirm",
+                "reason": f"Money action ({amt_s}) needs your PIN to approve (#{cid}).",
+                "confirm_id": cid}
+
     # Red-list ALWAYS confirms unless it's a present human at home. A non-user
     # source (autonomous/external) NEVER auto-fires a red-list tool — regardless
     # of auto-mode or away state — and a present user confirms when away.
@@ -162,8 +212,11 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
 
 
 # ── resolving confirmations (called from Telegram / UI) ───────────────────────
-def approve(confirm_id) -> str:
-    """Execute a pending red-list action the user approved."""
+def approve(confirm_id, pin=None) -> str:
+    """Execute a pending red-list action the user approved.
+
+    `pin` is required to approve a money move at/above MONEY_CONFIRM_THRESHOLD_USD
+    (owner's strictest choice). Surfaces (UI/Telegram) pass it through."""
     c = memory.get_confirmation(confirm_id)
     if not c:
         return f"No pending action #{confirm_id}."
@@ -190,6 +243,15 @@ def approve(confirm_id) -> str:
             args = {}
     elif not isinstance(args, dict):
         args = {}
+    # A money move ≥ the threshold needs a fresh PIN even at approval time.
+    if needs_pin(c["tool_name"], args):
+        from security import identity
+        if not pin or not identity.verify_pin(str(pin)):
+            memory.set_confirmation_status(confirm_id, "pending")  # un-claim so it can be retried with a PIN
+            if not identity.has_pin():
+                return (f"#{confirm_id} is a money move ≥ ${MONEY_CONFIRM_THRESHOLD_USD:.0f} and needs a PIN, "
+                        f"but no PIN is set — set one first, sir.")
+            return f"#{confirm_id} needs your PIN to approve a money move ≥ ${MONEY_CONFIRM_THRESHOLD_USD:.0f}."
     try:
         result = execute_tool(c["tool_name"], args, agent=c.get("agent"), _bypass_gate=True)
         memory.set_confirmation_status(confirm_id, "executed", result=str(result)[:500])
