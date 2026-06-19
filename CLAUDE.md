@@ -18,7 +18,8 @@
 ## Run it
 - Server + control room: `bash scripts/start.sh` → http://localhost:8080/control  (localhost-only, token-gated)
 - Desktop app: `./venv/bin/python app/main.py`
-- Tests: `./venv/bin/python -m pytest -q`  (297 passing)
+- Tests: `./venv/bin/python -m pytest -q`  (334 passing)
+- Health check: `./venv/bin/python scripts/audit.py`  (local brain · gate · firewall · token-gate · vault RAG · voice)
 - Local-brain eval gate: `./venv/bin/python eval/run.py`
 - Requires: Ollama running with `qwen2.5:7b` (+ optionally `qwen3:14b`); Python 3.9 venv.
 
@@ -26,6 +27,8 @@
 Every tool call is gated. Money/irreversible/VIP/family/blocked/public → **always confirm** via Telegram. Default mode is **supervised** (proposes everything); flip per-domain to **auto** when trusted. Everything logged + reversible (ledger + undo); `pause`/`panic` halt instantly.
 
 ## Status (as of this build)
-Done + committed on `feat/autonomous-life-operator`: Order 0 security · P0 run · P1 local brain · P4 observability · P5 autonomy engine · P6 comms domain + people registry · P3 identity · P2 local STT · P7 control room + rituals · P8 privacy/backup. **297 tests green.**
+Done + committed on `feat/autonomous-life-operator`: Order 0 security · P0 run · P1 local brain · P4 observability · P5 autonomy engine · P6 comms domain + people registry · P3 identity · P2 local STT · P7 control room + rituals · P8 privacy/backup. **334 tests green.**
+
+**Post-audit safety hardening** (a multi-agent audit found 14 verified defects; all fixed): gate now **fails closed** (was silently bypassed via a `people`-schema collision); **self-write firewall** (JARVIS can't overwrite its own code/`.env`); **computer-use is gated** + honors panic/pause; **AppleScript injection** in iMessage closed; **inbound (WhatsApp/Telegram) tagged `external`** + Telegram owner-gated on every message; cloud-auth `make_client` fixes; **panic/undo truly reverts** file ops; **offline purity** — no cloud LLM in the reasoning path by default (opt-in via `JARVIS_ALLOW_CLOUD_BRAIN=1`).
 
 Still needs the user: a **mic test** (P2 TTS/clone end-to-end), **camera enrollment** (P3 biometrics), **live account creds + VIP/family/blocklist data + `WHATSAPP_TOKEN`** (P6 live execution). The plan + behavior spec live in `specs.md` and `~/.claude/plans/elegant-snuggling-ladybug.md`; gap report in `GAP_REPORT.md`; sign-offs in `SIGN_OFFS.md`.

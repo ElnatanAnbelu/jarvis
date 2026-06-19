@@ -43,5 +43,12 @@
 ## P8 — Privacy/backup — APPROVED
 - Core (db forget + encrypted backup + silent-delete fix) + full `brain/privacy.forget_subject` (db purge + vault-note archive + FAISS invalidation) + `forget_person` tool (red-list).
 
-## Build status: 297 tests green · all 9 phases' core delivered + committed.
+## Post-audit hardening — APPROVED (multi-agent audit: 14 verified defects, all fixed)
+A multi-agent audit (adversarially verified; 6 false alarms refuted) found the safety gate was silently bypassed in the live checkout and JARVIS could overwrite its own safety code. All fixed + regression-tested:
+- **P0** gate **fail-closed** + `people`-schema migration (the live bypass); **self-write firewall** (no writes inside the install tree) + write/create/move on RED_LIST; **computer-use gated** (`control_screen` red-list, honors panic/pause, `/api/agent` 409 when paused).
+- **P1** AppleScript→RCE in `messages.py` closed (escape + strict handle regex); inbound WhatsApp/Telegram tagged `source="external"` + Telegram owner-gated on every message; 4 control-layer cloud sites routed through `make_client`.
+- **P2** `panic()`/Undo truly reverts file ops (real inverses + pre-write snapshot; revert bypasses the gate but not the firewall).
+- **Gates** offline-purity (no cloud LLM in the reasoning path unless `JARVIS_ALLOW_CLOUD_BRAIN=1`); `scripts/audit.py` rewritten for the local architecture (and no longer writes to the sacred vault).
+
+## Build status: 334 tests green · all 9 phases + post-audit hardening delivered + committed.
 **Still needs the user (hardware/data/creds):** mic test (P2 TTS clone), camera enrollment (P3 biometrics), live account creds + VIP/family/blocklist data + `WHATSAPP_TOKEN` (P6 live), secret rotation (Order 0, done per user).
