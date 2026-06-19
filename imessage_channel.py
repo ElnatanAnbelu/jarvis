@@ -39,10 +39,28 @@ def _norm_handle(h: str) -> str:
     return digits.lstrip("0") or digits
 
 
+def _raw_owner_handles() -> list:
+    """The owner handles as written (for SENDING — keep '+', formatting intact)."""
+    return [h.strip() for h in os.environ.get("ALFRED_IMESSAGE_OWNER", "").split(",") if h.strip()]
+
+
 def owner_handles() -> set:
     """The owner's allowed iMessage handles (phone/email), normalized. Empty = channel off."""
-    raw = os.environ.get("ALFRED_IMESSAGE_OWNER", "")
-    return {_norm_handle(h) for h in raw.split(",") if h.strip()}
+    return {_norm_handle(h) for h in _raw_owner_handles()}
+
+
+def notify_owner(text: str) -> bool:
+    """Push a proactive message to the owner via iMessage — Alfred's PRIMARY channel.
+    Returns True if sent (so callers fall back to the Telegram fail-safe only on False).
+    No-op when the channel is disabled (no owner handle configured)."""
+    handles = _raw_owner_handles()
+    if not handles or not text:
+        return False
+    try:
+        send(text, handles[0])
+        return True
+    except Exception:
+        return False
 
 
 def enabled() -> bool:

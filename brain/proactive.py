@@ -28,7 +28,14 @@ def _send(message: str):
             _hud_queue.put_nowait(message)
         except Exception:
             pass
-    # Also send to Telegram if configured
+    # Remote push: iMessage is the PRIMARY surface; Telegram is the fail-safe.
+    try:
+        from imessage_channel import notify_owner
+        if notify_owner(message):
+            return  # delivered via the primary channel — don't double-send
+    except Exception:
+        pass
+    # Fail-safe: Telegram, if configured
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if token and chat_id:
