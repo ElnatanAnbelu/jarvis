@@ -174,4 +174,13 @@ def run_loop(push_fn, interval: float = 1200.0):
             run_once(push_fn)
         except Exception:
             pass
+        # knows-me synthesis (plan §6): surface one learned theme per pass, quiet-aware.
+        try:
+            from brain import synthesis
+            from memory import rhythm
+            item = synthesis.synthesize_one()
+            if item and rhythm.should_surface(item):
+                push_fn(item)
+        except Exception:
+            pass
         time.sleep(interval)
