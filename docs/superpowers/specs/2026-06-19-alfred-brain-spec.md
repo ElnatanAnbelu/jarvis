@@ -46,6 +46,26 @@ The levers that make a *local* model strong at complex work:
 - **Memory compounds** (knows him more each day) + **periodic fine-tunes** on his data + **swap in better open base models as they ship** (model-agnostic, portable self) + **self-built tools** (gated self-dev).
 - This is how it gets smarter — system-level, riding the open-model tide — **not** retraining a frontier model from scratch (a $50–100M+, thousand-GPU, months-long job that is impossible on a laptop and would come out *worse* than free open models). That path is explicitly OUT.
 
+## Final Model Lineup (LOCKED — research-picked, no benchmark race per owner)
+Researched against the case (M5/32GB, no-lag, coding-first, fine-tunable, offline, Apache-2.0). One Qwen family across the whole ladder → one tokenizer + one fine-tune recipe.
+
+| Tier | Model | ~RAM (4-bit) | Role |
+|---|---|---|---|
+| Fast / everyday | **Qwen3-8B** (`qwen3:8b`) | ~5–6GB | default brain: tool-calling, chat, routine reasoning; instant on M5 |
+| Reasoning / smart | **Qwen3-14B** (`qwen3:14b` — already installed, KEEP) | ~9GB | hard math/physics/logic; thinking gated + reasoning-token-capped |
+| Coder / complex | **Qwen2.5-Coder-14B** (`qwen2.5-coder:14b`) | ~9GB | write/run/debug whole projects; FIM + tools; easiest to fine-tune into "ours" |
+| Phone | **Qwen3-4B-Thinking-2507** (`qwen3:4b-thinking`) | ~2.5GB | compact shared-persona variant; phone-runnable |
+
+- **Owner decision: NO benchmark race** — commit to the research pick directly. No-lag is the priority, so the coder is the dense **Coder-14B** (roomy on 32GB, easy fine-tune), NOT the RAM-tight MoE.
+- **Future "push it" option (optional, later):** Qwen3-Coder-30B-A3B (MoE) — best coding, ~18GB resident, only if RAM headroom proves fine under the full stack.
+- **Serving:** prefer **MLX** on Apple Silicon (~20–40% faster) where practical; Ollama otherwise.
+- **The swap — executed at BUILD time, NOT now:**
+  1. `ollama pull qwen3:8b` + `ollama pull qwen2.5-coder:14b` (+ later `qwen3:4b-thinking`).
+  2. `brain/llm.py`: FAST_MODEL → `qwen3:8b`; keep COMPLEX_MODEL → `qwen3:14b`; add a coder route → `qwen2.5-coder:14b`.
+  3. `ollama rm qwen2.5:7b` (superseded fast tier); **keep `qwen3:14b`**.
+  - Fully reversible (models re-pullable). Nothing is downloaded/deleted until the build phase is approved.
+- **Ignore unverified "2026" models** (Qwen3.5 / Gemma-4 / DeepSeek-V4 SEO ghosts) until weights are actually on HuggingFace/Ollama; a real one would be a drop-in family upgrade.
+
 ## Honest constraints (stated, accepted)
 - **Compact/portable ↔ raw-smart** trade off; mitigated by small-SOTA-model + quant + tools + RAG + fine-tune + (Mac tier / cloud opt-in for the hardest).
 - **Frontier-genius raw reasoning on a phone** is not physical; the system (tools/RAG/verification) closes most of the gap.
