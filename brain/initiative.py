@@ -119,13 +119,21 @@ _seen = set()  # per-process dedup so Alfred doesn't repeat the same nudge each 
 
 
 def run_once(push_fn, repeat=False) -> int:
-    """Scan and push new items via push_fn(item). Dedupes by item key unless repeat=True.
-    Returns the number pushed."""
+    """Scan and push new items via push_fn(item). Dedupes by item key unless repeat=True,
+    and honors the learned quiet-hours: routine items are HELD in a quiet window (not
+    marked seen, so they resurface when sir is active), but urgent ones always break
+    through (never fully silent). Returns the number pushed."""
+    try:
+        from memory import rhythm
+    except Exception:
+        rhythm = None
     n = 0
     for it in scan():
         key = it.get("key")
         if not repeat and key in _seen:
             continue
+        if rhythm is not None and not rhythm.should_surface(it):
+            continue   # held by quiet-hours — NOT marked seen, so it returns when active
         _seen.add(key)
         try:
             push_fn(it)
@@ -136,10 +144,16 @@ def run_once(push_fn, repeat=False) -> int:
 
 
 def run_loop(push_fn, interval: float = 1200.0):
-    """Daemon: surface proactive items every `interval` seconds. Wire from the server."""
+    """Daemon: surface proactive items every `interval` seconds. Wire from the server.
+    Re-learns sir's quiet-hours each pass so damping adapts to his actual rhythm."""
     import time
     print(f"[Initiative] proactive engine armed (every {int(interval)}s).", flush=True)
     while True:
+        try:
+            from memory import rhythm
+            rhythm.learn_rhythm()
+        except Exception:
+            pass
         try:
             run_once(push_fn)
         except Exception:

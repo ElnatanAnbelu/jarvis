@@ -66,7 +66,9 @@ def test_caught_mistake_is_surfaced_not_hidden(db):
     assert fails and fails[0]["visibility"] == "surface"   # honesty: surfaced, not collapsed
 
 
-def test_run_once_dedupes_so_alfred_doesnt_nag(db):
+def test_run_once_dedupes_so_alfred_doesnt_nag(db, monkeypatch):
+    from memory import rhythm
+    monkeypatch.setattr(rhythm, "is_quiet_now", lambda *a, **k: False)   # active window, clock-independent
     pushed = []
     n1 = initiative.run_once(pushed.append)
     n2 = initiative.run_once(pushed.append)
