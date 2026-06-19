@@ -27,20 +27,25 @@ def load_key():
             return line.split("=", 1)[1].strip()
     return None
 
-JARVIS_VOICE_ID   = "onwK4e9ZLuTAKqWW03F9"
+# Alfred's voice — a measured British register fitting the butler persona. The
+# legacy multi-agent voices remain as back-compat aliases only.
+ALFRED_VOICE_ID   = "onwK4e9ZLuTAKqWW03F9"
+JARVIS_VOICE_ID   = ALFRED_VOICE_ID          # alias (old speaker key still resolves)
 FRIDAY_VOICE_ID   = "EXAVITQu4vr4xnSDxMaL"
 VERONICA_VOICE_ID = "cgSgspJ2msm6clMCkdW9"
 KAREN_VOICE_ID    = "XrExE9yKIg1WjnnlVkGX"
 
 VOICE_MAP = {
-    "JARVIS":   JARVIS_VOICE_ID,
+    "Alfred":   ALFRED_VOICE_ID,
+    "JARVIS":   ALFRED_VOICE_ID,             # back-compat alias
     "FRIDAY":   FRIDAY_VOICE_ID,
     "VERONICA": VERONICA_VOICE_ID,
     "KAREN":    KAREN_VOICE_ID,
 }
 
 EDGE_VOICE_MAP = {
-    "JARVIS":   "en-GB-RyanNeural",
+    "Alfred":   "en-GB-RyanNeural",
+    "JARVIS":   "en-GB-RyanNeural",          # back-compat alias
     "FRIDAY":   "en-US-JennyNeural",
     "VERONICA": "en-US-AriaNeural",
     "KAREN":    "en-US-MichelleNeural",
@@ -59,7 +64,7 @@ def _play_file(path: str):
         pass
 
 
-def _speak_edge(text: str, speaker: str = "JARVIS") -> bool:
+def _speak_edge(text: str, speaker: str = "Alfred") -> bool:
     import asyncio
     import edge_tts
     voice = EDGE_VOICE_MAP.get(speaker, "en-GB-RyanNeural")
@@ -77,7 +82,7 @@ def _speak_edge(text: str, speaker: str = "JARVIS") -> bool:
         return False
 
 
-def speak(text: str, speaker: str = "JARVIS"):
+def speak(text: str, speaker: str = "Alfred"):
     # Kill whatever is currently playing
     stop_speaking()
 
@@ -85,7 +90,7 @@ def speak(text: str, speaker: str = "JARVIS"):
 
     # Try ElevenLabs first
     if api_key:
-        voice_id = VOICE_MAP.get(speaker, JARVIS_VOICE_ID)
+        voice_id = VOICE_MAP.get(speaker, ALFRED_VOICE_ID)
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
         payload = {

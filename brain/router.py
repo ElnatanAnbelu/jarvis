@@ -11,6 +11,10 @@ MODELS = {
 }
 
 AGENT_PATTERNS = [
+    # "Alfred" is the name now; it routes to the single brain (internal key "JARVIS",
+    # an invisible, gating-critical dispatch id kept stable on purpose). "jarvis" still
+    # works as an alias address.
+    (r'^(hey\s+)?alfred[,!?\s]*',   "JARVIS"),
     (r'^(hey\s+)?jarvis[,!?\s]*',   "JARVIS"),
     (r'^(hey\s+)?friday[,!?\s]*',   "FRIDAY"),
     (r'^(hey\s+)?veronica[,!?\s]*', "VERONICA"),

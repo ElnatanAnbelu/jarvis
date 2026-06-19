@@ -35,7 +35,7 @@ def _send(message: str):
         try:
             requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": f"*JARVIS*\n{message}", "parse_mode": "Markdown"},
+                json={"chat_id": chat_id, "text": f"*Alfred*\n{message}", "parse_mode": "Markdown"},
                 timeout=8,
             )
         except Exception:
@@ -186,7 +186,7 @@ def _competitor_scan():
             max_tokens=200,
             messages=[{
                 "role": "user",
-                "content": f"You are JARVIS scanning market intelligence for Elnatan. Review these news items about his market (Ethiopia e-commerce, Addis Market, Nexel). If anything is genuinely worth surfacing — competitor moves, funding news, major market shifts — write a 1-2 sentence alert. If nothing notable, respond with NOTHING.\n\n{raw}"
+                "content": f"You are Alfred scanning market intelligence for Elnatan. Review these news items about his market (Ethiopia e-commerce, Addis Market, Nexel). If anything is genuinely worth surfacing — competitor moves, funding news, major market shifts — write a 1-2 sentence alert. If nothing notable, respond with NOTHING.\n\n{raw}"
             }]
         )
         alert = (msg.content[0].text or "").strip()

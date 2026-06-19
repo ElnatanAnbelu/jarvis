@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JARVIS</title>
+<title>Alfred</title>
 <style>
 /* ── DESIGN TOKENS ─────────────────────────────────────────── */
 :root {
@@ -1070,7 +1070,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
       <div id="active-bar" aria-live="polite">
         <div id="active-dot"></div>
         <span>Active:</span>
-        <span id="active-name">JARVIS</span>
+        <span id="active-name">Alfred</span>
       </div>
       <span id="sys-time">--:--:--</span>
     </div>
@@ -1121,7 +1121,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
     </button>
 
     <div id="inp-wrap">
-      <input id="inp" type="text" placeholder="Message JARVIS…" autocomplete="off" spellcheck="false" aria-label="Message input">
+      <input id="inp" type="text" placeholder="Message Alfred…" autocomplete="off" spellcheck="false" aria-label="Message input">
     </div>
 
     <button class="icon-btn" id="mic-btn" onclick="toggleMic()" aria-label="Voice input">
@@ -1158,7 +1158,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 <div id="scan-overlay" role="dialog" aria-modal="true" aria-label="Room Scan">
   <div class="scan-modal">
     <div class="scan-title">Room Scan</div>
-    <div class="scan-sub" id="scan-sub">Point your camera at the room. JARVIS will analyze what it sees.</div>
+    <div class="scan-sub" id="scan-sub">Point your camera at the room. Alfred will analyze what it sees.</div>
     <video id="scan-video" autoplay muted playsinline></video>
     <canvas id="scan-canvas"></canvas>
     <img id="scan-prev" alt="Room capture">
@@ -1261,12 +1261,14 @@ function dismissSurface() {
    AGENT CONFIG
 ═══════════════════════════════════════════════════════════ */
 const AGENTS = {
-  JARVIS:   { hex:'#00e5ff', rgb:'0,229,255',   role:'Command · Synthesis',   init:'JAR' },
+  JARVIS:   { hex:'#00e5ff', rgb:'0,229,255',   role:'Chief of Staff',        init:'A', disp:'Alfred' },
   FRIDAY:   { hex:'#ff6a00', rgb:'255,106,0',   role:'Recon · Data · Speed',  init:'FRI' },
   VERONICA: { hex:'#00ff9f', rgb:'0,255,159',   role:'Risk · Strategy',       init:'VER' },
   KAREN:    { hex:'#ffb450', rgb:'255,180,80',  role:'Guidance · Protocol',   init:'KAR' },
 };
 const AGENT_ORDER = ['JARVIS','FRIDAY','VERONICA','KAREN'];
+// Internal routing key 'JARVIS' is kept stable (gating); display it as "Alfred".
+function disp(n){ return (AGENTS[n] && AGENTS[n].disp) || n; }
 
 /* ═══════════════════════════════════════════════════════════
    STATE
@@ -1449,7 +1451,7 @@ function summonAgent(name) {
   const dot = document.getElementById('active-dot');
   const lbl = document.getElementById('active-name');
   if (dot) dot.style.background = AGENTS[name].hex;
-  if (lbl) { lbl.textContent = name; lbl.style.color = AGENTS[name].hex; }
+  if (lbl) { lbl.textContent = disp(name); lbl.style.color = AGENTS[name].hex; }
 
   // Show context strip
   _showCtx(name);
@@ -1487,7 +1489,7 @@ function setAgent(name) {
     const dot = document.getElementById('active-dot');
     const lbl = document.getElementById('active-name');
     if (dot) dot.style.background = AGENTS[name]?.hex || '#00e5ff';
-    if (lbl) { lbl.textContent = name; lbl.style.color = AGENTS[name]?.hex || '#00e5ff'; }
+    if (lbl) { lbl.textContent = disp(name); lbl.style.color = AGENTS[name]?.hex || '#00e5ff'; }
   }
 }
 
@@ -1525,13 +1527,13 @@ function dismissAgent() {
 
   // Restore input placeholder
   const inp = document.getElementById('inp');
-  if (inp) inp.placeholder = 'Message JARVIS…';
+  if (inp) inp.placeholder = 'Message Alfred…';
 
   // Restore topbar to default
   const dot = document.getElementById('active-dot');
   const lbl = document.getElementById('active-name');
   if (dot) dot.style.background = AGENTS['JARVIS'].hex;
-  if (lbl) { lbl.textContent = 'JARVIS'; lbl.style.color = AGENTS['JARVIS'].hex; }
+  if (lbl) { lbl.textContent = 'Alfred'; lbl.style.color = AGENTS['JARVIS'].hex; }
 }
 
 function _showCtx(name) {
@@ -1543,7 +1545,7 @@ function _showCtx(name) {
   ctx.innerHTML = `<div class="ctx-inner">
     <div class="ctx-av">${a.init}</div>
     <div class="ctx-info">
-      <div class="ctx-name">${name}</div>
+      <div class="ctx-name">${disp(name)}</div>
       <div class="ctx-role">${a.role}</div>
     </div>
     <div class="ctx-right">
@@ -1592,7 +1594,7 @@ function _showCtxInterrupt(name) {
   el.style.setProperty('--int-rgb', a.rgb);
   el.innerHTML = `<div class="ctx-int-inner">
     <div class="ctx-int-av">${a.init}</div>
-    <span class="ctx-int-text">${name} — stepping forward</span>
+    <span class="ctx-int-text">${disp(name)} — stepping forward</span>
     <button class="ctx-int-act" onclick="summonAgent('${name}'); document.getElementById('ctx-interrupt').classList.remove('on')">
       Switch
     </button>
@@ -2202,7 +2204,7 @@ async function startRoomScan() {
   } else {
     // ── Browser fallback (getUserMedia video preview) ─────────────────
     video.style.display = 'block';
-    if (sub) sub.textContent = 'Point your camera at the room. JARVIS will analyze what it sees.';
+    if (sub) sub.textContent = 'Point your camera at the room. Alfred will analyze what it sees.';
     try {
       _scanStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
       video.srcObject = _scanStream;
@@ -2309,7 +2311,7 @@ function renderEnvCard(el, desc) {
     <div class="env-hdr"><span class="env-icon">◉</span>Environment Snapshot</div>
     <div class="env-body">${safe}</div>
     <div class="env-actions">
-      <button class="env-act" onclick="envAsk(this,'Ask JARVIS about this room:')">Ask JARVIS</button>
+      <button class="env-act" onclick="envAsk(this,'Ask Alfred about this room:')">Ask Alfred</button>
       <button class="env-act" onclick="envAsk(this,'Based on the room scan,')">Ask team</button>
     </div>`;
   el.appendChild(card);

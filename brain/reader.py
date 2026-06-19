@@ -96,7 +96,7 @@ def ask_about_file(file_path: str, question: str, model: str = "claude-sonnet-4-
             with client.messages.stream(
                 model=attempt_model,
                 max_tokens=2048,
-                system="You are JARVIS. Answer clearly and directly about the document provided. No markdown. Plain sentences.",
+                system="You are Alfred. Answer clearly and directly about the document provided. No markdown. Plain sentences.",
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for chunk in stream.text_stream:
@@ -134,7 +134,7 @@ def ask_about_image(image_path: str, question: str, model: str = "claude-sonnet-
         with client.messages.stream(
             model=attempt_model,
             max_tokens=1024,
-            system="You are JARVIS. Analyze the image directly and answer the question. No markdown. Plain sentences.",
+            system="You are Alfred. Analyze the image directly and answer the question. No markdown. Plain sentences.",
             messages=[{
                 "role": "user",
                 "content": [
@@ -208,7 +208,7 @@ Be thorough. This will be saved as a real file on the desktop."""
             with client.messages.stream(
                 model=attempt_model,
                 max_tokens=4000,
-                system="You are JARVIS. Generate high-quality professional documents in plain text. No markdown. Use CAPS for headers.",
+                system="You are Alfred. Generate high-quality professional documents in plain text. No markdown. Use CAPS for headers.",
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for chunk in stream.text_stream:

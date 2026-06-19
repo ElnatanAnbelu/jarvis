@@ -81,7 +81,7 @@ def deep_research(topic: str, model: str = "claude-sonnet-4-6"):
     yield "\n[Synthesizing report...]\n\n"
 
     # Step 3: Synthesize into a report, streaming
-    synthesis_prompt = f"""You are JARVIS. You have gathered the following research data on: "{topic}"
+    synthesis_prompt = f"""You are Alfred. You have gathered the following research data on: "{topic}"
 
 RESEARCH DATA:
 {raw_data}
@@ -101,7 +101,7 @@ Write in plain text only. No markdown symbols. Use CAPS for section headers. Be 
             with client.messages.stream(
                 model=attempt_model,
                 max_tokens=3000,
-                system="You are JARVIS. Deliver research reports in plain text. No markdown. Be thorough and direct.",
+                system="You are Alfred. Deliver research reports in plain text. No markdown. Be thorough and direct.",
                 messages=[{"role": "user", "content": synthesis_prompt}],
             ) as stream:
                 for chunk in stream.text_stream:

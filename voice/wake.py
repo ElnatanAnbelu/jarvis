@@ -1,8 +1,10 @@
 """
-voice/wake.py — Speech wake-word detector for JARVIS.
+voice/wake.py — Speech wake-word detector for Alfred.
 
-Primary path: openwakeword (offline, low-latency).
-Fallback path: energy-gate → Groq Whisper keyword confirm.
+Primary path: openwakeword (offline, low-latency) — ONLY when the owner supplies a
+custom Alfred wake model via ALFRED_WAKE_MODEL (openwakeword ships no "alfred" model).
+Fallback path (default): energy-gate → local Whisper keyword confirm (fully offline;
+cloud Groq used only if a key is set and local STT is unavailable).
 
 Usage:
     from voice.wake import WakeWordListener
@@ -21,7 +23,8 @@ import sounddevice as sd
 SAMPLE_RATE   = 16000
 CHUNK_SECS    = 0.5
 CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_SECS)
-KEYWORDS      = ("jarvis", "hey jarvis")
+WAKE_NAME     = "Alfred"
+KEYWORDS      = ("alfred", "hey alfred")
 
 # Energy threshold for voice onset (int16 RMS). 500 ≈ quiet speech.
 _ENERGY_THRESH = 500
@@ -51,7 +54,7 @@ class WakeWordListener:
         self._running = False
 
     def mute(self):
-        """Suppress detection while JARVIS is speaking (echo guard)."""
+        """Suppress detection while Alfred is speaking (echo guard)."""
         self._muted = True
 
     def unmute(self):
@@ -60,17 +63,27 @@ class WakeWordListener:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _init_oww(self):
-        # Try tflite first (what openwakeword downloads by default), then onnx
-        for framework in ("tflite", "onnx"):
+        # openwakeword ships pretrained models for "hey_jarvis"/"alexa"/etc. — NOT
+        # "alfred". Using the jarvis acoustic model would make Alfred wake to the wrong
+        # word, so the neural path is OPT-IN: set ALFRED_WAKE_MODEL=/path/to/alfred.onnx
+        # (a custom-trained model). Without it we use the offline energy-gate + local-STT
+        # keyword path below, which matches "alfred" today; the model is a drop-in upgrade.
+        model_path = os.environ.get("ALFRED_WAKE_MODEL", "").strip()
+        if not model_path:
+            print("[Wake] no ALFRED_WAKE_MODEL — using offline energy-gate + local-STT "
+                  "keyword detection for 'Alfred'.", flush=True)
+            return None
+        last_err = None
+        for framework in ("onnx", "tflite"):
             try:
                 from openwakeword.model import Model
-                m = Model(wakeword_models=["hey_jarvis"], inference_framework=framework)
-                print(f"[Wake] openwakeword loaded ({framework} mode)", flush=True)
+                m = Model(wakeword_models=[model_path], inference_framework=framework)
+                print(f"[Wake] Alfred wake model loaded: {model_path} ({framework})", flush=True)
                 return m
             except Exception as e:
                 last_err = e
                 continue
-        print(f"[Wake] openwakeword unavailable ({last_err}), using energy-gate fallback", flush=True)
+        print(f"[Wake] custom wake model unavailable ({last_err}); using keyword fallback.", flush=True)
         return None
 
     def _loop(self):
@@ -134,34 +147,24 @@ class WakeWordListener:
                         # Speech ended — run keyword check
                         audio = np.concatenate(speech_buf).flatten()
                         speech_buf.clear()
-                        if self._groq_keyword_check(audio):
+                        if self._keyword_check(audio):
                             self._fire()
                 except Exception:
                     pass
 
-    def _groq_keyword_check(self, audio_int16: np.ndarray) -> bool:
-        """Transcribe audio with Groq Whisper and check for wake keyword."""
+    def _keyword_check(self, audio_int16: np.ndarray) -> bool:
+        """Transcribe the captured speech (LOCAL Whisper first; Groq only if local is
+        unavailable and a key is set) and check for the 'Alfred' wake keyword. Fully
+        offline on a machine with faster-whisper installed."""
         import scipy.io.wavfile as wavfile
         import tempfile
-        from groq import Groq
-
-        groq_key = os.environ.get("GROQ_API_KEY", "")
-        if not groq_key:
-            return False
 
         tmp = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 tmp = f.name
             wavfile.write(tmp, SAMPLE_RATE, audio_int16)
-            client = Groq(api_key=groq_key)
-            with open(tmp, "rb") as fh:
-                result = client.audio.transcriptions.create(
-                    model="whisper-large-v3-turbo",
-                    file=("audio.wav", fh, "audio/wav"),
-                    response_format="text",
-                )
-            text = (result or "").lower().strip()
+            text = self._transcribe(tmp).lower().strip()
             matched = any(kw in text for kw in self._keywords)
             if matched:
                 print(f"[Wake] keyword detected in: '{text}'", flush=True)
@@ -174,6 +177,30 @@ class WakeWordListener:
                     os.unlink(tmp)
                 except OSError:
                     pass
+
+    def _transcribe(self, wav_path) -> str:
+        """Local-first transcription for wake detection (offline by default)."""
+        def _groq_fn(path):
+            groq_key = os.environ.get("GROQ_API_KEY", "")
+            if not groq_key:
+                return ""
+            try:
+                from groq import Groq
+                client = Groq(api_key=groq_key)
+                with open(path, "rb") as fh:
+                    return client.audio.transcriptions.create(
+                        model="whisper-large-v3-turbo",
+                        file=("audio.wav", fh, "audio/wav"),
+                        response_format="text",
+                    ) or ""
+            except Exception:
+                return ""
+
+        try:
+            from voice import local_stt
+            return local_stt.transcribe_or(wav_path, cloud_fn=_groq_fn) or ""
+        except Exception:
+            return _groq_fn(wav_path)
 
     def _fire(self):
         try:

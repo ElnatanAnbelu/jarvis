@@ -194,7 +194,7 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
 
     if is_paused() and source != "user":
         return {"action": "deny",
-                "reason": "JARVIS is paused — the kill-switch is active. Resume to allow actions.",
+                "reason": "Alfred is paused — the kill-switch is active. Resume to allow actions.",
                 "confirm_id": None}
 
     # Shakeout: an autonomous action in a still-SUPERVISED domain proposes for
@@ -271,7 +271,7 @@ def approve(confirm_id, pin=None) -> str:
     # pause check never fires here. Honor panic/pause explicitly — a halted
     # system must not execute a queued red-list action.
     if is_paused():
-        return (f"JARVIS is paused — resume before approving #{confirm_id}. "
+        return (f"Alfred is paused — resume before approving #{confirm_id}. "
                 f"(The action stays pending.)")
     # Atomically CLAIM the row (pending → approving). Only the winner proceeds,
     # so two concurrent approvals (UI + Telegram, double-tap, redelivery) can't

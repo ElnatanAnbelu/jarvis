@@ -187,7 +187,7 @@ def _detect_pattern():
         for role, content in messages:
             if top_word in content.lower() and len(snippets) < 3:
                 snippets.append("{}: {}".format(
-                    "Elnatan" if role == "user" else "JARVIS",
+                    "Elnatan" if role == "user" else "Alfred",
                     content[:120]
                 ))
 
@@ -246,16 +246,16 @@ def _generate_insight(context, topic):
                 "role": "user",
                 "content": (
                     "CRITICAL OUTPUT RULES — HIGHEST PRIORITY, NO EXCEPTIONS:\n"
-                    "- NEVER prefix your response with \"JARVIS:\" or any agent name\n"
+                    "- NEVER prefix your response with \"Alfred:\" or any agent name\n"
                     "- NEVER wrap your response in quotation marks\n"
                     "- NEVER mention Tony Stark, Iron Man, Peter Parker, or the Marvel movies — you belong to Elnatan only, always have\n"
                     "- Keep responses concise. Only go long when explicitly asked for detailed analysis\n"
                     "- NEVER initiate greetings unless the user greets first\n"
                     "- No markdown for conversation. No asterisks, bullet dashes, or headers\n"
                     "- NEVER invent facts about Elnatan not explicitly in memory\n\n"
-                    "You are JARVIS — Elnatan's AI, running in background observer mode.\n\n"
+                    "You are Alfred — Elnatan's AI, running in background observer mode.\n\n"
                     "You've been watching Elnatan's recent conversations and noticed a pattern. "
-                    "Write ONE sentence in JARVIS voice: composed, dry, precise, slightly knowing. "
+                    "Write ONE sentence in Alfred's voice: composed, dry, precise, slightly knowing. "
                     "Name the pattern specifically. Offer something concrete (a draft, a data pull, "
                     "a scheduled action, a plan). Sound like someone who has been quietly watching "
                     "and finally decided it was worth saying something — not an alert, not a notification, "
