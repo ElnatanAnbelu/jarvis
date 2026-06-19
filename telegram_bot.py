@@ -279,15 +279,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
+    # Authorization (C4): once an owner is known, ignore EVERY message — control
+    # command OR free-text — from any other sender. Previously the owner check
+    # only guarded commands, so a stranger could drive the full brain/tool layer
+    # as a trusted present human. (First run: no owner is set yet, so the first
+    # sender is captured as owner via _save_chat_id below.)
+    if not _is_owner(chat_id):
+        await update.message.reply_text("Not authorized.")
+        return
+
     # Owner control commands (approve/reject/pause/resume/away/home/status/
     # pending/undo) are handled BEFORE the brain router and short-circuit it.
     parsed = parse_owner_command(text)
     if parsed is not None:
-        if not _is_owner(chat_id):
-            # Security (C4): once an owner is known, ignore control commands
-            # from any other sender.
-            await update.message.reply_text("Not authorized.")
-            return
         cmd, arg = parsed
         reply = await asyncio.get_event_loop().run_in_executor(
             None, _handle_owner_command, cmd, arg
@@ -302,7 +306,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id, "typing")
 
     loop = asyncio.get_event_loop()
-    response, model = await loop.run_in_executor(None, route, text)
+    # Telegram is an off-device inbound channel. Tag it source="external" so the
+    # safety gate force-confirms any red-list action (money / send / irreversible)
+    # it triggers — even at home / in auto-mode. Routine (non-red) chat is
+    # unaffected; the owner simply gets an explicit approve step for big actions.
+    response, model = await loop.run_in_executor(None, lambda: route(text, source="external"))
 
     speaker = model if model in ("FRIDAY", "VERONICA", "KAREN") else "JARVIS"
     await update.message.reply_text(f"*{speaker}*\n{response}", parse_mode="Markdown")

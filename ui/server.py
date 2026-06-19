@@ -229,9 +229,9 @@ def _strip_markdown(text):
     return text.strip()
 
 
-def _route(user_input):
+def _route(user_input, source="user"):
     from brain.router import route
-    response, agent = route(user_input)
+    response, agent = route(user_input, source=source)
     return _strip_markdown(response), agent
 
 
