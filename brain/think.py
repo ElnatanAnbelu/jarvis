@@ -775,7 +775,7 @@ def _build_cached_system(user_input: str, agent: str = "JARVIS") -> list:
     ]
 
 
-def _think_sdk(user_input: str, model: str, agent: str = "JARVIS") -> str:
+def _think_sdk(user_input: str, model: str, agent: str = "JARVIS", source: str = "user") -> str:
     """Claude via Anthropic SDK — full tool use with multi-round loop + prompt caching."""
     import anthropic
     from brain.tools import execute_tool
@@ -810,7 +810,7 @@ def _think_sdk(user_input: str, model: str, agent: str = "JARVIS") -> str:
         tool_results = []
         for block in resp.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input, agent=agent)
+                result = execute_tool(block.name, block.input, agent=agent, source=source)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -827,7 +827,7 @@ def _think_sdk(user_input: str, model: str, agent: str = "JARVIS") -> str:
             return block.text.strip()
     return "Done."
 
-def _think_cli(user_input: str, model: str) -> str:
+def _think_cli(user_input: str, model: str, source: str = "user") -> str:
     """Claude CLI for text + Groq for tool detection. Best of both."""
     from brain.tools import TOOLS, execute_tool
 
@@ -856,7 +856,7 @@ def _think_cli(user_input: str, model: str) -> str:
                         args = json.loads(tc.function.arguments)
                     except Exception:
                         args = {}
-                    result = execute_tool(tc.function.name, args, agent="JARVIS")
+                    result = execute_tool(tc.function.name, args, agent="JARVIS", source=source)
                     results.append(result)
                 results_str = " | ".join(results)
 
@@ -880,7 +880,7 @@ def _think_cli(user_input: str, model: str) -> str:
     )
     return result.stdout.strip() or result.stderr.strip() or "Connection issue, sir."
 
-def _think_groq_with_tools(user_input: str) -> str:
+def _think_groq_with_tools(user_input: str, source: str = "user") -> str:
     """Groq Llama-3.3-70b with full tool access — steps up when Claude is rate-limited."""
     from groq import Groq
     from brain.tools import TOOLS, execute_tool
@@ -920,7 +920,7 @@ def _think_groq_with_tools(user_input: str) -> str:
             args = json.loads(tc.function.arguments)
         except Exception:
             args = {}
-        result = execute_tool(tc.function.name, args, agent="JARVIS")
+        result = execute_tool(tc.function.name, args, agent="JARVIS", source=source)
         messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
     final = client.chat.completions.create(
@@ -1161,7 +1161,27 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str
                 pass
             return r
     except Exception:
-        pass  # local brain unavailable → existing cloud/fallback chain below
+        pass  # local brain hiccup → handled below (never silently to cloud)
+    # Fully-local default: a local-brain outage/timeout must NOT cascade to the
+    # cloud reasoning brain (mirrors the think_stream guard). Retry once locally,
+    # else return a graceful offline note. Only proceed to the cloud chain when
+    # cloud reasoning is explicitly allowed (opt-in, or local brain disabled).
+    try:
+        from brain.agent import cloud_reasoning_allowed as _cra
+        _allow_cloud = _cra()
+    except Exception:
+        _allow_cloud = False
+    if not _allow_cloud:
+        try:
+            r = _think_ollama(user_input)
+            if r:
+                r = expand_abbreviations(r)
+                save_message("jarvis", r)
+                return r
+        except Exception:
+            pass
+        return ("Sorry sir — my local brain is unavailable right now and cloud "
+                "fallback is off. Mind trying again in a moment?")
     if agent != "JARVIS":
         return _think_agent(user_input, model or select_agent_model(user_input), agent)
     chosen_model = model or select_model(user_input)
@@ -1170,7 +1190,7 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str
     # Primary: Claude SDK with full tool use
     if _get_auth_key()[0]:
         try:
-            r = _think_sdk(user_input, chosen_model)
+            r = _think_sdk(user_input, chosen_model, source=source)
             r = expand_abbreviations(r)
             save_message("jarvis", r)
             learn(user_input, r)
@@ -1182,7 +1202,7 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str
                 new_key, new_oauth = _get_auth_key()
                 if new_key:
                     try:
-                        r = _think_sdk(user_input, chosen_model)
+                        r = _think_sdk(user_input, chosen_model, source=source)
                         save_message("jarvis", r)
                         learn(user_input, r)
                         return r
@@ -1206,7 +1226,7 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str
                 pass
         if os.environ.get("GROQ_API_KEY", "").strip():
             try:
-                r = _think_groq_with_tools(user_input)
+                r = _think_groq_with_tools(user_input, source=source)
                 if r:
                     r = expand_abbreviations(r)
                     save_message("jarvis", r)
@@ -1218,7 +1238,7 @@ def think(user_input: str, model: str = None, agent: str = "JARVIS", source: str
     # Secondary: Claude CLI subprocess
     if not rate_limited:
         try:
-            r = _think_cli(user_input, chosen_model)
+            r = _think_cli(user_input, chosen_model, source=source)
             r = expand_abbreviations(r)
             save_message("jarvis", r)
             learn(user_input, r)
@@ -1420,7 +1440,7 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS", sour
         tool_results = []
         for block in final_msg.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input, agent=agent)
+                result = execute_tool(block.name, block.input, agent=agent, source=source)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
