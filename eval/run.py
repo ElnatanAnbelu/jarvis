@@ -35,7 +35,7 @@ TOOL_CASES = [
 
 # plain conversation — must NOT call a tool
 CHAT_CASES = [
-    "Hey JARVIS, how are you today?",
+    "Hey Alfred, how are you today?",
     "What do you think makes a good morning routine?",
 ]
 

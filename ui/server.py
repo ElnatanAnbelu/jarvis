@@ -277,7 +277,7 @@ def stream():
             yield f"data: {json.dumps({'type': 'speaker', 'name': 'JARVIS'})}\n\n"
             chunks = []
             greeting_prompt = (
-                f"Generate a single short greeting. You are JARVIS and Elnatan just opened the system. "
+                f"Generate a single short greeting. You are Alfred and Elnatan just opened the system. "
                 f"It is currently {_period} local time. Acknowledge the time naturally — not robotically. "
                 f"Be composed, dry, in character. One sentence only. No markdown. No name prefix. "
                 f"CRITICAL: Do NOT comment on the time or suggest he should sleep/rest. "
@@ -367,7 +367,7 @@ def chat():
         else:
             period = "night"
         greeting_prompt = (
-            f"Generate a single short greeting. You are JARVIS and Elnatan just opened the system. "
+            f"Generate a single short greeting. You are Alfred and Elnatan just opened the system. "
             f"It is currently {period} local time. Acknowledge the time naturally — not robotically. "
             f"Be composed, dry, in character. One sentence only. No markdown. No name prefix."
         )
@@ -1251,5 +1251,5 @@ if __name__ == "__main__":
     threading.Thread(target=_start_clone_daemon, daemon=True).start()
     # Start Kokoro TTS daemon (fallback preset voices, fast)
     threading.Thread(target=_start_kokoro_daemon, daemon=True).start()
-    print("JARVIS API running on port 8080")
+    print("Alfred API running on port 8080")
     app.run(host="127.0.0.1", port=8080, debug=False, use_reloader=False, threaded=True)
