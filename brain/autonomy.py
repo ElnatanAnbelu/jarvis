@@ -106,6 +106,49 @@ def set_autonomy_mode(mode: str) -> None:
     memory.set_flag("autonomy_mode", "auto" if mode == "auto" else "supervised")
 
 
+# Per-domain trust map (the supervised→auto shakeout the whole plan hinges on):
+# flip one domain to 'auto' once it's behaved, while the rest stay supervised.
+# Red-list / money-PIN / contact-aware gating still apply regardless of mode.
+TOOL_DOMAIN = {
+    "send_email": "comms", "read_emails": "comms", "ingest_recent_emails": "comms",
+    "send_imessage": "comms", "read_imessages": "comms", "triage_inbox": "comms",
+    "send_whatsapp": "comms", "send_whatsapp_api": "comms", "send_whatsapp_by_name": "comms",
+    "transfer_money": "money", "make_payment": "money", "pay_bill": "money",
+    "log_expense": "money", "log_revenue": "money",
+    "control_screen": "system", "run_shell": "system", "execute_code": "system",
+    "open_app": "system", "control_music": "system", "set_volume": "system", "take_screenshot": "system",
+    "write_file": "files", "create_file": "files", "delete_file": "files", "move_file": "files",
+    "git_push": "code", "git_commit": "code",
+    "web_search": "web", "get_news": "web", "open_in_browser": "web",
+    "create_calendar_event": "calendar", "check_calendar": "calendar", "set_reminder": "calendar",
+}
+
+
+def domain_of(tool_name: str) -> str:
+    return TOOL_DOMAIN.get(tool_name, "general")
+
+
+def _load_domain_modes() -> dict:
+    raw = memory.get_flag("autonomy_modes", "")
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+
+
+def get_domain_mode(domain: str) -> str:
+    """Per-domain 'supervised'|'auto'. Falls back to the global autonomy_mode when
+    a domain hasn't been explicitly flipped."""
+    m = _load_domain_modes().get(domain)
+    return m if m in ("supervised", "auto") else get_autonomy_mode()
+
+
+def set_domain_mode(domain: str, mode: str) -> None:
+    modes = _load_domain_modes()
+    modes[domain] = "auto" if mode == "auto" else "supervised"
+    memory.set_flag("autonomy_modes", json.dumps(modes))
+
+
 def is_red(tool_name: str, declared_risk=None) -> bool:
     return declared_risk == "red" or tool_name in RED_LIST
 
@@ -154,13 +197,15 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
                 "reason": "JARVIS is paused — the kill-switch is active. Resume to allow actions.",
                 "confirm_id": None}
 
-    # Shakeout: in supervised mode every autonomous action proposes for approval.
-    if source == "autonomous" and get_autonomy_mode() == "supervised":
+    # Shakeout: an autonomous action in a still-SUPERVISED domain proposes for
+    # approval; once that domain is flipped to 'auto' it executes (red-list/money
+    # still gate). Per-domain so 'comms' can be auto while 'money' stays supervised.
+    if source == "autonomous" and get_domain_mode(domain_of(tool_name)) == "supervised":
         cid = memory.enqueue_confirmation(tool_name, args, agent=agent,
                                           risk=(risk or "supervised"),
-                                          reason="supervised autonomous action")
+                                          reason=f"supervised autonomous action ({domain_of(tool_name)})")
         return {"action": "confirm",
-                "reason": f"Supervised mode — '{tool_name}' queued for your approval (#{cid}).",
+                "reason": f"Supervised ({domain_of(tool_name)}) — '{tool_name}' queued for your approval (#{cid}).",
                 "confirm_id": cid}
 
     # Contact-aware: blocked recipients never auto-act; VIP/family confirm unless I'm present.
