@@ -727,6 +727,12 @@
       body: JSON.stringify(body || {}),
     });
   }
+  // POST and resolve the parsed { result } string (tolerates a non-JSON body).
+  function postResult(u, body){
+    return postJSON(u, body).then(function (res) {
+      return res.json().then(function (d) { return d && d.result; }, function () { return null; });
+    });
+  }
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
@@ -851,6 +857,28 @@
     }).join('');
   }
 
+  // A money move >= the PIN threshold won't execute without a PIN; the server
+  // replies with a "needs PIN" string instead of acting. Detect that so the UI
+  // never falsely reports success.
+  function needsPin(result) {
+    return typeof result === 'string' && /needs.*\bPIN\b/i.test(result);
+  }
+
+  function settleApproval(card, act, result) {
+    if (needsPin(result)) {
+      // re-enable so the owner can retry; a money move is still pending.
+      if (card) card.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+      setOrb(result || 'That needs your PIN, sir.');
+      return false;
+    }
+    if (card) {
+      card.style.opacity = '0';
+      card.style.transform = 'translateX(' + (act === 'reject' ? '-40px' : '40px') + ')';
+    }
+    setOrb(act === 'approve' ? 'Approved, sir. Acting on it now.' : 'Rejected — left untouched, sir.');
+    return true;
+  }
+
   // Approve / Reject (event delegation)
   document.getElementById('approvals').addEventListener('click', function (ev) {
     var btn = ev.target.closest('button[data-act]');
@@ -859,12 +887,18 @@
     var act = btn.getAttribute('data-act');
     var card = btn.closest('.approval');
     if (card) card.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-    postJSON('/api/' + act, { id: id }).then(function () {
-      if (card) {
-        card.style.opacity = '0';
-        card.style.transform = 'translateX(' + (act === 'reject' ? '-40px' : '40px') + ')';
+    postResult('/api/' + act, { id: id }).then(function (result) {
+      if (act === 'approve' && needsPin(result)) {
+        var pin = window.prompt('PIN required to approve this money move, sir:');
+        if (pin) {
+          return postResult('/api/approve', { id: id, pin: pin }).then(function (r2) {
+            settleApproval(card, act, r2);
+          });
+        }
+        settleApproval(card, act, result);  // owner cancelled — leave it pending
+        return;
       }
-      setOrb(act === 'approve' ? 'Approved, sir. Acting on it now.' : 'Rejected — left untouched, sir.');
+      settleApproval(card, act, result);
     }).catch(function () {
       if (card) card.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
     }).then(function () {

@@ -109,8 +109,8 @@ class _FakeAutonomy:
     def is_away(self):
         return self.away
 
-    def approve(self, cid):
-        return f"approved-{cid}"
+    def approve(self, cid, pin=None):
+        return f"approved-{cid}" + (f"-pin{pin}" if pin else "")
 
     def reject(self, cid):
         return f"rejected-{cid}"

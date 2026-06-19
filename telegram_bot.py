@@ -149,12 +149,21 @@ def _handle_owner_command(cmd: str, arg):
     from memory import memory
 
     if cmd in ("approve", "reject", "undo"):
-        try:
-            cid = int(str(arg).strip())
-        except (TypeError, ValueError):
-            return f"Usage: {cmd} <id>  (id must be a number)"
+        # approve accepts an optional trailing PIN: "approve <id> <pin>" — needed
+        # to release a money move >= the PIN threshold. reject/undo take only an id.
+        pin = None
+        raw = str(arg).strip()
         if cmd == "approve":
-            return autonomy.approve(cid)
+            bits = raw.split(None, 1)
+            raw = bits[0] if bits else ""
+            pin = bits[1].strip() if len(bits) > 1 else None
+        try:
+            cid = int(raw)
+        except (TypeError, ValueError):
+            usage = "approve <id> [pin]" if cmd == "approve" else f"{cmd} <id>"
+            return f"Usage: {usage}  (id must be a number)"
+        if cmd == "approve":
+            return autonomy.approve(cid, pin=pin)
         if cmd == "reject":
             return autonomy.reject(cid)
         return memory.revert_action(cid)

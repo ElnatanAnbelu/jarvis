@@ -1081,7 +1081,10 @@ def autonomy_approve():
     confirm_id, err = _require_int_id()
     if err is not None:
         return err
-    return jsonify({"result": autonomy.approve(confirm_id)})
+    # Optional PIN — required to release a money move >= the PIN threshold.
+    data = request.json if request.is_json else None
+    pin = data.get("pin") if isinstance(data, dict) else None
+    return jsonify({"result": autonomy.approve(confirm_id, pin=pin)})
 
 
 @app.route("/api/reject", methods=["POST"])
