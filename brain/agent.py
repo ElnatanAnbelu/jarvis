@@ -98,11 +98,42 @@ def _select_tools(user_input: str, agent: str, k: int = MAX_TOOLS) -> list:
     return chosen[:k]
 
 
+# Tools whose output is third-party / attacker-controllable content. Once one of
+# these runs in a loop, anything the model decides AFTERWARD may have been driven
+# by injected instructions in that content, so we escalate the effective source
+# to "external" for the rest of the loop — which makes the gate force
+# confirmation on any red-list action (prompt-injection containment). The gate is
+# the enforcement boundary; this just stops a present-user session from
+# laundering injected content into an ungated red-list call.
+_UNTRUSTED_OUTPUT_TOOLS = {
+    "read_emails", "ingest_recent_emails", "read_recent_emails",
+    "get_news", "web_search", "search_web",
+    "read_file", "read_screen", "open_in_browser", "market_research",
+    "check_calendar", "read_imessages", "read_whatsapp", "read_messages",
+    "fetch_url", "browse", "open_url", "read_url", "scrape",
+}
+
+
+def _taints(tool_name: str) -> bool:
+    if tool_name in _UNTRUSTED_OUTPUT_TOOLS:
+        return True
+    # Heuristic backstop for future readers of external content.
+    n = tool_name.lower()
+    return (n.startswith(("read_", "fetch_", "browse", "scrape_", "open_url"))
+            and any(k in n for k in ("email", "mail", "message", "whatsapp",
+                                     "imessage", "sms", "dm", "url", "web", "news", "feed")))
+
+
 def _resolve_tools(user_input: str, agent: str, source: str):
     """Run the tool-use rounds; return (messages, last_response, model).
 
     The model decides which (relevance-filtered) tools to call; each call is
     gated + executed via the registry. Model tier is picked per request.
+
+    Provenance: the effective source escalates to "external" once any tool
+    returns untrusted third-party content, so a later red-list call that may have
+    been induced by injected text is force-confirmed by the gate rather than
+    auto-executed under the present-user band.
     """
     from brain.tools.registry import execute_tool
     try:
@@ -117,14 +148,19 @@ def _resolve_tools(user_input: str, agent: str, source: str):
         {"role": "system", "content": _system_for(agent, user_input)},
         {"role": "user", "content": user_input},
     ]
+    eff_source = source  # escalates to "external" once untrusted content is read
     for _ in range(MAX_ROUNDS):
         r = llm.chat(messages, tools=tools, model=model, think=False)
         if not r["tool_calls"]:
             return messages, r, model  # model is ready to answer
         messages.append(r["raw"])  # assistant turn carrying the tool_calls
         for tc in r["tool_calls"]:
-            result = execute_tool(tc["name"], tc["arguments"], agent=agent, source=source)
+            result = execute_tool(tc["name"], tc["arguments"], agent=agent, source=eff_source)
             messages.append({"role": "tool", "tool_name": tc["name"], "content": str(result)[:4000]})
+            # Once any tool returns untrusted third-party content, treat the rest
+            # of this loop as externally-influenced so red-list calls confirm.
+            if eff_source == "user" and _taints(tc["name"]):
+                eff_source = "external"
     return messages, None, model  # hit round cap
 
 
