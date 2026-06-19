@@ -6,6 +6,21 @@ from pathlib import Path
 CONTACTS_FILE = Path(__file__).parent.parent / "contacts.json"
 
 
+def _osa_str(s) -> str:
+    """Escape an arbitrary value for safe embedding inside an AppleScript
+    double-quoted string literal.
+
+    Without this, a value like `a@b" \\n do shell script "rm -rf ~" \\n "` would
+    close the literal and inject a `do shell script` line — an AppleScript→shell
+    RCE. We escape backslashes and quotes and strip newlines/control chars
+    (an AppleScript string literal can't span lines, so a raw newline is itself
+    a breakout primitive)."""
+    s = str(s)
+    s = s.replace("\\", "\\\\").replace('"', '\\"')
+    s = s.replace("\r", " ").replace("\n", " ")
+    return "".join(ch for ch in s if ch >= " " or ch == "\t")
+
+
 def _load_contacts() -> dict:
     try:
         data = json.loads(CONTACTS_FILE.read_text())
@@ -32,7 +47,7 @@ def _resolve_contact(name: str) -> str:
     script = f'''
     tell application "Contacts"
         launch
-        set matches to (every person whose name contains "{name}")
+        set matches to (every person whose name contains "{_osa_str(name)}")
         if (count of matches) = 0 then return ""
         set p to item 1 of matches
         set allPhones to phones of p
@@ -51,8 +66,15 @@ def _resolve_contact(name: str) -> str:
     return result.stdout.strip()
 
 
+_PHONE_RE = re.compile(r'^[\d\+\-\(\)\s]{7,}$')
+# A real email: exactly one @, no quotes/whitespace/control chars that could be
+# used to break out of the AppleScript literal. NOT "any string containing @".
+_EMAIL_RE = re.compile(r'^[^@\s"\'\\]+@[^@\s"\'\\]+\.[^@\s"\'\\]+$')
+
+
 def _looks_like_handle(s: str) -> bool:
-    return bool(re.match(r'^[\d\+\-\(\)\s]{7,}$', s)) or '@' in s
+    s = (s or "").strip()
+    return bool(_PHONE_RE.match(s) or _EMAIL_RE.match(s))
 
 
 def send_imessage(contact: str, message: str) -> str:
@@ -64,12 +86,11 @@ def send_imessage(contact: str, message: str) -> str:
             return f"Could not find '{contact}'. Add their number to contacts.json in the JARVIS folder."
         handle = resolved
 
-    safe_msg = message.replace('\\', '\\\\').replace('"', '\\"')
     script = f'''
     tell application "Messages"
         set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{handle}" of targetService
-        send "{safe_msg}" to targetBuddy
+        set targetBuddy to buddy "{_osa_str(handle)}" of targetService
+        send "{_osa_str(message)}" to targetBuddy
     end tell
     '''
     result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
@@ -80,6 +101,10 @@ def send_imessage(contact: str, message: str) -> str:
 
 
 def read_imessages(contact: str = None, count: int = 5) -> str:
+    try:
+        count = max(1, min(int(count), 200))  # coerce: it is interpolated into the script
+    except (TypeError, ValueError):
+        count = 5
     if contact:
         handle = contact.strip()
         if not _looks_like_handle(handle):
@@ -91,7 +116,7 @@ def read_imessages(contact: str = None, count: int = 5) -> str:
             set output to ""
             repeat with c in chats
                 repeat with p in participants of c
-                    if handle of p = "{handle}" then
+                    if handle of p = "{_osa_str(handle)}" then
                         set msgs to messages of c
                         set n to count of msgs
                         if n > {count} then set msgs to items (n - {count} + 1) thru n of msgs

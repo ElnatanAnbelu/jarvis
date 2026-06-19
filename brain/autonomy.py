@@ -32,6 +32,7 @@ RED_LIST = {
     "move_file",
     "run_shell",
     "execute_code",
+    "control_screen",  # drives real mouse/keyboard/AppleScript — full OS control
     "git_push",
     # money / payments (wired but confirm-only per spec)
     "transfer_money",

@@ -492,6 +492,13 @@ def agent_task():
     task = data.get("task", "").strip()
     if not task:
         return jsonify({"error": "No task"}), 400
+    # Kill-switch backstop: never launch a computer-use task while paused/panicked.
+    try:
+        from brain import autonomy
+        if autonomy.is_paused():
+            return jsonify({"error": "Paused (panic/pause active) — resume first."}), 409
+    except Exception:
+        pass
     from control.agent import get_agent
     agent = get_agent()
     def run_agent():

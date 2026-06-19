@@ -39,7 +39,8 @@ def get_battery() -> str:
     description="Control the Mac screen — click, type, navigate apps, open websites. Use for multi-step tasks.",
     parameters={
         "task": {"type": "string", "description": "Full description of what to do on screen"},
-    }
+    },
+    risk="red",  # drives the real mouse/keyboard/AppleScript — confirm when away/external
 )
 def control_screen(task: str) -> str:
     from control.agent import get_agent

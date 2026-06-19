@@ -148,15 +148,34 @@ class ComputerUseAgent:
 
     def _should_abort(self):
         with self._abort_lock:
-            return self._abort
+            if self._abort:
+                return True
+        # Honor the global kill-switch: panic() and pause set autonomy.is_paused.
+        # This is a second action channel that drives the real mouse/keyboard/
+        # AppleScript, so it MUST stop instantly when the user halts everything.
+        try:
+            from brain import autonomy
+            return autonomy.is_paused()
+        except Exception:
+            return False
 
-    def run(self, task: str, on_progress=None) -> str:
+    def run(self, task: str, on_progress=None, source: str = "user") -> str:
+        # Refuse to even start while paused/panicked. (away-mode + red-list
+        # confirmation are enforced upstream at the gate, since control_screen
+        # is risk="red"; this is the kill-switch backstop for the direct path.)
+        try:
+            from brain import autonomy
+            if autonomy.is_paused():
+                return "🚫 Computer control is paused (panic/pause active). Resume first."
+        except Exception:
+            pass
+
         self._abort = False
         history = []
 
         for step in range(MAX_STEPS):
             if self._should_abort():
-                return "Task aborted."
+                return "Task aborted (halted by pause/panic or stop)."
 
             state = _get_screen_state()
             action_obj = _plan_next_action(task, history, state)
