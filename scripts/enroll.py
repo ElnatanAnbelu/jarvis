@@ -117,6 +117,59 @@ def enroll_voice() -> bool:
         return False
 
 
+def _describe_space(image_path) -> str:
+    """Best-effort one-line vision description (cloud-gated / local VLM); '' if unavailable."""
+    try:
+        from brain.agent import cloud_reasoning_allowed
+        if not cloud_reasoning_allowed():
+            return ""    # vision needs the cloud opt-in or a local VLM (not in the default path)
+        from brain.reader import ask_about_image
+        return "".join(ask_about_image(image_path, "Describe this workspace in one short sentence.")).strip()
+    except Exception:
+        return ""
+
+
+def enroll_environment() -> bool:
+    print("\n── 4. Environment scan ─────────────────────")
+    try:
+        import cv2
+        try:
+            input("  Point the camera at your space — press Enter to let Alfred look ")
+        except (EOFError, KeyboardInterrupt):
+            return False
+        cap = cv2.VideoCapture(0)
+        frame = None
+        for _ in range(30):
+            ok, f = cap.read()
+            if ok and f is not None:
+                frame = f
+                break
+            time.sleep(0.03)
+        cap.release()
+        if frame is None:
+            print("  Couldn't read the camera — check Camera permission, then re-run.")
+            return False
+        path = str(_enroll_dir() / "environment.png")
+        cv2.imwrite(path, frame)
+        from memory import memory
+        memory.set_flag("environment_scanned", True)
+        memory.set_flag("environment_ref_path", path)
+        print(f"  Captured your space → {path}")
+        desc = _describe_space(path)
+        if desc:
+            print(f"  Alfred sees: {desc[:160]}")
+            try:
+                memory.set_flag("environment_desc", desc[:500])
+            except Exception:
+                pass
+        else:
+            print("  (Saved a baseline view; a vision model describes the room when one's enabled.)")
+        return True
+    except Exception as e:
+        print(f"  environment scan failed: {e}")
+        return False
+
+
 def memory_flag(key) -> bool:
     try:
         from memory import memory
@@ -127,12 +180,13 @@ def memory_flag(key) -> bool:
 
 def main():
     print("=" * 52)
-    print("  ALFRED — enrollment  (mic · face · voice)")
+    print("  ALFRED — enrollment  (mic · face · voice · environment)")
     print("  Local-only. Nothing leaves your Mac.")
     print("=" * 52)
     mic_test()
     enroll_face()
     enroll_voice()
+    enroll_environment()
     print("\n  Done, sir. (PIN + credentials + people: ./venv/bin/python scripts/setup.py)\n")
 
 
