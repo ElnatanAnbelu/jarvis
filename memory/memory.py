@@ -436,7 +436,12 @@ def revert_action(action_id: int) -> str:
         inv_args = {}
 
     try:
-        result = execute_tool(inverse_tool, inv_args)
+        # A revert is an explicitly user-authorized compensating action, so it
+        # bypasses the gate — otherwise undoing a red-list action would itself
+        # need confirmation (deadlock), and panic couldn't revert in away-mode.
+        # The self-write firewall in control/files.py still applies, so a revert
+        # can never be used to write into JARVIS's own install tree.
+        result = execute_tool(inverse_tool, inv_args, _bypass_gate=True)
     except Exception as e:
         return f"Revert of action {action_id} ({tool_name}) failed: {e}"
 

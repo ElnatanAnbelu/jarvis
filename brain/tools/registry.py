@@ -6,10 +6,17 @@ get_tools(agent=None) returns the schema list; pass agent to filter.
 execute_tool(name, args, agent=None) looks up and calls the function;
 pass agent to enforce per-agent access control.
 """
+import json as _json
+import os as _os
 import time as _time
 from typing import Callable, Optional, List
 
 TOOL_REGISTRY: dict = {}
+
+# Largest file we'll snapshot for undo (keeps the ledger from bloating). Files
+# bigger than this get no content-inverse — the red-list confirmation is then
+# the only compensating control, which is the documented honest behavior.
+_MAX_SNAPSHOT_BYTES = 256 * 1024
 
 # Structured observability (safe no-op if obs is unavailable).
 try:
@@ -88,17 +95,61 @@ def get_tools(agent: Optional[str] = None) -> list:
             if _agent_can_call(entry, agent)]
 
 
-def _inverse_for(name: str, args: dict):
-    """Return (inverse_tool, inverse_args) for the reversible ledger, or
-    (None, None) when no inverse is cleanly knowable at the registry level.
+def _abspath(path: str) -> str:
+    return _os.path.abspath(_os.path.expanduser(str(path)))
 
-    Deliberately conservative: we do NOT fabricate inverses. For file
-    overwrites (write_file/create_file) the prior on-disk content is not read
-    here, so the registry cannot reconstruct a correct restore — those rely on
-    the red-list confirmation gate instead, and we return no inverse. Threaded
-    here so a tool layer CAN supply a real inverse later without changing the
-    call sites. Most tools legitimately have no inverse.
+
+def _capture_prestate(name: str, args: dict) -> Optional[dict]:
+    """Snapshot just-enough state BEFORE a reversible file op runs so a correct
+    inverse can be built afterward. Called pre-execution (the prior on-disk
+    content is gone once write_file overwrites). Returns None for tools that
+    need no snapshot. Best-effort: never raises into the caller."""
+    try:
+        if name == "write_file":
+            full = _abspath((args or {}).get("path", ""))
+            if _os.path.isfile(full):
+                if _os.path.getsize(full) <= _MAX_SNAPSHOT_BYTES:
+                    with open(full, "r", encoding="utf-8", errors="replace") as f:
+                        return {"existed": True, "content": f.read()}
+                return {"existed": True, "content": None, "toobig": True}
+            return {"existed": False}
+    except Exception:
+        pass
+    return None
+
+
+def _inverse_for(name: str, args: dict, prestate: Optional[dict] = None):
+    """Return (inverse_tool, inverse_args) for the reversible ledger so panic()
+    and per-action Undo can truly restore prior state, or (None, None) when no
+    correct inverse is knowable.
+
+    Reversible subset:
+      - create_file → delete the new file.
+      - write_file  → restore the prior content (snapshotted in prestate); if
+                      the file didn't exist before, the inverse is to delete it;
+                      if it was too big to snapshot, no inverse (honest).
+      - move_file   → move it back.
+    Genuinely irreversible tools (send_email/transfer_money/run_shell/…) stay
+    (None, None) and rely on the red-list confirmation gate — they must never
+    auto-fire unconfirmed in the first place.
     """
+    args = args or {}
+    if name == "create_file":
+        path = args.get("path")
+        if path:
+            return "delete_file", {"path": path}
+    elif name == "write_file":
+        path = args.get("path")
+        if path and prestate is not None:
+            if prestate.get("existed") and prestate.get("content") is not None:
+                return "write_file", {"path": path, "content": prestate["content"]}
+            if not prestate.get("existed"):
+                return "delete_file", {"path": path}
+            # existed but too big to snapshot → no safe inverse
+    elif name == "move_file":
+        src, dst = args.get("src"), args.get("dst")
+        if src and dst:
+            return "move_file", {"src": dst, "dst": src}
     return None, None
 
 
@@ -177,6 +228,10 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
                 return msg
             # action == "execute" → fall through and run.
 
+    # Snapshot prior state BEFORE running, so a reversible op (write/create/move)
+    # can record a correct inverse for panic()/Undo.
+    prestate = _capture_prestate(name, args)
+
     _start = _time.time()
     try:
         result = str(entry["fn"](**args))
@@ -184,7 +239,7 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
              duration_ms=round((_time.time() - _start) * 1000), arg_keys=list(args.keys()))
         try:
             from memory.memory import log_action
-            inverse_tool, inverse_args = _inverse_for(name, args)
+            inverse_tool, inverse_args = _inverse_for(name, args, prestate)
             log_action(name, args, result, success=True, agent=agent, risk=risk,
                        inverse_tool=inverse_tool, inverse_args=inverse_args)
         except Exception:
