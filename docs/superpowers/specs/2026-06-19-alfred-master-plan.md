@@ -569,7 +569,6 @@ Relevant grounding files (all absolute): `/Users/elnatananbelu/jarvis/brain/auto
 
 # Autonomy, Trust Ramp & Safety Model
 
-I now have full grounding in the real modules, the locked decisions, and the known open issues (8121/8123/8136 source-taint gaps, 8145 dedup, 8112 sqlite lock). Here is the section.
 
 ---
 
@@ -804,7 +803,7 @@ The codebase already has every primitive this pipeline composes from — we are 
   - `brain/autonomy.py` (the gate + `RED_LIST`)
   - `security/` (entire tree — `identity.py`, the firewall itself)
   - `brain/selfdev.py` (the orchestrator can't rewrite its own rails)
-  - the credential vault module + its encrypted store, `.env`, `.session_token`, `~/Documents/SecondBrain` credential notes
+  - the credential vault module + its encrypted store, `.env`, `.session_token`, `~/Desktop/SecondBrain` credential notes
   - `eval/run.py` and the firewall's own test files (can't weaken the trust gate)
   - `memory/migrations.py` schema-version logic, `.git/hooks/`
 - **`SENSITIVE` (writable only behind a *hard human confirm* — PIN/biometric, never a one-line approve):** `brain/tools/registry.py` (the dispatch + `_inverse_for`), `brain/agent.py` (the source-band logic), `telegram_bot.py` / `ui/server.py` (the approval rails themselves), `memory/memory.py` confirmation/ledger functions.
@@ -921,7 +920,7 @@ Alfred's memory today is **six concrete stores**, each with a clear job. The pla
 | **Facts** | `facts` table (category/key/value), `memory/memory.py` | Atomic durable facts ("Mom phone", "wake time") | Keep `save_fact` + background `consolidate_facts` (de-dupe, newer-wins, **safety floor** that refuses to gut the store). Move consolidation LLM to local. |
 | **Life data** | `memory/life_data.py` (`health_logs`, `personal_finance`, `reading_list`, `relationship_dates`, `relationship_logs`, `decisions`, `learning_log`) + `memory/goals.py` | Structured life: health/sleep/finance/relationships/decisions/learning/goals/habits | This is the **quantitative substrate** for pattern-watch (§2). Keep; it must be exported in the Self Matrix. |
 | **Observations (staging)** | `memory/observations.py` (`observations.db`) | Raw life signals (email/calendar/conversation/manual), quality-scored, dedup'd, suppressible | This is the **profiling intake**. Today it's only *fed* by `wiki._extract_and_update_bg` and ingest tools; nothing *drains* it into the Personal Model. §2 builds the synthesizer. |
-| **Second Brain (Obsidian)** | `memory/vault.py` (`~/Documents/SecondBrain`) | Risk-tiered notes by Area, the **Personal Model** (`_JARVIS/_PersonalModel.md`), **Goals** (`Goals/Long-Term Goals.md`), proposals, FAISS RAG | The **human-readable, owner-editable** half of the self. Keep proposal flow (high-risk areas + human-edit detection → propose, never auto-write). |
+| **Second Brain (Obsidian)** | `memory/vault.py` (`~/Desktop/SecondBrain`) | Risk-tiered notes by Area, the **Personal Model** (`_JARVIS/_PersonalModel.md`), **Goals** (`Goals/Long-Term Goals.md`), proposals, FAISS RAG | The **human-readable, owner-editable** half of the self. Keep proposal flow (high-risk areas + human-edit detection → propose, never auto-write). |
 | **Project wiki** | `memory/wiki.py` (`~/Desktop/graphify-out/obsidian/_Memory`) | Auto-extracted facts, technical/project notes, second FAISS index | **Local-ize:** `_extract_and_update_bg` calls Groq. Re-point at local LLM. Personal topics already route to `observations.add_observation`; that routing stays. |
 
 **Decisions locked for the substrate:**
@@ -995,7 +994,7 @@ Add a **Memory / Profile panel** beside the existing pending/feed/undo views:
 
 ### 3.3 Obsidian is the editable source of truth
 
-The Second Brain is owner-editable **by design** — `vault._detect_human_edits()` notices when he edits a note by hand and forces future Alfred writes into the proposal flow. He can open `~/Documents/SecondBrain`, edit his Personal Model or goals directly in Obsidian, and Alfred respects it. **"Edit anything" already works at the file layer; the tools/UI make it conversational.**
+The Second Brain is owner-editable **by design** — `vault._detect_human_edits()` notices when he edits a note by hand and forces future Alfred writes into the proposal flow. He can open `~/Desktop/SecondBrain`, edit his Personal Model or goals directly in Obsidian, and Alfred respects it. **"Edit anything" already works at the file layer; the tools/UI make it conversational.**
 
 ---
 
@@ -1008,7 +1007,7 @@ This is the heart of the section. He calls continuity **critical** and wants a *
 
 ### 4.1 What the Matrix contains (the four pillars of identity)
 
-1. **Memory** — `jarvis.db` (conversations, facts, life_data, goals, ledger, scheduled tasks, people registry) + the entire `~/Documents/SecondBrain` vault (the human-readable self, incl. `_PersonalModel.md`) + `observations.db` + the wiki `_Memory` notes. *(FAISS indexes are NOT shipped — they're derived and rebuilt on first run.)*
+1. **Memory** — `jarvis.db` (conversations, facts, life_data, goals, ledger, scheduled tasks, people registry) + the entire `~/Desktop/SecondBrain` vault (the human-readable self, incl. `_PersonalModel.md`) + `observations.db` + the wiki `_Memory` notes. *(FAISS indexes are NOT shipped — they're derived and rebuilt on first run.)*
 2. **Persona** — the rebranded **Alfred** persona module (`prompts/personas/alfred.md`: Caine/butler voice + the dry, deadpan JARVIS personality, "sir," the tone-calibration rules) plus the composed system prompt assembled by `prompts/runtime/prompt_loader.py`. The *character* travels with the self, not hardcoded in the engine.
 3. **Values** — the safety/judgment posture as **data**, not just code: the hard-stops (angry/regrettable sends, doxxing his own info, health-harming patterns), the money>$100 line, send-as-him-drafts-first, the red-list, the chief-of-staff "push back then comply" stance. These live as a `values.json` in the Matrix so a reborn Alfred reasons with the same principles even before any code loads.
 4. **Trust state** — current per-domain **supervised↔auto** graduation, away-mode, the trust-ramp progress, `people.py` VIP/family/blocklist, the PIN/biometric trust bindings (references, **not** the secrets themselves — see §4.4).
@@ -1071,7 +1070,6 @@ Per his answer, **goals are not a separate system** — they live in the Second 
 
 # Surfaces — Voice, iMessage, Control Room
 
-I have a precise picture of the existing surfaces. Now I'll write the SURFACES section of the master plan.
 
 # SURFACES — One Alfred, Everywhere He Is
 
@@ -1194,7 +1192,6 @@ Three things he explicitly wants added (interrogation §14):
 
 # Identity, Security & Credential Vault
 
-I have everything I need. Here is the section.
 
 ---
 
@@ -1387,7 +1384,6 @@ Default: **everything stays on the Mac.** The only egress is the existing **`JAR
 
 # Resilience, Backup, Succession & Inheritance
 
-I now have complete grounding in the existing codebase. Here is the section.
 
 ---
 
@@ -1744,7 +1740,6 @@ Elnatan picked **SLOW/LAGGY as the single rage-quit trigger**. The architecture 
 
 I now have enough grounding. The codebase is mature (350 tests, gate fails-closed, self-write firewall in `control/files.py` with `_INSTALL_ROOT`/`.env` protection, tier router in `brain/llm.py`, presence-driven away-mode, iMessage send/read in `control/messages.py`, eval gate in `eval/run.py`). What's missing maps to the spec: Alfred rebrand, Caine voice clone end-to-end, the gated self-development pipeline, the $100 money threshold, portable-self export, inheritance handoff, and a latency-SLA harness. Let me write the section.
 
-Here is the section.
 
 ---
 
