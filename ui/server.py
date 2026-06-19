@@ -1223,6 +1223,16 @@ if __name__ == "__main__":
         start_observer(hud_queue=_proactive_q)
     except Exception as _e:
         print(f"observer not started: {_e}")
+    # Proactive engine (plan §1): Alfred surfaces goal-driven offers + honesty alerts.
+    # SURFACES ONLY — any action a proposal would take still routes through gate().
+    try:
+        from brain import initiative
+        threading.Thread(
+            target=lambda: initiative.run_loop(lambda it: _proactive_q.put(it)),
+            daemon=True,
+        ).start()
+    except Exception as _e:
+        print(f"initiative not started: {_e}")
     # Start Chatterbox voice-cloning daemon (actual actor voices via reference audio)
     threading.Thread(target=_start_clone_daemon, daemon=True).start()
     # Start Kokoro TTS daemon (fallback preset voices, fast)

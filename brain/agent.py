@@ -73,9 +73,37 @@ _LEAN_PERSONA = (
 _CTX_CAP = int(os.environ.get("JARVIS_LOCAL_CTX_CAP", "2500"))
 
 
+def _goals_grounding() -> str:
+    """Sir's ACTIVE goals, always in Alfred's context so he thinks and acts in service
+    of them — the foundation of goal-driven proactivity (plan §6.5 "Goals live in the
+    brain — Alfred aligns to them"). Cheap local SQLite read, no model call (latency-safe)."""
+    try:
+        import sqlite3
+        from memory import memory as _m
+        conn = sqlite3.connect(_m.DB_PATH)
+        rows = conn.execute(
+            "SELECT title, category, deadline FROM goals WHERE status='active' ORDER BY id LIMIT 8"
+        ).fetchall()
+        conn.close()
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    lines = []
+    for title, cat, deadline in rows:
+        tag = f" [{cat}]" if cat else ""
+        due = f" (by {deadline})" if deadline else ""
+        lines.append(f"  • {title}{tag}{due}")
+    return ("SIR'S ACTIVE GOALS — keep these in mind and act in service of them:\n"
+            + "\n".join(lines))
+
+
 def _system_for(agent: str, user_input: str) -> str:
-    """Lean persona + a CAPPED slice of vault/facts grounding (fast-tier friendly)."""
+    """Lean persona + sir's goals + a CAPPED slice of vault/facts grounding (fast-tier friendly)."""
     parts = [_LEAN_PERSONA]
+    goals = _goals_grounding()
+    if goals:
+        parts.append(goals)
     try:
         from brain.think import _build_context
         ctx = _build_context(user_input, include_history=True)
