@@ -14,15 +14,24 @@ why it was deferred, and what unblocks it. Cleared at go-live.
 - [ ] **Goals** — confirm the goals in your Second Brain so proactivity aligns to them. *(P7)*
 
 ## Needs a model / training run
-- [ ] **"Hey Alfred" wake word** — needs a custom openwakeword model (prebuilt is `hey_jarvis`); current wake word stays "Hey JARVIS" until then. *(P1)*
-- [ ] **Model swap** — pull `qwen3:8b` (fast) + `qwen2.5-coder:14b` (coder), repoint `brain/llm.py`, `ollama rm qwen2.5:7b` (keep `qwen3:14b`). ~14GB download — only on your "do it". *(P1 / brain)*
+- [ ] **"Hey Alfred" neural wake model** — OPTIONAL upgrade. The wake *word* is already "Alfred":
+      the default offline path = energy-gate + local-Whisper keyword match, which wakes on "Alfred"
+      today with no cloud. A custom openwakeword model only sharpens always-on neural detection —
+      drop one in and set `ALFRED_WAKE_MODEL=/path/to/alfred.onnx`. *(P1)*
+- [ ] **Model swap** — pull `qwen3:8b` (fast) + `qwen2.5-coder:14b` (coder), repoint `brain/llm.py`,
+      `ollama rm qwen2.5:7b` (keep `qwen3:14b`). ~14GB download — only on your "do it". *(P1 / brain)*
 - [ ] **Fine-tune ("make it ours")** — LoRA on your data → re-quantize → GGUF. Needs your data + a GPU run. *(Path B track)*
 
-## Coordinated / careful passes (buildable, deferred for safety)
-- [ ] **UI speaker-label + full string rebrand** JARVIS→Alfred — the frontend matches on the name, so this is a coordinated pass, not a string-swap. *(P1)*
-- [ ] **UI/Telegram PIN collection** — surface wiring so the approve flow can collect + pass the PIN for money ≥ $100 (gate logic already enforces it). *(P2)*
-
 ## Shipped this run (for context)
-- ✅ **P0** — latency SLA harness (measured: first-token ~0.2s, reply ~1.5s — well under budget).
+- ✅ **P0** — latency SLA harness (live: first-token p95 0.27s, reply p95 1.88s — well under budget).
 - ✅ **P1 (core)** — brain persona rebranded to Alfred.
 - ✅ **P2** — money gate: PIN required on any payment ≥ ~$100.
+- ✅ **P5 (portable self)** — `memory/export.py` exports/imports Alfred's durable memory as one bundle.
+- ✅ **Money-PIN surface wiring** — Telegram `approve <id> [pin]`, `/api/approve` `pin`, and the
+      control room prompts for the PIN and only reports success when the move actually executes.
+- ✅ **Full Alfred rebrand + offline wake** — wake word "Alfred" (offline-first, local Whisper),
+      voice speaker key, control room / orb / HUD brand + labels, router accepts "Alfred", Telegram
+      push header, gate messages, observer/market/reader/research/audit personas, server banner +
+      open-greeting. Load-bearing internals (jarvis.db, JARVIS_* env, X-JARVIS-Token, the internal
+      'JARVIS' dispatch key + allowed_agents, Keychain service) intentionally KEPT to avoid breakage.
+      Live-verified: `/control` shows ALFRED; `/api/chat` replies "I am Alfred …". 397 tests green.
