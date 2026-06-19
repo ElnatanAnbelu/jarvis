@@ -40,12 +40,11 @@ def _drain(gen):
 
 
 def test_router_skips_cloud_branches_in_local_mode(monkeypatch):
-    """deep-research / doc-gen / team-mode triggers must NOT call the cloud
-    functions when local-only; they fall through to the local brain."""
+    """deep-research / doc-gen triggers must NOT call the cloud functions when
+    local-only; they fall through to the single local Alfred brain."""
     import brain.router as router
     import brain.research as research
     import brain.reader as reader
-    import brain.team as team
     import brain.think as think
 
     monkeypatch.setattr(agent, "cloud_reasoning_allowed", lambda: False)
@@ -57,8 +56,6 @@ def test_router_skips_cloud_branches_in_local_mode(monkeypatch):
         raise AssertionError("cloud reasoning path was invoked in local-only mode")
 
     # Make every trigger match, then prove none of the cloud fns run.
-    monkeypatch.setattr(team, "is_work_together", lambda x: True)
-    monkeypatch.setattr(team, "work_together", _boom)
     monkeypatch.setattr(research, "is_research_request", lambda x: True)
     monkeypatch.setattr(research, "deep_research", _boom)
     monkeypatch.setattr(reader, "is_doc_gen_request", lambda x: (True, "report"))
@@ -79,11 +76,9 @@ def test_router_uses_cloud_branch_when_opted_in(monkeypatch):
     research branch IS taken."""
     import brain.router as router
     import brain.research as research
-    import brain.team as team
     import brain.reader as reader
 
     monkeypatch.setattr(agent, "cloud_reasoning_allowed", lambda: True)
-    monkeypatch.setattr(team, "is_work_together", lambda x: False)
     monkeypatch.setattr(reader, "is_doc_gen_request", lambda x: (False, None))
     monkeypatch.setattr(research, "is_research_request", lambda x: True)
 
