@@ -104,7 +104,18 @@ class JsApi:
         return self.hide_hud() if self._hud_visible else self.show_hud()
 
     def quit_app(self):
-        """Clean shutdown from the bubble (frameless windows have no close button)."""
+        """GUARANTEED shutdown from the bubble (frameless windows have no native close
+        button). Best-effort graceful teardown, then a HARD exit — a flaky
+        window.destroy() on a hidden/transparent macOS window must never leave the app
+        half-closed with the server still holding the port."""
+        print("[JsApi.quit_app] quitting…", flush=True)
+        # 1) kill the spawned Flask server subprocess so port 8080 is freed.
+        try:
+            if _flask_proc and _flask_proc.poll() is None:
+                _flask_proc.terminate()
+        except Exception:
+            pass
+        # 2) best-effort: close the windows so the UI vanishes immediately.
         try:
             import webview as _wv
             for w in list(_wv.windows):
@@ -112,9 +123,13 @@ class JsApi:
                     w.destroy()
                 except Exception:
                     pass
-        except Exception as e:
-            print(f"[JsApi.quit_app] {e}", flush=True)
-        return True
+        except Exception:
+            pass
+        # 3) HARD exit — terminates the whole process (wake listener, TTS daemons,
+        #    GUI thread) even if destroy() hung. This is the line that makes the
+        #    close button actually work, every time.
+        import os as _os
+        _os._exit(0)
 
     # ── WAKE WORD ────────────────────────────────────────────────────────────
 
@@ -636,7 +651,7 @@ def main():
     global _window, _bubble, _js_api
 
     print("\n" + "="*60)
-    print("JARVIS — macOS Permission Notes")
+    print("Alfred — macOS Permission Notes")
     print("="*60)
     print("If microphone or camera doesn't work:")
     print("  1. Go to System Settings → Privacy & Security")
@@ -670,7 +685,7 @@ def main():
 
     # ── Full HUD window — starts hidden; the bubble expands into it ──────────
     _window = webview.create_window(
-        title="J.A.R.V.I.S",
+        title="Alfred",
         url=f"http://127.0.0.1:{FLASK_PORT}/",
         width=900,
         height=720,
@@ -686,7 +701,7 @@ def main():
     SW, SH = _screen_size()
     BUBBLE = 150
     _bubble = webview.create_window(
-        title="JARVIS Bubble",
+        title="Alfred Bubble",
         url=f"http://127.0.0.1:{FLASK_PORT}/bubble",
         width=BUBBLE,
         height=BUBBLE,
