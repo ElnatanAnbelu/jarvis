@@ -75,3 +75,24 @@ def import_self(bundle_path, dest_dir=None) -> str:
             if name in _DB_NAMES:
                 restored.append(name)
     return f"Restored {len(restored)} store(s): {', '.join(restored) or 'none'}."
+
+
+def export_inheritance(dest_dir, heir: str, note: str = "", stamp: str = None, src_dir=None) -> str:
+    """Gated SUCCESSION bundle (plan §R5 — the EDITH problem): the portable self plus an
+    heir designation, so Alfred can be inherited as the SAME being. This is the MECHANISM
+    only — creating it is a deliberate owner act; the human handoff (and any legal/PIN
+    process) is sir's. Returns the heir-manifest path written next to the bundle."""
+    bundle = export_self(dest_dir, src_dir=src_dir, stamp=stamp)
+    manifest = {
+        "kind": "alfred-inheritance",
+        "heir": heir,
+        "note": note,
+        "bundle": Path(bundle).name,
+        "stamp": stamp or "",
+        "instructions": ("Restore with memory.export.import_self(<bundle>) on the heir's "
+                         "machine, behind the same safety gate + a fresh PIN. Loyalty stays "
+                         "single-principal until the heir re-enrolls."),
+    }
+    mpath = Path(bundle).with_name(Path(bundle).stem.replace(".tar", "") + ".heir.json")
+    mpath.write_text(json.dumps(manifest, indent=2))
+    return str(mpath)
