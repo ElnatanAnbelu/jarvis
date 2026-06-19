@@ -65,3 +65,13 @@ def test_per_domain_shakeout_through_the_gate(db, monkeypatch):
     finally:
         registry.TOOL_REGISTRY.pop("_probe_comms", None)
         registry.TOOL_REGISTRY.pop("_probe_web", None)
+
+
+def test_domain_control_tools(db):
+    # the owner can flip a domain via the tool (routes through the gate as source=user)
+    out = registry.execute_tool("tool_set_domain_mode", {"domain": "comms", "mode": "auto"}, source="user")
+    assert "comms" in out.lower() and "auto" in out.lower()
+    assert autonomy.get_domain_mode("comms") == "auto"
+    registry.execute_tool("tool_set_domain_mode", {"domain": "money", "mode": "supervised"}, source="user")
+    listing = registry.execute_tool("tool_list_domain_modes", {}, source="user")
+    assert "comms" in listing and "money" in listing

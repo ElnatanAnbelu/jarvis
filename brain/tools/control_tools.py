@@ -103,8 +103,48 @@ def tool_set_away(on) -> str:
 
 @tool(
     description=(
+        "Set a domain's autonomy mode — 'auto' (Alfred acts on its own in that "
+        "domain) or 'supervised' (it proposes, you approve). Domains: comms, money, "
+        "system, files, code, web, calendar, business, school, personal, general. "
+        "Red-list and money >= $100 still always confirm regardless. Use when the "
+        "user says e.g. 'let comms run on auto' or 'put money back on supervised'."
+    ),
+    parameters={
+        "domain": {"type": "string", "description": "The domain, e.g. 'comms', 'money', 'system'."},
+        "mode": {"type": "string", "description": "'auto' or 'supervised'."},
+    },
+    risk="low",
+    allowed_agents=_AGENTS,
+)
+def tool_set_domain_mode(domain, mode) -> str:
+    from brain import autonomy
+    dom = str(domain).strip().lower()
+    want = "auto" if str(mode).strip().lower() == "auto" else "supervised"
+    autonomy.set_domain_mode(dom, want)
+    return f"Domain '{dom}' is now {want}, sir."
+
+
+@tool(
+    description="List each domain's current autonomy mode (auto vs supervised) + the global default.",
+    parameters={},
+    risk="low",
+    allowed_agents=_AGENTS,
+)
+def tool_list_domain_modes() -> str:
+    from brain import autonomy
+    modes = autonomy._load_domain_modes()
+    glob = autonomy.get_autonomy_mode()
+    if not modes:
+        return f"All domains follow the global mode: {glob}."
+    lines = "\n".join(f"  {d}: {m}" for d, m in sorted(modes.items()))
+    return f"Global default: {glob}\nPer-domain overrides:\n{lines}"
+
+
+@tool(
+    description=(
         "Report the current safety status: whether JARVIS is paused, whether "
-        "away-mode is on, and any actions waiting for the user's approval."
+        "away-mode is on, per-domain autonomy modes, and any actions waiting for "
+        "the user's approval."
     ),
     parameters={},
     risk="low",
@@ -114,7 +154,10 @@ def tool_safety_status() -> str:
     from brain import autonomy
     paused = "yes" if autonomy.is_paused() else "no"
     away = "yes" if autonomy.is_away() else "no"
+    modes = autonomy._load_domain_modes()
+    dom_line = ("  domains: " + ", ".join(f"{d}={m}" for d, m in sorted(modes.items()))
+                if modes else f"  domains: all follow global ({autonomy.get_autonomy_mode()})")
     return (
-        f"Safety status — paused: {paused}, away-mode: {away}.\n"
+        f"Safety status — paused: {paused}, away-mode: {away}.\n{dom_line}\n"
         f"{autonomy.pending_summary()}"
     )
