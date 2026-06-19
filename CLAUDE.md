@@ -1,5 +1,13 @@
 # JARVIS — project brief (for Claude Code sessions)
 
+> ## 🔒 UI IS LOCKED — DO NOT TOUCH
+> The owner loves the Alfred environment UI exactly as it is. **`app/alfred.html` (the
+> fullscreen living environment — holo core, awareness HUD, panels, layout, look & feel)
+> is FROZEN.** Do not modify its design, layout, styling, or animations. Backend wiring
+> *underneath* it (connecting accounts, voice, panel data) is fine **as long as it does
+> not change a single pixel of what's rendered**. If a task seems to require touching the
+> visible UI, STOP and ask the owner first.
+
 **What this is:** Elnatan's personal **autonomous life operator** — a free, **fully-local**, offline-capable AI (the MCU "JARVIS", addresses him as "sir") that runs his comms / business / school / personal life, acting on its own and reporting after, behind a hard safety net. Voice-first + Telegram + a cinematic control room.
 
 ## Architecture (fully-local)
