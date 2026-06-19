@@ -154,7 +154,8 @@ def _inverse_for(name: str, args: dict, prestate: Optional[dict] = None):
 
 
 def execute_tool(name: str, args: dict, agent: Optional[str] = None,
-                 source: str = "user", _bypass_gate: bool = False) -> str:
+                 source: str = "user", _bypass_gate: bool = False,
+                 _is_revert: bool = False) -> str:
     """Call a registered tool by name with the given arguments.
 
     Access control:
@@ -239,8 +240,15 @@ def execute_tool(name: str, args: dict, agent: Optional[str] = None,
              duration_ms=round((_time.time() - _start) * 1000), arg_keys=list(args.keys()))
         try:
             from memory.memory import log_action
-            inverse_tool, inverse_args = _inverse_for(name, args, prestate)
-            log_action(name, args, result, success=True, agent=agent, risk=risk,
+            # A revert's compensating action must NOT itself be reversible, or a
+            # second panic would re-revert it (oscillation, undoing the safety
+            # revert). Tag it agent="revert" and record no inverse.
+            if _is_revert:
+                inverse_tool, inverse_args = None, None
+            else:
+                inverse_tool, inverse_args = _inverse_for(name, args, prestate)
+            log_action(name, args, result, success=True,
+                       agent=("revert" if _is_revert else agent), risk=risk,
                        inverse_tool=inverse_tool, inverse_args=inverse_args)
         except Exception:
             pass

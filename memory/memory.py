@@ -471,9 +471,19 @@ def revert_action(action_id: int) -> str:
         # need confirmation (deadlock), and panic couldn't revert in away-mode.
         # The self-write firewall in control/files.py still applies, so a revert
         # can never be used to write into JARVIS's own install tree.
-        result = execute_tool(inverse_tool, inv_args, _bypass_gate=True)
+        # _is_revert=True so this compensating action is logged with NO inverse —
+        # a later panic must not re-revert the revert (oscillation).
+        result = execute_tool(inverse_tool, inv_args, _bypass_gate=True, _is_revert=True)
     except Exception as e:
         return f"Revert of action {action_id} ({tool_name}) failed: {e}"
+
+    # Only mark reverted if the inverse actually succeeded. execute_tool surfaces
+    # failures as STRINGS (not exceptions), so check the result; on failure leave
+    # the row un-reverted (retryable) rather than falsely reporting success.
+    r = str(result)
+    failed = (r.startswith("Tool '") and "failed:" in r) or r.startswith(("🚫", "Could not", "Refused", "❌"))
+    if failed:
+        return f"Revert of action {action_id} ({tool_name}) did not apply: {r[:160]}"
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -502,9 +512,13 @@ def revert_recent(minutes: int = 1440) -> str:
     conn.close()
     if not ids:
         return "no reversible actions in that window"
-    for i in ids:
-        revert_action(i)
-    return f"reverted {len(ids)} action(s)"
+    # Count only the reverts that actually applied — revert_action returns a
+    # message string and leaves a row un-reverted on failure, so don't report
+    # len(ids) blindly (that overstated success when an inverse failed).
+    ok = sum(1 for i in ids if str(revert_action(i)).startswith("Reverted action"))
+    if ok == len(ids):
+        return f"reverted {ok} action(s)"
+    return f"reverted {ok} of {len(ids)} action(s) ({len(ids) - ok} could not be undone)"
 
 
 def forget_subject(identifier: str) -> str:
