@@ -684,6 +684,26 @@ def set_confirmation_status(cid: int, status: str, result=None):
     conn.close()
 
 
+def claim_confirmation(cid: int) -> bool:
+    """Atomically transition a confirmation pending → approving, returning True
+    only for the single caller that won the claim. This is the mutual-exclusion
+    point that stops two concurrent approve() calls (control room + Telegram, a
+    double-tap, a redelivery) from both executing the same irreversible action.
+    Relies on SQLite's row/db write lock: the conditional UPDATE either matches
+    the still-pending row (rowcount 1) or no longer matches (rowcount 0)."""
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        cur = conn.execute(
+            "UPDATE pending_confirmations SET status='approving' "
+            "WHERE id=? AND status='pending'",
+            (cid,),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
 def get_recent_actions(limit: int = 20) -> str:
     """Return last N tool executions as a readable string for prompt injection."""
     conn = sqlite3.connect(DB_PATH)

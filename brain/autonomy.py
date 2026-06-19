@@ -169,6 +169,17 @@ def approve(confirm_id) -> str:
         return f"No pending action #{confirm_id}."
     if c.get("status") != "pending":
         return f"Action #{confirm_id} is already {c.get('status')}."
+    # Kill-switch backstop: approve() runs with _bypass_gate=True, so the gate's
+    # pause check never fires here. Honor panic/pause explicitly — a halted
+    # system must not execute a queued red-list action.
+    if is_paused():
+        return (f"JARVIS is paused — resume before approving #{confirm_id}. "
+                f"(The action stays pending.)")
+    # Atomically CLAIM the row (pending → approving). Only the winner proceeds,
+    # so two concurrent approvals (UI + Telegram, double-tap, redelivery) can't
+    # both fire the same irreversible action.
+    if not memory.claim_confirmation(confirm_id):
+        return f"Action #{confirm_id} is already being handled."
     from brain.tools.registry import execute_tool  # guarded: avoid circular import
     # get_confirmation already returns args as a parsed dict; tolerate a raw string too.
     args = c.get("args")
