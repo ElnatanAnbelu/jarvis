@@ -89,6 +89,8 @@ def _trigger_caught_mistake() -> list:
         return []
     out = []
     for tool, result, ts in rows:
+        if not tool or tool.startswith("_") or "probe" in tool.lower() or "test" in tool.lower():
+            continue   # internal / test tools — never cry wolf to sir over a probe
         out.append({
             "kind": "alert", "source": "initiative", "key": f"fail:{tool}:{ts}",
             "title": "An action failed",
