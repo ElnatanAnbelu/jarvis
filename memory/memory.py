@@ -521,6 +521,39 @@ def revert_recent(minutes: int = 1440) -> str:
     return f"reverted {ok} of {len(ids)} action(s) ({len(ids) - ok} could not be undone)"
 
 
+def max_action_id() -> int:
+    """Highest action-ledger id right now — a CHECKPOINT for 'undo everything an
+    autonomous job did after this point'. Returns 0 on an empty ledger."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        row = conn.execute("SELECT MAX(id) FROM actions_performed").fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        conn.close()
+
+
+def revert_since(checkpoint_id: int) -> str:
+    """Revert every reversible action logged AFTER `checkpoint_id` — i.e. undo a
+    whole autonomous job that started at that checkpoint. Newest-first; counts only
+    the reverts that actually applied (a failed inverse leaves its row un-reverted)."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id FROM actions_performed "
+        "WHERE id > ? AND inverse_tool IS NOT NULL AND inverse_tool != '' "
+        "AND (reverted IS NULL OR reverted = 0) ORDER BY id DESC",
+        (int(checkpoint_id),),
+    )
+    ids = [r[0] for r in c.fetchall()]
+    conn.close()
+    if not ids:
+        return "no reversible actions since that checkpoint"
+    ok = sum(1 for i in ids if str(revert_action(i)).startswith("Reverted action"))
+    if ok == len(ids):
+        return f"reverted {ok} action(s)"
+    return f"reverted {ok} of {len(ids)} action(s) ({len(ids) - ok} could not be undone)"
+
+
 def forget_subject(identifier: str) -> str:
     """Right-to-be-forgotten across jarvis.db — purge a person/topic from
     conversations, facts, and the action ledger. (Vault/observations purge is

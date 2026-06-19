@@ -33,6 +33,12 @@ def run_goal(goal: str, label: str = "") -> str:
     if autonomy.is_paused():
         return "Paused — autonomous run skipped (kill-switch active)."
 
+    # Checkpoint the ledger so this whole job is undoable after the report
+    # ("undo everything Alfred just did") via memory.revert_since(checkpoint).
+    from memory import memory as _mem
+    checkpoint = _mem.max_action_id()
+    _mem.set_flag("last_job_checkpoint", checkpoint)
+
     try:
         result = agent.run(goal, agent="JARVIS", source="autonomous")
         try:

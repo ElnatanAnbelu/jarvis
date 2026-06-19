@@ -103,6 +103,28 @@ def tool_set_away(on) -> str:
 
 @tool(
     description=(
+        "Undo the entire last autonomous job — reverts every reversible action "
+        "Alfred performed since that job's checkpoint. Use when the user says "
+        "'undo that whole job' / 'undo everything you just did'."
+    ),
+    parameters={},
+    risk="low",
+    allowed_agents=_AGENTS,
+)
+def tool_undo_last_job() -> str:
+    from memory import memory
+    cp = memory.get_flag("last_job_checkpoint", None)
+    if cp is None:
+        return "No autonomous job checkpoint on record yet."
+    try:
+        cp = int(cp)
+    except (TypeError, ValueError):
+        return "The last-job checkpoint is unreadable."
+    return f"Undoing the last job (since #{cp}): {memory.revert_since(cp)}"
+
+
+@tool(
+    description=(
         "Set a domain's autonomy mode — 'auto' (Alfred acts on its own in that "
         "domain) or 'supervised' (it proposes, you approve). Domains: comms, money, "
         "system, files, code, web, calendar, business, school, personal, general. "
