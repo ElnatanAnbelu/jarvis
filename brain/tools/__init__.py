@@ -17,6 +17,7 @@ import brain.tools.ingest_emails
 import brain.tools.ingest_chat
 import brain.tools.control_tools
 import brain.tools.people_tools
+import brain.tools.goal_tools
 
 # TOOLS in OpenAI/Groq format — compatible with the original brain/tools.py API
 TOOLS = [
