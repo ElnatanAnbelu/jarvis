@@ -66,13 +66,19 @@ def enroll_face() -> bool:
         except (EOFError, KeyboardInterrupt):
             return False
         cap = cv2.VideoCapture(0)
+        for _ in range(25):                       # WARM UP — the first frames are black
+            cap.read()
+            time.sleep(0.05)
         cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         best = None
-        for _ in range(90):                       # ~3s of frames
+        for _ in range(200):                      # up to ~10s to find a well-lit face
             ok, frame = cap.read()
             if not ok or frame is None:
                 continue
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if float(gray.mean()) < 25:           # still dark — let the sensor adjust
+                time.sleep(0.03)
+                continue
             if len(cascade.detectMultiScale(gray, 1.1, 5)):
                 best = frame
                 break
@@ -138,10 +144,13 @@ def enroll_environment() -> bool:
         except (EOFError, KeyboardInterrupt):
             return False
         cap = cv2.VideoCapture(0)
+        for _ in range(25):                       # WARM UP — discard initial black frames
+            cap.read()
+            time.sleep(0.05)
         frame = None
-        for _ in range(30):
+        for _ in range(60):
             ok, f = cap.read()
-            if ok and f is not None:
+            if ok and f is not None and float(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY).mean()) > 15:
                 frame = f
                 break
             time.sleep(0.03)
@@ -179,13 +188,18 @@ def memory_flag(key) -> bool:
 
 
 def main():
+    import sys as _sys
+    cam_only = len(_sys.argv) > 1 and _sys.argv[1].lower() in ("face", "camera", "cam")
     print("=" * 52)
-    print("  ALFRED — enrollment  (mic · face · voice · environment)")
+    print("  ALFRED — enrollment" + ("  (camera only: face · environment)" if cam_only
+                                     else "  (mic · face · voice · environment)"))
     print("  Local-only. Nothing leaves your Mac.")
     print("=" * 52)
-    mic_test()
+    if not cam_only:
+        mic_test()
     enroll_face()
-    enroll_voice()
+    if not cam_only:
+        enroll_voice()
     enroll_environment()
     print("\n  Done, sir. (PIN + credentials + people: ./venv/bin/python scripts/setup.py)\n")
 
