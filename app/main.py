@@ -747,40 +747,21 @@ def main():
 
     _js_api = JsApi()
 
-    # ── Full HUD window — starts hidden; the bubble expands into it ──────────
+    # ── THE one surface: Alfred's living environment, fullscreen (app-only) ───
+    # Replaces the old orb + HUD + control room. Boots via a random boot screen
+    # (/boot) that hands off to the living environment (/alfred), which IS the whole
+    # experience. Native voice/vision callbacks (wakeWordFired, autoTranscript) fire
+    # into this window.
     _window = webview.create_window(
         title="Alfred",
-        url=f"http://127.0.0.1:{FLASK_PORT}/boot",   # random boot screen → control room
-        width=900,
-        height=720,
-        min_size=(600, 500),
-        resizable=True,
-        frameless=False,
-        on_top=False,
-        hidden=True,
-        js_api=_js_api,
-    )
-
-    # ── Always-on bubble — small, frameless, transparent, on top, draggable ──
-    SW, SH = _screen_size()
-    BUBBLE = 150
-    _bubble = webview.create_window(
-        title="Alfred Bubble",
-        url=f"http://127.0.0.1:{FLASK_PORT}/bubble",
-        width=BUBBLE,
-        height=BUBBLE,
-        x=24,
-        y=max(40, SH - BUBBLE - 90),   # bottom-left, above the Dock
+        url=f"http://127.0.0.1:{FLASK_PORT}/boot",
+        fullscreen=True,
         frameless=True,
-        easy_drag=True,
-        on_top=True,
-        transparent=True,
-        resizable=False,
         js_api=_js_api,
     )
 
-    _js_api._hud    = _window
-    _js_api._bubble = _bubble
+    _js_api._hud    = _window   # back-compat: any HUD-targeted call hits the environment
+    _js_api._bubble = _window   # wake-word + transcript callbacks fire in the environment
 
     # ── Start wake-word listener immediately — no JS bridge needed ────────────
     # Runs in its own thread; fires wakeWordFired() in bubble via evaluate_js.
@@ -817,18 +798,9 @@ def main():
         except Exception:
             pass
 
-    # Closing the HUD hides it (bubble stays always-on); quit is via the bubble.
-    def _on_hud_closing():
-        try:
-            _window.hide()
-            _js_api._hud_visible = False
-        except Exception:
-            pass
-        return False  # cancel the destroy
-
-    _window.events.loaded  += _on_loaded
-    _window.events.closing += _on_hud_closing
-    _bubble.events.closed  += _on_closed
+    # The environment is the only window. Closing it ends the session and quits.
+    _window.events.loaded += _on_loaded
+    _window.events.closed += _on_closed
     webview.start(debug=False)
 
     # webview.start() returned — window is closed.

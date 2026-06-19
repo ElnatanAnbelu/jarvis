@@ -123,7 +123,7 @@ def _status():
     print(f"  Vault credentials: {', '.join(vault.list_names()) or 'none yet'}")
     ppl = people.list_people()
     print(f"  People registered: {len(ppl)}")
-    print("\n  You're set, sir. Launch with:  bash scripts/start.sh  →  http://localhost:8080/control\n")
+    print("\n  You're set, sir. Launch Alfred with:  ./venv/bin/python app/main.py\n")
 
 
 def main():

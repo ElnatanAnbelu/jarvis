@@ -38,7 +38,7 @@ SESSION_TOKEN = load_or_create_token()
 # Routes that are reachable WITHOUT the session token. Page routes need to be
 # loadable so they can receive the token; /api/status is an unauthenticated
 # health check. Everything else requires auth.
-_EXEMPT_PATHS = frozenset({"/", "/bubble", "/control", "/boot", "/favicon.ico", "/api/status"})
+_EXEMPT_PATHS = frozenset({"/boot", "/alfred", "/favicon.ico", "/api/status"})
 
 
 def _token_ok():
@@ -1130,29 +1130,21 @@ def _serve_html_with_token(filename, redirect_to=None, redirect_ms=5200):
     return resp
 
 
-@app.route("/")
-def jarvis_ui():
-    return _serve_html_with_token("jarvis.html")
-
-
-@app.route("/bubble")
-def jarvis_bubble():
-    return _serve_html_with_token("bubble.html")
-
-
-@app.route("/control")
-def jarvis_control():
-    return _serve_html_with_token("control.html")
+@app.route("/alfred")
+def alfred_environment():
+    """Alfred's living environment — the ONE fullscreen surface the native app loads.
+    (Replaces the orb / control room / HUD — the browser pages are retired; app-only.)"""
+    return _serve_html_with_token("alfred.html")
 
 
 @app.route("/boot")
 def alfred_boot():
-    """A random one of Alfred's boot screens — he picks at his own will, a different
-    one each wake — that hands off to the control room when the sequence finishes."""
+    """A random one of Alfred's boot screens — he picks at his own will, a different one
+    each wake — that hands off to the living environment when the sequence finishes."""
     import random
     choice = random.choice(["arc-reactor.html", "holo-schematic.html", "butler-elegant.html"])
     return _serve_html_with_token(os.path.join("boot", choice),
-                                  redirect_to="/control", redirect_ms=5200)
+                                  redirect_to="/alfred", redirect_ms=5200)
 
 
 @app.route("/api/end_session", methods=["POST"])
