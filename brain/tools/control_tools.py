@@ -125,6 +125,32 @@ def tool_undo_last_job() -> str:
 
 @tool(
     description=(
+        "Export Alfred's portable self — bundle the durable memory (facts, ledger, "
+        "people, business/life, learned observations + the per-domain autonomy state) "
+        "into one signed-able archive so the SAME Alfred can stand up on a new machine "
+        "or under a new model. The Second Brain vault is git-tracked separately and "
+        "isn't bundled here. Use when the user says 'back up your whole self' or "
+        "'export Alfred so I can move it'."
+    ),
+    parameters={
+        "dest_dir": {
+            "type": "string",
+            "description": "Where to write the bundle. Defaults to ~/.alfred/self-bundles.",
+        },
+    },
+    risk="low",
+    allowed_agents=_AGENTS,
+)
+def tool_export_self(dest_dir=None) -> str:
+    from pathlib import Path
+    from memory import export
+    dest = dest_dir or str(Path.home() / ".alfred" / "self-bundles")
+    bundle = export.export_self(dest)
+    return f"Exported my portable self → {bundle}. Restore it anywhere to be the same Alfred, sir."
+
+
+@tool(
+    description=(
         "Set a domain's autonomy mode — 'auto' (Alfred acts on its own in that "
         "domain) or 'supervised' (it proposes, you approve). Domains: comms, money, "
         "system, files, code, web, calendar, business, school, personal, general. "
