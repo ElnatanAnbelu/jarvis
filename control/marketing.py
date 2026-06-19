@@ -11,12 +11,11 @@ from pathlib import Path
 def _claude(prompt: str, max_tokens: int = 1500) -> str:
     """Call Claude Haiku for marketing generation."""
     try:
-        import anthropic
-        from brain.think import _get_auth_key, CLAUDE_MODELS
-        key = _get_auth_key()
-        if not key:
+        from brain.auth import make_client
+        from brain.think import CLAUDE_MODELS
+        client = make_client()  # handles api_key vs auth_token; None if unconfigured
+        if client is None:
             return "No Claude API key available."
-        client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=CLAUDE_MODELS["haiku"],
             max_tokens=max_tokens,

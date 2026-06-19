@@ -156,11 +156,11 @@ def tool_learning_summary(days: int = 7) -> str:
 def tool_decision_framework(question: str, context: str = "", options: str = "") -> str:
     """Generate a structured decision framework using Claude."""
     try:
-        from brain.think import _get_auth_key, CLAUDE_MODELS
-        import anthropic
+        from brain.auth import make_client
+        from brain.think import CLAUDE_MODELS
 
-        key = _get_auth_key()
-        if not key:
+        client = make_client()  # handles api_key vs auth_token; None if unconfigured
+        if client is None:
             return "Claude API key unavailable."
 
         # Pull past decisions for context
@@ -189,7 +189,6 @@ Build a decision framework:
 
 Be direct. Give Elnatan a real answer, not a list of "it depends." He has to decide."""
 
-        client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=CLAUDE_MODELS["haiku"],
             max_tokens=1200,

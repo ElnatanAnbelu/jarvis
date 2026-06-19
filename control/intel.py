@@ -193,11 +193,11 @@ def proactive_scan(topics: list = None) -> str:
     combined = "\n\n---\n\n".join(results)
 
     try:
-        from brain.think import _get_auth_key, CLAUDE_MODELS
-        import anthropic
+        from brain.auth import make_client
+        from brain.think import CLAUDE_MODELS
 
-        key = _get_auth_key()
-        if not key:
+        client = make_client()  # handles api_key vs auth_token; None if unconfigured
+        if client is None:
             return combined
 
         prompt = f"""You are JARVIS filtering intel for Elnatan Anbelu.
@@ -214,7 +214,6 @@ Extract only what actually matters to Elnatan:
 For each item: one sentence on what it is, one sentence on why it matters to him.
 Skip anything irrelevant. If nothing is relevant, say so directly."""
 
-        client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=CLAUDE_MODELS["haiku"],
             max_tokens=600,
@@ -271,11 +270,11 @@ def weekly_strategy_checkin() -> str:
     combined = "\n".join(sections)
 
     try:
-        from brain.think import _get_auth_key, CLAUDE_MODELS
-        import anthropic
+        from brain.auth import make_client
+        from brain.think import CLAUDE_MODELS
 
-        key = _get_auth_key()
-        if not key:
+        client = make_client()  # handles api_key vs auth_token; None if unconfigured
+        if client is None:
             return combined
 
         prompt = f"""You are JARVIS giving Elnatan his weekly strategic check-in.
@@ -293,7 +292,6 @@ Deliver the weekly check-in:
 
 No fluff. Real data only. Talk directly to him."""
 
-        client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=CLAUDE_MODELS["sonnet"],
             max_tokens=1000,
