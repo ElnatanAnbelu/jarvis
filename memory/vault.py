@@ -6,6 +6,7 @@ All filesystem operations are idempotent: safe to call multiple times.
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time as _time
@@ -33,7 +34,12 @@ def _get_embed_model():
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-DEFAULT_VAULT_PATH = Path.home() / "Documents" / "SecondBrain"
+# Elnatan's REAL Obsidian Second Brain lives on the Desktop (git-tracked, 320+
+# notes, the premium Life-Map structure). Default there — NOT the old empty
+# ~/Documents/SecondBrain stub the code used to auto-scaffold. Override with the
+# SECONDBRAIN_PATH env var. Scaffolding is non-destructive (mkdir exist_ok +
+# write-only-if-missing), so pointing here never overwrites existing notes.
+DEFAULT_VAULT_PATH = Path(os.environ.get("SECONDBRAIN_PATH") or (Path.home() / "Desktop" / "SecondBrain"))
 
 # Area folders that form the top-level structure
 AREA_FOLDERS = [

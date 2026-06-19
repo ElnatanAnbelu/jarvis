@@ -10,7 +10,7 @@ from pathlib import Path
 
 from memory import memory
 
-VAULT = Path(os.environ.get("SECONDBRAIN_PATH", str(Path.home() / "Documents" / "SecondBrain")))
+VAULT = Path(os.environ.get("SECONDBRAIN_PATH", str(Path.home() / "Desktop" / "SecondBrain")))
 
 
 def forget_subject(identifier: str) -> str:
