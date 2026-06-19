@@ -104,8 +104,11 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
 
     Policy (fail-closed):
       1. paused  → deny every non-user action (the kill-switch).
-      2. red-list tool + (away-mode OR external source) → confirm (enqueue +
-         hand to Telegram). NEVER executes here.
+      2. red-list tool, UNLESS it's a present human acting at home → confirm
+         (enqueue + hand to Telegram). i.e. red-list ALWAYS confirms for
+         autonomous/external sources (even in auto-mode, even at home) and for a
+         present user when away. "Full autonomy ≠ a loaded gun." Only a present
+         human (source="user", not away) may fire a red-list tool directly.
       3. otherwise → execute.
     """
     red = is_red(tool_name, risk)
@@ -143,7 +146,10 @@ def gate(tool_name: str, args: dict, agent=None, risk=None, source: str = "user"
                     "reason": f"'{recipient}' is {who} — needs your approval (#{cid}).",
                     "confirm_id": cid}
 
-    if red and (is_away() or source == "external"):
+    # Red-list ALWAYS confirms unless it's a present human at home. A non-user
+    # source (autonomous/external) NEVER auto-fires a red-list tool — regardless
+    # of auto-mode or away state — and a present user confirms when away.
+    if red and (source != "user" or is_away()):
         cid = memory.enqueue_confirmation(
             tool_name, args, agent=agent, risk="red",
             reason=f"{source} requested '{tool_name}'",

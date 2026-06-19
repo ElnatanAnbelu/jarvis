@@ -69,6 +69,66 @@ def test_auto_red_still_confirms_when_away(db):
         registry.TOOL_REGISTRY.pop("_auto_red", None)
 
 
+def test_auto_red_confirms_when_home_autonomous(db):
+    """The P0 gap: an AUTONOMOUS red-list action in auto-mode while the user is
+    HOME must still confirm — 'full autonomy ≠ a loaded gun'. Previously the gate
+    only confirmed on away/external, so this auto-fired."""
+    sink = {}
+
+    @registry.tool(description="auto red home", parameters={}, risk="red")
+    def _auto_red_home():
+        sink["ran"] = True
+        return "ran"
+
+    try:
+        autonomy.set_autonomy_mode("auto")
+        autonomy.set_away(False)                        # HOME
+        out = registry.execute_tool("_auto_red_home", {}, source="autonomous")
+        assert "ran" not in sink, "red-list auto-fired autonomously at home!"
+        assert len(memory.get_pending_confirmations()) == 1
+    finally:
+        registry.TOOL_REGISTRY.pop("_auto_red_home", None)
+
+
+def test_external_red_confirms_when_home(db):
+    """External-source red-list confirms regardless of away state."""
+    sink = {}
+
+    @registry.tool(description="ext red", parameters={}, risk="red")
+    def _ext_red():
+        sink["ran"] = True
+        return "ran"
+
+    try:
+        autonomy.set_autonomy_mode("auto")
+        autonomy.set_away(False)
+        registry.execute_tool("_ext_red", {}, source="external")
+        assert "ran" not in sink
+        assert len(memory.get_pending_confirmations()) == 1
+    finally:
+        registry.TOOL_REGISTRY.pop("_ext_red", None)
+
+
+def test_present_user_red_executes_at_home(db):
+    """A present human (source='user', not away) may fire a red-list tool
+    directly — they're authorizing it in person."""
+    sink = {}
+
+    @registry.tool(description="user red", parameters={}, risk="red")
+    def _user_red():
+        sink["ran"] = True
+        return "ran"
+
+    try:
+        autonomy.set_autonomy_mode("auto")
+        autonomy.set_away(False)
+        out = registry.execute_tool("_user_red", {}, source="user")
+        assert sink.get("ran") is True
+        assert out == "ran"
+    finally:
+        registry.TOOL_REGISTRY.pop("_user_red", None)
+
+
 def test_runner_respects_pause(db):
     autonomy.set_paused(True)
     try:
