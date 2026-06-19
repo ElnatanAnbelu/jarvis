@@ -52,7 +52,7 @@
   .field::after {
     /* the breathing aura behind the ring — kept very soft */
     content: ""; position: absolute; left: 50%; top: 46%;
-    width: 60vmin; height: 60vmin; transform: translate(-50%, -50%);
+    width: 42vmin; height: 42vmin; transform: translate(-50%, -50%);
     border-radius: 50%;
     background: radial-gradient(circle, rgba(79,247,255,0.10), transparent 60%);
     filter: blur(8px);
@@ -114,7 +114,7 @@
   /* the centerpiece occupies the optical center; wordmark sits just over it */
   .centerpiece {
     position: relative;
-    width: min(64vmin, 560px); height: min(64vmin, 560px);
+    width: min(44vmin, 380px); height: min(44vmin, 380px);
     display: flex; align-items: center; justify-content: center;
     margin-top: -2vh;
   }
@@ -129,11 +129,12 @@
   @keyframes rise { to { opacity: 1; transform: translateY(0); } }
 
   .wordmark .name {
-    font-size: clamp(30px, 7.2vmin, 78px);
+    font-size: clamp(22px, 4.2vmin, 44px);
     font-weight: 500;
-    letter-spacing: clamp(10px, 2.6vmin, 30px);
+    letter-spacing: clamp(4px, 1.1vmin, 11px);
+    white-space: nowrap;
     /* compensate trailing letter-spacing so the word stays optically centered */
-    text-indent: clamp(10px, 2.6vmin, 30px);
+    text-indent: clamp(4px, 1.1vmin, 11px);
     color: var(--cyan-soft);
     text-shadow:
       0 0 18px rgba(79,247,255,0.55),

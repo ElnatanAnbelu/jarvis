@@ -102,8 +102,8 @@
   /* ---------- Canvas reactor ---------- */
   .reactor-wrap {
     position: relative;
-    width: min(56vmin, 540px);
-    height: min(56vmin, 540px);
+    width: min(38vmin, 340px);
+    height: min(38vmin, 340px);
     display: grid; place-items: center;
   }
   #reactor { width: 100%; height: 100%; display: block; }
@@ -129,11 +129,12 @@
 
   .wordmark h1 {
     font-family: var(--mono);
-    font-size: clamp(38px, 7.4vmin, 92px);
+    font-size: clamp(22px, 4.2vmin, 44px);
     font-weight: 600;
-    letter-spacing: clamp(10px, 2.2vmin, 26px);
+    letter-spacing: clamp(4px, 1vmin, 11px);
+    white-space: nowrap;
     color: var(--cyan-soft);
-    padding-left: clamp(10px, 2.2vmin, 26px); /* compensate trailing track */
+    padding-left: clamp(4px, 1vmin, 11px); /* compensate trailing track */
     text-shadow:
       0 0 8px rgba(79,247,255,0.9),
       0 0 28px rgba(79,247,255,0.55),

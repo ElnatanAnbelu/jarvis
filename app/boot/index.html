@@ -50,8 +50,9 @@
   var frame = document.getElementById('frame');
   var tag = document.getElementById('tag');
   var openFs = document.getElementById('openFs');
+  function clearActive(){ Array.prototype.forEach.call(pills.children, function(c){ c.classList.remove('active'); }); }
   function select(i){
-    DESIGNS.forEach(function(d,j){ pills.children[j].classList.toggle('active', i===j); });
+    clearActive(); pills.children[i].classList.add('active');
     frame.src = DESIGNS[i].file;
     tag.textContent = DESIGNS[i].tag;
     openFs.href = DESIGNS[i].file;
@@ -62,6 +63,16 @@
     b.addEventListener('click', function(){ select(i); });
     pills.appendChild(b);
   });
+  // "What Alfred picks" — boot.html chooses one at random; re-click to re-roll.
+  var rnd = document.createElement('button');
+  rnd.className = 'pill'; rnd.textContent = '🎲 As Alfred wills';
+  rnd.addEventListener('click', function(){
+    clearActive(); rnd.classList.add('active');
+    frame.src = 'boot.html?r=' + Math.random();
+    tag.textContent = 'Alfred picks a different one of the three each time he wakes. Click again to re-roll.';
+    openFs.href = 'boot.html';
+  });
+  pills.appendChild(rnd);
   select(0);
 </script>
 </body>

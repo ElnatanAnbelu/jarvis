@@ -81,9 +81,9 @@
   @keyframes beat{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.45);opacity:1}}
 
   .wordmark{
-    font-weight:600; font-size:clamp(40px, 9vw, 118px);
-    letter-spacing:clamp(10px,2.4vw,30px);
-    color:#eafcff; padding-left:clamp(10px,2.4vw,30px);
+    font-weight:600; font-size:clamp(22px, 4.4vw, 46px);
+    letter-spacing:clamp(4px,1.1vw,11px); white-space:nowrap;
+    color:#eafcff; padding-left:clamp(4px,1.1vw,11px);
     text-shadow:
       0 0 8px rgba(79,247,255,.9),
       0 0 26px rgba(79,247,255,.55),
@@ -260,7 +260,7 @@
     C.width = W * DPR; C.height = H * DPR;
     ctx.setTransform(DPR,0,0,DPR,0,0);
     cx = W/2; cy = H*0.47;
-    R = Math.min(W, H) * 0.36;
+    R = Math.min(W, H) * 0.24;
   }
   window.addEventListener('resize', resize);
   resize();

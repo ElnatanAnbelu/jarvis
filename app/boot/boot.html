@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Alfred</title>
+<style>html,body{margin:0;height:100%;background:#000307}</style>
+</head>
+<body>
+<script>
+  // Alfred picks a boot screen at his own will — a different one each time he wakes.
+  // All three are kept (each is a self-contained ~20KB file; no runtime cost).
+  var SCREENS = ['arc-reactor.html', 'holo-schematic.html', 'butler-elegant.html'];
+  var pick = SCREENS[Math.floor(Math.random() * SCREENS.length)];
+  location.replace(pick);
+</script>
+</body>
+</html>
