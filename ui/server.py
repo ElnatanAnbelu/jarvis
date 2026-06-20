@@ -313,6 +313,11 @@ def stream():
                     stripped = _strip_markdown(value)
                     if stripped:
                         yield f"data: {json.dumps({'type': 'text', 'chunk': stripped})}\n\n"
+                elif event_type == "ui_action":
+                    # The brain is pressing one of Alfred's own buttons (open/close a
+                    # dock panel). Rides the same SSE stream; the frontend calls the
+                    # panel's existing open/close — no design change, just hands.
+                    yield f"data: {json.dumps({'type': 'ui_action', **value})}\n\n"
                 elif event_type == "done":
                     full = value
                     _vis = _classify_visibility(full, agent, "chat")

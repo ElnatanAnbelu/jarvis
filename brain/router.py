@@ -158,6 +158,26 @@ def route_stream(user_input: str, image_b64: str = None, source: str = "user"):
 
     # Default: the one Alfred brain.
     actual = _strip_address(user_input, lower)
+
+    # App-control fast-path: an unambiguous "open/close/switch <panel>" command runs
+    # Alfred's OWN environment INSTANTLY — no model round-trip — by emitting ui_action
+    # events the frontend turns into the panel's existing open/close. This is the fix
+    # for "he says 'opening approvals' but nothing opens": now it actually opens, and
+    # he confirms only what truly happened. Ambiguous/compound utterances return None
+    # and fall through to the brain below.
+    from brain.app_control import match_panel_command
+    cmd = match_panel_command(actual)
+    if cmd:
+        save_message("user", actual)
+        yield ("agent", "Alfred")
+        yield ("persist", None)
+        for action in cmd["actions"]:
+            yield ("ui_action", action)
+        yield ("chunk", cmd["say"])
+        yield ("done", cmd["say"])
+        save_message("jarvis", cmd["say"])
+        return
+
     save_message("user", actual)
     yield ("agent", "Alfred")
     yield ("persist", None)

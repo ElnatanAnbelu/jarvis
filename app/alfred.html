@@ -595,6 +595,21 @@ window.autoTranscriptEmpty=function(){
   setState('calm');
   if(S.inConversation){ resetConvTimer(); setTimeout(startListening,300); } else setMood('warm');
 };
+// Alfred's brain pressing his own dock buttons by voice. Calls ONLY the existing
+// openPanel/closePanel (the same path a finger-tap uses) — no new UI, no styling.
+function applyUiAction(a){
+  try{
+    if(!a) return;
+    const OK={code:1,web:1,brain:1,approvals:1,activity:1,health:1};
+    const p=(a.panel||'').toLowerCase();
+    if(a.act==='close_all'){ Object.keys(PANELS).forEach(k=>closePanel(k)); return; }
+    if(!OK[p]) return;
+    if(a.act==='open'){ if(!PANELS[p]) openPanel(p); }
+    else if(a.act==='close'){ if(PANELS[p]) closePanel(p); }
+    else if(a.act==='toggle'){ if(PANELS[p]) closePanel(p); else openPanel(p); }
+    else if(a.act==='switch'){ Object.keys(PANELS).forEach(k=>{ if(k!==p) closePanel(k); }); if(!PANELS[p]) openPanel(p); }
+  }catch(_){}
+}
 async function streamReply(text, imageB64){
   setState('thinking'); setMood('working'); let full='', agent='Alfred'; showCap('', false);
   decideWorkspace(text);
@@ -612,6 +627,7 @@ async function streamReply(text, imageB64){
         if(evt.type==='thinking'){ setState('thinking'); }
         else if(evt.type==='speaker'){ agent=evt.name||agent; }
         else if(evt.type==='text'){ full+=evt.chunk||''; showCap(full, true); }
+        else if(evt.type==='ui_action'){ applyUiAction(evt); }
         else if(evt.type==='done'){ full=evt.full||full; agent=evt.agent||agent; }
         else if(evt.type==='error'){ toast(evt.text||'A fault, sir.', true); }
       }
