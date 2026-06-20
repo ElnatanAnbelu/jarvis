@@ -9,7 +9,7 @@ import os
 _MODEL = None
 # tiny.en is the snappy default (small.en ran ~single-threaded = far too slow here);
 # bump via JARVIS_WHISPER_MODEL=base.en for more accuracy if your CPU has headroom.
-_MODEL_NAME = os.environ.get("JARVIS_WHISPER_MODEL", "tiny.en")
+_MODEL_NAME = os.environ.get("JARVIS_WHISPER_MODEL", "base.en")
 _DISABLED = os.environ.get("JARVIS_LOCAL_STT", "1") == "0"
 # Use about half the cores — leaves headroom so the Mac stays responsive while
 # the always-on wake listener transcribes (override via JARVIS_WHISPER_THREADS).
