@@ -3,7 +3,7 @@ import requests
 from pathlib import Path
 
 FEEDS = [
-    "https://feeds.bbci.co.uk/news/world/africa/rss.xml",
+    "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://techcrunch.com/feed/",
     "https://feeds.feedburner.com/entrepreneur/latest",
     "https://www.businessinsider.com/rss",

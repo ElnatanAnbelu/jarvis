@@ -691,9 +691,9 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
         hist_summary = get_history_summary()
         if hist_summary:
             ctx += f"\nEARLIER IN THIS CONVERSATION:\n{hist_summary}\n"
-            history = format_history_for_prompt(limit=10)
+            history = format_history_for_prompt(limit=6)
         else:
-            history = format_history_for_prompt(limit=30)
+            history = format_history_for_prompt(limit=8)
         if history:
             ctx += f"\nRECENT CONVERSATION:\n{history}\n"
     return ctx
