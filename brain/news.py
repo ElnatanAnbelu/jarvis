@@ -11,10 +11,9 @@ FEEDS = [
 ]
 
 KEYWORDS = [
-    "africa", "ethiopia", "nigerian", "kenya", "african", "marketplace",
-    "ecommerce", "e-commerce", "startup", "entrepreneur", "fintech",
-    "trade", "import", "export", "diaspora", "lagos", "nairobi", "addis",
-    "tech", "ai", "artificial intelligence", "business", "economy"
+    "marketplace", "ecommerce", "e-commerce", "startup", "entrepreneur",
+    "fintech", "trade", "import", "export", "tech", "ai",
+    "artificial intelligence", "business", "economy", "technology"
 ]
 
 

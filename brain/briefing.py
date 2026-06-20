@@ -143,7 +143,7 @@ RULES:
         pass
 
     # Fallback
-    return f"Good morning. {day}. {weather}. Addis Market doesn't build itself — what's the one thing you're finishing today?"
+    return f"Good morning. {day}. {weather}. What's the one thing you're finishing today?"
 
 
 def send_telegram_briefing(text: str):

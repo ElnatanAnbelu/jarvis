@@ -1,8 +1,8 @@
-"""Business tools — Nexel CRM, financials, marketing."""
+"""Business tools — CRM, financials, marketing for the user's businesses."""
 from brain.tools.registry import tool
 
 
-@tool(description="Register a new business under the Nexel empire.", parameters={"name": {"type": "string", "description": "Business name"}, "type": {"type": "string", "description": "Business type"}, "stage": {"type": "string", "description": "idea | mvp | growth | scaling | profitable"}, "description": {"type": "string", "description": "What the business does"}, "revenue_model": {"type": "string", "description": "How it makes money"}, "founded": {"type": "string", "description": "Founding date YYYY-MM-DD"}, "mrr": {"type": "number", "description": "Monthly recurring revenue in USD"}})
+@tool(description="Register a new business.", parameters={"name": {"type": "string", "description": "Business name"}, "type": {"type": "string", "description": "Business type"}, "stage": {"type": "string", "description": "idea | mvp | growth | scaling | profitable"}, "description": {"type": "string", "description": "What the business does"}, "revenue_model": {"type": "string", "description": "How it makes money"}, "founded": {"type": "string", "description": "Founding date YYYY-MM-DD"}, "mrr": {"type": "number", "description": "Monthly recurring revenue in USD"}})
 def add_business(name: str, type: str = "", stage: str = "idea", description: str = "", revenue_model: str = "", founded: str = "", mrr: float = 0) -> str:
     from control.business_tools import tool_add_business
     return tool_add_business(name, type, stage, description, revenue_model, founded, mrr)
@@ -20,8 +20,8 @@ def get_business(name: str) -> str:
     return tool_get_business(name)
 
 
-@tool(description="Show the full Nexel empire overview — all businesses, their stage, MRR, and combined P&L.", parameters={})
-def nexel_overview() -> str:
+@tool(description="Show the overview of all the user's businesses — stage, MRR, and combined P&L.", parameters={})
+def business_overview() -> str:
     from control.business_tools import tool_nexel_overview
     return tool_nexel_overview()
 
@@ -122,8 +122,8 @@ def financial_summary(business: str, period: str = "month") -> str:
     return tool_financial_summary(business, period)
 
 
-@tool(description="Show consolidated P&L across all Nexel businesses.", parameters={})
-def nexel_financials() -> str:
+@tool(description="Show consolidated P&L across all the user's businesses.", parameters={})
+def business_financials() -> str:
     from control.business_tools import tool_nexel_financials
     return tool_nexel_financials()
 
@@ -134,7 +134,7 @@ def cash_flow(business: str) -> str:
     return tool_cash_flow(business)
 
 
-@tool(description="Generate the full business briefing — all active businesses, KPI status, follow-ups due, and Nexel P&L snapshot.", parameters={})
+@tool(description="Generate the full business briefing — all active businesses, KPI status, follow-ups due, and combined P&L snapshot.", parameters={})
 def business_briefing() -> str:
     from control.business_tools import business_briefing as _run
     return _run()

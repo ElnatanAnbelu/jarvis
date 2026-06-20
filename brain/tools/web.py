@@ -14,7 +14,7 @@ def web_search(query: str) -> str:
 
 
 @tool(
-    description="Get the latest news relevant to Elnatan — Africa, business, tech, ecommerce",
+    description="Get the latest news relevant to the user's interests.",
     parameters={}
 )
 def get_news() -> str:
@@ -25,7 +25,7 @@ def get_news() -> str:
 @tool(
     description="Get current weather for a city",
     parameters={
-        "city": {"type": "string", "description": "City name, e.g. 'Addis Ababa'"},
+        "city": {"type": "string", "description": "City name, e.g. 'New York'"},
     }
 )
 def get_weather(city: str) -> str:

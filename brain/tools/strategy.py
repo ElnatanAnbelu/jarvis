@@ -3,7 +3,7 @@ from brain.tools.registry import tool
 
 
 @tool(
-    description="Scan the web for news and intel relevant to Elnatan's businesses and interests — Ethiopian e-commerce, competitors, market moves.",
+    description="Scan the web for news and intel relevant to the user's businesses and interests.",
     parameters={"topics": {"type": "array", "items": {"type": "string"}, "description": "Custom topics to scan (optional — uses defaults if omitted)"}}
 )
 def proactive_scan(topics: list = None) -> str:
@@ -104,7 +104,7 @@ def action_history() -> str:
 
 
 @tool(
-    description="Generate the Empire Status Report — a full executive audit of the last N days across the entire Nexel empire: actions performed, scheduled tasks, business overview, strategic patterns, and JARVIS recommendations. Saves to ~/Documents/JARVIS Reports/. Use when asked 'what's the status of my empire', 'run a business audit', 'empire report', 'how have things been going', or any variant.",
+    description="Generate the Status Report — a full executive audit of the last N days across all the user's businesses: actions performed, scheduled tasks, business overview, strategic patterns, and recommendations. Saves to ~/Documents/JARVIS Reports/. Use when asked 'run a business audit', 'status report', 'how have things been going', or any variant.",
     parameters={
         "days": {"type": "integer", "description": "Audit window in days (default: 7)"},
     }

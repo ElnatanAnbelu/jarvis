@@ -320,8 +320,8 @@ def _compress_history_bg(messages_to_compress):
                 "role": "user",
                 "content": (
                     "Compress this conversation into a dense summary paragraph for an AI assistant's context.\n\n"
-                    "PRESERVE: decisions made, tasks started or completed, business context "
-                    "(Addis Market, Nexel, goals, contacts), instructions given to JARVIS, "
+                    "PRESERVE: decisions made, tasks started or completed, business/project "
+                    "context, goals, contacts, instructions given to the assistant, "
                     "important facts shared, tools used and their outcomes.\n"
                     "DISCARD: pleasantries, small talk, questions whose answers are captured above.\n\n"
                     "Write ONE dense paragraph (150-200 words). Be specific. Past tense. No filler.\n\n"

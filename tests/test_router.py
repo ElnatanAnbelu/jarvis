@@ -33,4 +33,4 @@ def test_select_tools_caps_and_includes_core_and_relevant():
     assert "send_email" in names                   # core + keyword match
     assert "read_file" in names                    # always-on core
     # a clearly-irrelevant tool should not crowd in for this short request
-    assert "nexel_financials" not in names
+    assert "business_financials" not in names

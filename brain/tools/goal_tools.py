@@ -16,7 +16,7 @@ from brain.tools.registry import tool
         "autonomously behind the safety gate (anything irreversible still needs his approval)."
     ),
     parameters={
-        "goal": {"type": "string", "description": "The goal or task to advance, e.g. 'Launch Addis Market'."},
+        "goal": {"type": "string", "description": "The goal or task to advance, e.g. 'Launch my marketplace'."},
     },
     risk="low",
     allowed_agents=["JARVIS"],

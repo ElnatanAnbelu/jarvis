@@ -5,7 +5,7 @@ Collects data from:
   • actions_performed  (DB — what was actually done)
   • scheduled_tasks    (DB — what's running on autopilot)
   • meta table         (DB — session summary, observer insights)
-  • Nexel business DB  (business overview + briefing)
+  • business DB  (business overview + briefing)
   • FAISS semantic     (wiki memory — strategy, goals, patterns)
 
 Generates a professional Markdown report in JARVIS / Stark tone,
@@ -104,20 +104,20 @@ def _collect_data(days):
 
     conn.close()
 
-    # Business overview from CRM / Nexel DB
+    # Business overview from the CRM
     try:
         from control.business_tools import tool_nexel_overview, business_briefing
         data["nexel_overview"] = tool_nexel_overview()
         data["business_briefing"] = business_briefing()
     except Exception as e:
-        data["nexel_overview"] = "(Nexel DB unavailable: {})".format(e)
+        data["nexel_overview"] = "(business DB unavailable: {})".format(e)
         data["business_briefing"] = ""
 
-    # Semantic memory — most relevant to empire topics
+    # Semantic memory — most relevant to business/life topics
     try:
         from memory.wiki import search_relevant
         data["semantic_memory"] = search_relevant(
-            "Addis Market Nexel business goals strategy empire revenue growth",
+            "business goals strategy revenue growth decisions",
             max_results=4,
         )
     except Exception:
@@ -158,7 +158,7 @@ def _format_context(data, days):
         lines.append("No scheduled tasks registered.")
 
     if data.get("nexel_overview"):
-        lines.append("\n=== NEXEL EMPIRE OVERVIEW ===")
+        lines.append("\n=== BUSINESS OVERVIEW ===")
         lines.append(data["nexel_overview"])
 
     if data.get("business_briefing"):

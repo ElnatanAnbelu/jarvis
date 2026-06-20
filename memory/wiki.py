@@ -263,7 +263,7 @@ For each fact, output exactly:
 NOTE: <note title>
 FACT: <one-line fact>
 
-Use simple note titles like: Goals, Family, Health, Interests, Decisions, Elnatan (for personal facts about the user), or technical topics like: Alfred, Tools, Architecture, Addis Market (for project/code facts).
+Use simple note titles like: Goals, Family, Health, Interests, Decisions, You (for personal facts about the user), or technical topics like: Alfred, Tools, Architecture, Projects (for project/code facts).
 Output nothing if there's nothing worth saving.
 
 USER: {user_msg}

@@ -47,12 +47,11 @@ def _classify_sender_to_area(sender: str, subject: str, body: str) -> str:
     """
     blob = f"{sender} {subject} {body}".lower()
     # Family/relationship signals
-    if any(w in blob for w in ("family", "mom ", "dad ", "sister", "brother",
-                                "yostina", "eyonabel", "adugna", "nitsuh")):
+    if any(w in blob for w in ("family", "mom ", "dad ", "sister", "brother")):
         return "Relationships"
     # Business signals
     if any(w in blob for w in ("invoice", "contract", "vendor", "investor",
-                                "revenue", "addis market", "nexel", "kpi")):
+                                "revenue", "kpi")):
         return "Business"
     # Decision-grade signals
     if any(w in blob for w in ("decision", "decide", "should we", "next steps",

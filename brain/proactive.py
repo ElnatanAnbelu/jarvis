@@ -146,11 +146,10 @@ def _focus_nudge():
         _send(random.choice(messages))
 
 
-_COMPETITOR_KEYWORDS = [
-    "Addis Market competitors", "Ethiopia e-commerce", "Jumia Ethiopia",
-    "African marketplace startup", "Nexel competitor", "Ethiopian startup funding",
-    "East Africa e-commerce", "Addis Ababa tech startup",
-]
+# Market-scan keywords are NOT hardcoded — empty by default so Alfred never scans or yaps
+# about businesses that aren't his. (Was hardcoded with Addis Market / Nexel / Ethiopia
+# terms.) When the user registers businesses, derive keywords from those instead.
+_COMPETITOR_KEYWORDS = []
 
 _competitor_last_seen = {}  # keyword → last headline seen (to avoid repeats)
 
@@ -193,7 +192,7 @@ def _competitor_scan():
             max_tokens=200,
             messages=[{
                 "role": "user",
-                "content": f"You are Alfred scanning market intelligence for Elnatan. Review these news items about his market (Ethiopia e-commerce, Addis Market, Nexel). If anything is genuinely worth surfacing — competitor moves, funding news, major market shifts — write a 1-2 sentence alert. If nothing notable, respond with NOTHING.\n\n{raw}"
+                "content": f"You are Alfred scanning market intelligence for the user's registered businesses. Review these news items. If anything is genuinely worth surfacing — competitor moves, funding news, major market shifts — write a 1-2 sentence alert. If nothing notable, respond with NOTHING.\n\n{raw}"
             }]
         )
         alert = (msg.content[0].text or "").strip()
