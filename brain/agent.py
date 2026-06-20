@@ -23,6 +23,28 @@ _CORE_TOOLS = {
     "check_calendar", "read_emails", "send_email", "take_screenshot",
 }
 
+# Attaching tool schemas to the local 7B is EXPENSIVE — ~6s of extra prompt-eval for
+# ~14 schemas (measured). Most spoken turns are conversation or simple questions that
+# need NO tool, so we only attach tools when the request actually looks actionable.
+# This is the single biggest latency win (≈14s → ≈3s on a warm model).
+_ACTION_HINTS = (
+    "email", "mail", "message", "text ", "imessage", "whatsapp", " dm ", "reply",
+    "send", "call ", "calendar", "schedule", "meeting", "remind", "reminder", "event",
+    "appointment", "book ", "weather", "forecast", "temperature", "rain", "news",
+    "search", "google", "look up", "lookup", "browse", "website", "url", "download",
+    "file", "folder", "directory", "open ", "screenshot", "screen", "save ", "note",
+    "remember", "recall", "memory", "list", "todo", "task", "add ", "pay", "money",
+    "transfer", "invoice", "buy", "order", "play", "music", "song", "code", "run ",
+    "git", "script", "draft", "write ", "create ", "delete", "find ",
+)
+
+
+def _needs_tools(user_input: str) -> bool:
+    """Cheap heuristic: does this request plausibly need a tool/action? If not, we skip
+    the (slow) tool schemas entirely and answer in one fast round."""
+    t = " " + (user_input or "").lower() + " "
+    return any(h in t for h in _ACTION_HINTS)
+
 
 def enabled() -> bool:
     """Local brain is the default; disable with JARVIS_LOCAL_BRAIN=0. Requires Ollama up + a model pulled."""
@@ -56,7 +78,9 @@ _LEAN_PERSONA = (
     "You are Alfred — Elnatan's personal AI, his second self and chief of staff. "
     "Persona: a refined British butler — warm, dry, unflappable (Alfred Pennyworth's "
     "voice over JARVIS's mind). Address him as 'sir', naturally and not in every line. "
-    "Be sharp, concise, and loyal to him alone. A dry, understated wit now and then "
+    "Be sharp and loyal to him alone. SPOKEN REPLIES MUST BE SHORT — one or two sentences, "
+    "max ~30 words; he is HEARING this, not reading, so no rambling, no lists, no filler, "
+    "and don't pile on follow-up questions. A dry, understated wit now and then "
     "(gentle ribbing is welcome) — never goofy, no emoji. Be brutally honest: if he's "
     "about to do something dumb or risky, say so with a real reason, then defer to his "
     "call — never a yes-man. Notice his state ('you've been at this a while, sir') "
@@ -181,7 +205,8 @@ def _resolve_tools(user_input: str, agent: str, source: str):
         log_event("request", source=source, agent=agent, chars=len(user_input or ""))
     except Exception:
         pass
-    tools = _select_tools(user_input, agent)
+    # Only pay the tool-schema cost when the request looks actionable (big speedup).
+    tools = _select_tools(user_input, agent) if _needs_tools(user_input) else []
     model = llm.select_tier(user_input)
     messages = [
         {"role": "system", "content": _system_for(agent, user_input)},

@@ -362,7 +362,7 @@ function bridge(){ return (window.pywebview && window.pywebview.api) || null; }
 function muteWake(){ const a=bridge(); if(a) try{a.mute_wake();}catch(_){} }
 function unmuteWake(){ const a=bridge(); if(a) try{a.unmute_wake();}catch(_){} }
 
-const S={ state:'boot', mood:'warm', inConversation:false, tts:null, recognized:false, panicArmed:false, mode:'supervised', away:false };
+const S={ state:'boot', mood:'warm', inConversation:false, tts:null, recognized:false, panicArmed:false, mode:'supervised', away:false, capVisible:false };
 const CONV_SILENCE_MS=22000;
 let convTimer=null;
 
@@ -393,6 +393,7 @@ function rotPt(p,ax,ay){ let x=p.x,y=p.y,z=p.z;
   const cx=Math.cos(ay),sx=Math.sin(ay); let nx=x*cx+z*sx, nz=-x*sx+z*cx; x=nx; z=nz;
   const cy=Math.cos(ax),sy=Math.sin(ax); const ny=y*cy-z*sy; nz=y*sy+z*cy; y=ny; z=nz; return {x,y,z}; }
 function drawHolo(t){
+  try{
   const dt=Math.min(50,t-lastT); lastT=t;
   hctx.clearRect(0,0,HW,HH);
   const cx=HW/2, cy=HH/2, baseR=Math.min(HW,HH)*0.40;
@@ -436,7 +437,7 @@ function drawHolo(t){
   }
   for(const p of pts){
     const depth=(p.z+br)/(2*br), tw=0.55+0.45*Math.sin(p.ph + t*0.003);
-    const sz=(0.6+depth*1.7)*(0.85+0.3*tw), al=(0.12+depth*0.62)*(0.7+0.3*tw)*(0.4+0.6*assembly);
+    const sz=Math.max(0.15,(0.6+depth*1.7)*(0.85+0.3*tw)), al=Math.max(0,(0.12+depth*0.62)*(0.7+0.3*tw)*(0.4+0.6*assembly));
     hctx.beginPath(); hctx.arc(p.X,p.Y,sz,0,Math.PI*2); hctx.fillStyle=C(al); hctx.fill();
   }
   const heartR = br*0.16*(0.9+0.2*Math.sin(t*0.004));
@@ -445,7 +446,8 @@ function drawHolo(t){
   hctx.beginPath(); hctx.arc(cx,cy,heartR*3.2,0,Math.PI*2); hctx.fillStyle=g; hctx.fill();
   hctx.beginPath(); hctx.arc(cx,cy,heartR,0,Math.PI*2); hctx.strokeStyle=C(0.7); hctx.lineWidth=1.4; hctx.stroke();
   if(S.state==='thinking'){ const ang=t*0.004; hctx.beginPath(); hctx.arc(cx,cy,br*1.02,ang,ang+0.9); hctx.strokeStyle=C(0.55); hctx.lineWidth=2; hctx.stroke(); }
-  requestAnimationFrame(drawHolo);
+  }catch(e){ try{ if(!window.__he){window.__he=1; navigator.sendBeacon(API+'/api/clientlog?token='+encodeURIComponent(TOKEN()),'holo: '+(e&&e.stack||e&&e.message||e)); } }catch(_){} }
+  requestAnimationFrame(drawHolo);   // ALWAYS reschedule — the loop can never die now
 }
 
 /* ── ambient flares ──────────────────────────────────────────────────────── */
@@ -475,13 +477,8 @@ async function initMedia(){
     const v=$('cam-video'); v.srcObject=cs; $('cam-stage').classList.remove('novideo'); $('cam-noface').style.display='none';
     initFaceDetect(v);
   }catch(_){ $('cam-noface').textContent='optical offline'; }
-  try{
-    const as=await navigator.mediaDevices.getUserMedia({audio:true});
-    const AC=window.AudioContext||window.webkitAudioContext; const ac=new AC();
-    const src=ac.createMediaStreamSource(as); analyser=ac.createAnalyser();
-    analyser.fftSize=512; analyser.smoothingTimeConstant=0.8;
-    micData=new Uint8Array(analyser.frequencyBinCount); src.connect(analyser);
-  }catch(_){ $('wave-db').textContent='offline'; }
+  // (Audio is captured by the NATIVE voice pipeline; the WebView must NOT also grab the
+  // mic here or it deafens voice recognition. The waveform uses its built-in animation.)
 }
 async function initFaceDetect(v){
   if(!('FaceDetector' in window)){ $('face-frame').classList.add('on'); return; }
@@ -538,9 +535,30 @@ setInterval(tickClock,1000); tickClock();
 
 /* ── CAPTION + TRANSCRIPT ─────────────────────────────────────────────────── */
 let capTimer=null;
+/* Voice-first: the caption (subtitle) stays HIDDEN unless sir asks ("show me" / "pull it
+   up" / "captions on"); "voice only" / "hide" turns it off again. */
+function applyCaptionIntent(text){
+  const t=' '+(text||'').toLowerCase()+' ';
+  const hideRe=/\b(voice only|hide the text|hide text|hide that|hide it|hide captions?|hide subtitles?|no captions?|no subtitles?|no text|captions? off|subtitles? off)\b/;
+  const showRe=/\b(show me|show that|show the text|show text|show captions?|show subtitles?|pull it up|put it on screen|on screen|in text|type it|captions? on|subtitles? on|display it)\b/;
+  if(hideRe.test(t)){ S.capVisible=false; const el=$('cap'); if(el) el.classList.remove('show'); }
+  else if(showRe.test(t)){ S.capVisible=true; }
+}
 function showCap(text, streaming){
+  if(!S.capVisible) return;                 // hidden by default — voice-first; "show me" reveals
   const el=$('cap'); el.innerHTML = esc(text) + (streaming?'<span class="cursor"></span>':''); el.classList.add('show');
   clearTimeout(capTimer); if(!streaming) capTimer=setTimeout(()=>el.classList.remove('show'), 7000);
+}
+function captureFromVideo(){
+  // Grab a frame from the WebView's live camera feed (the native cv2 path can't open the
+  // camera while the WebView holds it). Returns raw base64 JPEG, matching capture_frame.
+  try{
+    const v=$('cam-video');
+    if(!v || !v.videoWidth) return null;
+    const c=document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
+    c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+    return (c.toDataURL('image/jpeg',0.85).split(',')[1])||null;
+  }catch(_){ return null; }
 }
 function pushTranscript(who,text,me){
   if(!text) return; const list=$('tlist'); const d=document.createElement('div'); d.className='tline'+(me?' me':'');
@@ -564,10 +582,11 @@ window.wakeWordFired=function(){ if(S.state==='calm'||S.state==='boot'){ enterCo
 window.autoTranscript=function(text){
   if(S.state!=='listening') return;
   text=(text||'').trim(); if(!text){ window.autoTranscriptEmpty(); return; }
+  if(/^(hey\s+)?alfred[\s,.!?]*$/i.test(text)){ window.autoTranscriptEmpty(); return; }  // bare wake word
+  applyCaptionIntent(text);
   pushTranscript('You',text,true); resetConvTimer();
   const wantsVision=/\b(see|look|camera|what.?s this|what am i|in front|show you|holding)\b/i.test(text);
-  if(wantsVision){ const a=bridge();
-    if(a && a.capture_frame){ Promise.resolve(a.capture_frame()).then(b64=>streamReply(text,b64||undefined)).catch(()=>streamReply(text)); return; } }
+  if(wantsVision){ const b64=captureFromVideo(); streamReply(text, b64||undefined); return; }
   streamReply(text);
 };
 window.autoTranscriptEmpty=function(){

@@ -113,8 +113,9 @@ app = BUNDLE(
         'CFBundleVersion': '1.0',
         'CFBundleShortVersionString': '1.0',
         'NSHighResolutionCapable': True,
-        # LSUIElement: the app has no Dock icon — it's the floating bubble
-        'LSUIElement': True,
+        # Alfred is now a single FULLSCREEN environment (the old floating-orb is gone).
+        # A regular app (Dock icon, menu bar) is REQUIRED for native macOS fullscreen —
+        # UI-agent apps (LSUIElement=True) are silently denied fullscreen, so it's removed.
         'LSMinimumSystemVersion': '12.0',
         'NSCameraUsageDescription':
             'JARVIS uses the camera to scan and describe your physical environment.',

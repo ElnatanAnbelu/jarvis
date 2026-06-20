@@ -26,20 +26,38 @@ CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_SECS)
 WAKE_NAME     = "Alfred"
 KEYWORDS      = ("alfred", "hey alfred")
 
-# Energy threshold for voice onset (int16 RMS). 500 ≈ quiet speech.
-_ENERGY_THRESH = 500
+# Energy threshold for voice onset (int16 RMS). ~450 reliably catches normal speech
+# while ignoring silence/quiet ambient (silence≈0-50). Tune via ALFRED_WAKE_THRESH.
+_ENERGY_THRESH = int(os.environ.get("ALFRED_WAKE_THRESH", "450"))
+
+# Command-capture VAD (used after the wake word, on the SAME always-open stream).
+_CMD_ENERGY_ON   = int(os.environ.get("ALFRED_CMD_THRESH", "300"))  # command speech onset
+_CMD_SILENCE_END = 2      # 0.5 s chunks of trailing silence → end of utterance (~1.0 s)
+_CMD_PRE_MAX     = 8.0    # seconds to wait for the command to start before giving up
 
 
 class WakeWordListener:
     """Continuous wake-word detector that calls `on_wake` on detection."""
 
-    def __init__(self, on_wake, keywords=KEYWORDS):
-        self._on_wake   = on_wake
-        self._keywords  = keywords
-        self._running   = False
-        self._muted     = False
-        self._thread    = None
-        self._oww       = self._init_oww()
+    def __init__(self, on_wake, on_command=None, on_level=None, keywords=KEYWORDS):
+        self._on_wake    = on_wake
+        self._on_command = on_command   # called with the transcribed command after capture
+        self._on_level   = on_level     # called each chunk with the live mic RMS (UI waveform)
+        self._keywords   = keywords
+        self._running    = False
+        self._muted      = False
+        self._mode       = "wake"       # "wake" (listen for 'Alfred') | "command" (capture)
+        self._thread     = None
+        self._oww        = self._init_oww()
+
+    def capture_now(self):
+        """Enter command-capture mode immediately — for a follow-up turn in an active
+        conversation (no wake word needed). Same single stream, just a mode flip."""
+        self._mode = "command"
+
+    def cancel_capture(self):
+        """Abort command capture and go back to listening for the wake word."""
+        self._mode = "wake"
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -121,35 +139,114 @@ class WakeWordListener:
     # ── Path B: energy-gate + Groq keyword confirm ────────────────────────────
 
     def _loop_energy_gate(self):
+        """ONE always-open mic stream, mode-switched between wake-word detection and
+        command capture. Never closing/reopening the stream avoids the CoreAudio
+        'second stream reads silence' bug. `mute()` just skips processing (echo guard
+        while Alfred speaks) — it does NOT close the stream."""
         import queue as _q
+        import time as _t
         q: _q.Queue = _q.Queue()
-        speech_buf: list = []
 
         def _cb(indata, frames, t, status):
             q.put(indata.copy())
 
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
-                            blocksize=CHUNK_SAMPLES, callback=_cb):
-            while self._running:
-                try:
-                    chunk = q.get(timeout=1.0)
-                    if self._muted:
-                        speech_buf.clear()
-                        continue
+        speech_buf   = []        # wake-word detection buffer
+        cmd_buf      = []        # command-capture buffer
+        cmd_started  = False
+        cmd_silent   = 0
+        cmd_deadline = 0.0
+        cmd_peak     = 0.0
+        prev_mode    = self._mode
 
-                    rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-                    if rms > _ENERGY_THRESH:
-                        speech_buf.append(chunk)
-                        # Keep at most 5 s of audio
-                        if len(speech_buf) > int(5.0 / CHUNK_SECS):
-                            speech_buf.pop(0)
-                    elif speech_buf:
-                        # Speech ended — run keyword check
-                        audio = np.concatenate(speech_buf).flatten()
-                        speech_buf.clear()
-                        if self._keyword_check(audio):
-                            self._fire()
-                except Exception:
+        while self._running:
+            try:
+                with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                                    blocksize=CHUNK_SAMPLES, callback=_cb):
+                    print(f"[Wake] mic open (single stream, gate={_ENERGY_THRESH})", flush=True)
+                    while self._running:
+                        try:
+                            chunk = q.get(timeout=0.3)
+                        except _q.Empty:
+                            continue
+                        if self._muted:                       # echo guard while speaking
+                            speech_buf.clear(); cmd_buf = []; cmd_started = False
+                            prev_mode = self._mode
+                            continue
+
+                        if self._mode != prev_mode:           # (re)arm on a mode flip
+                            prev_mode = self._mode
+                            if self._mode == "command":
+                                cmd_buf = []; cmd_started = False; cmd_silent = 0; cmd_peak = 0.0
+                                cmd_deadline = _t.time() + _CMD_PRE_MAX
+                                speech_buf.clear()
+
+                        rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+                        # (UI waveform runs on its own animation; no per-frame bridge push.)
+
+                        if self._mode == "command":
+                            if rms > cmd_peak:
+                                cmd_peak = rms
+                            if rms >= _CMD_ENERGY_ON:
+                                cmd_started = True; cmd_silent = 0; cmd_buf.append(chunk)
+                            elif cmd_started:
+                                cmd_buf.append(chunk); cmd_silent += 1
+                                if cmd_silent >= _CMD_SILENCE_END:        # end of utterance
+                                    audio = (np.concatenate(cmd_buf).flatten() if cmd_buf
+                                             else np.array([], dtype="int16"))
+                                    cmd_buf = []; cmd_started = False; cmd_silent = 0
+                                    self._mode = "wake"; prev_mode = "wake"
+                                    text = self._transcribe_int16(audio)
+                                    print(f"[Wake] command: {text!r}  (peak RMS={cmd_peak:.0f})", flush=True)
+                                    self._emit_command(text)
+                            elif _t.time() > cmd_deadline:                # no speech → give up
+                                cmd_buf = []; cmd_started = False
+                                self._mode = "wake"; prev_mode = "wake"
+                                print(f"[Wake] command timeout — no speech (peak RMS={cmd_peak:.0f})", flush=True)
+                                self._emit_command("")
+                        else:  # wake mode — listen for 'Alfred'
+                            if rms > _ENERGY_THRESH:
+                                speech_buf.append(chunk)
+                                if len(speech_buf) > int(5.0 / CHUNK_SECS):
+                                    speech_buf.pop(0)
+                            elif speech_buf:
+                                audio = np.concatenate(speech_buf).flatten()
+                                speech_buf.clear()
+                                if self._keyword_check(audio):
+                                    print("[Wake] 'Alfred' detected → capturing command", flush=True)
+                                    self._mode = "command"; prev_mode = "command"
+                                    cmd_buf = []; cmd_started = False; cmd_silent = 0; cmd_peak = 0.0
+                                    cmd_deadline = _t.time() + _CMD_PRE_MAX
+                                    self._fire()
+            except Exception as e:
+                print(f"[Wake] stream error: {e}", flush=True)
+                _t.sleep(0.3)
+
+    def _emit_command(self, text):
+        if self._on_command:
+            try:
+                self._on_command(text)
+            except Exception as e:
+                print(f"[Wake] on_command error: {e}", flush=True)
+
+    def _transcribe_int16(self, audio_int16) -> str:
+        """Transcribe a captured int16 mono buffer (16 kHz) to text, fully local-first."""
+        import scipy.io.wavfile as wavfile
+        import tempfile
+        if audio_int16 is None or len(audio_int16) == 0:
+            return ""
+        tmp = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                tmp = f.name
+            wavfile.write(tmp, SAMPLE_RATE, audio_int16)
+            return (self._transcribe(tmp) or "").strip()
+        except Exception:
+            return ""
+        finally:
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
                     pass
 
     def _keyword_check(self, audio_int16: np.ndarray) -> bool:
@@ -167,7 +264,7 @@ class WakeWordListener:
             text = self._transcribe(tmp).lower().strip()
             matched = any(kw in text for kw in self._keywords)
             if matched:
-                print(f"[Wake] keyword detected in: '{text}'", flush=True)
+                print(f"[Wake] keyword matched in: '{text}'", flush=True)
             return matched
         except Exception:
             return False
@@ -207,5 +304,3 @@ class WakeWordListener:
             self._on_wake()
         except Exception as e:
             print(f"[Wake] on_wake callback error: {e}", flush=True)
-        # Debounce: ignore wake signals for 1 s after firing
-        time.sleep(1.0)

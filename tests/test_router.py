@@ -4,9 +4,20 @@ from brain import agent, llm
 
 def test_select_tier_fast_vs_complex(monkeypatch):
     monkeypatch.setattr(llm, "has_model", lambda m=None: True)
+    # Short conversational turns ALWAYS stay fast — snappy voice, never lag the Mac,
+    # even when they contain a "complex" word.
     assert llm.select_tier("hey sir, how are you") == llm.FAST_MODEL
-    assert llm.select_tier("analyze the strategy and compare the options") == llm.COMPLEX_MODEL
-    assert llm.select_tier("word " * 70) == llm.COMPLEX_MODEL  # long request → escalate
+    assert llm.select_tier("analyze the strategy and compare the options") == llm.FAST_MODEL
+    # Genuinely heavy work escalates: a long request, OR a substantial one carrying a
+    # real complexity signal.
+    assert llm.select_tier("word " * 90) == llm.COMPLEX_MODEL                       # long → escalate
+    assert llm.select_tier("please " + "context " * 18 + "refactor this architecture") == llm.COMPLEX_MODEL
+
+
+def test_select_tier_lock_fast_env(monkeypatch):
+    monkeypatch.setattr(llm, "has_model", lambda m=None: True)
+    monkeypatch.setenv("JARVIS_LOCK_FAST_MODEL", "1")
+    assert llm.select_tier("draft a full strategic analysis " + "word " * 90) == llm.FAST_MODEL
 
 
 def test_select_tier_falls_back_when_preferred_missing(monkeypatch):

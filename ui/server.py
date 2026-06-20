@@ -751,6 +751,16 @@ def tts():
     return Response(status=204)
 
 
+@app.route("/api/clientlog", methods=["POST"])
+def clientlog():
+    """Capture a client-side JS error/log line into flask.log (debug aid)."""
+    try:
+        print(f"[clientlog] {request.get_data(as_text=True)[:2000]}", flush=True)
+    except Exception:
+        pass
+    return Response(status=204)
+
+
 @app.route("/api/contact_photo", methods=["GET"])
 def contact_photo():
     name = request.args.get("name", "").strip()
@@ -1211,6 +1221,19 @@ def end_session():
 
 
 if __name__ == "__main__":
+    # Parent-death watchdog: if the desktop app that spawned us dies, exit instead of
+    # lingering as an orphan that holds port 8080 (which broke the next launch).
+    _ppid0 = os.getppid()
+    def _watch_parent():
+        import time as _t
+        while True:
+            _t.sleep(2)
+            try:
+                if os.getppid() != _ppid0:
+                    os._exit(0)
+            except Exception:
+                os._exit(0)
+    threading.Thread(target=_watch_parent, daemon=True).start()
     # Background push policy:
     #   ENABLED:
     #     - brain.observer  (every-6-min pattern detection, max 3 pushes/hour,

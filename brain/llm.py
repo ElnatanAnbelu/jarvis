@@ -22,12 +22,12 @@ COMPLEX_MODEL = os.environ.get("JARVIS_COMPLEX_MODEL", "qwen3:14b")
 DEFAULT_MODEL = FAST_MODEL
 _TIMEOUT = float(os.environ.get("JARVIS_LLM_TIMEOUT", "120"))
 
-# Signals that a request is worth escalating to the bigger model.
+# Signals that a request is worth escalating to the bigger model. Deliberately
+# narrow — only genuinely heavy work escalates; casual conversation stays snappy.
 _COMPLEX_SIGNALS = (
-    "strategy", "strategize", "analyze", "analysis", "decide", "decision", "design",
-    "architect", "compare", "evaluate", "debug", "refactor", "proposal", "negotiate",
-    "invest", "complex", "reason", "trade-off", "tradeoff", "pros and cons",
-    "step by step", "research", "write a", "draft a", "plan ",
+    "strategy", "strategize", "architect", "evaluate", "debug", "refactor",
+    "proposal", "negotiate", "invest", "trade-off", "tradeoff", "pros and cons",
+    "step by step", "research",
 )
 
 
@@ -56,10 +56,16 @@ def any_model_available() -> bool:
 
 
 def select_tier(user_input: str) -> str:
-    """Pick the model: fast by default, escalate to the bigger one on complexity
-    signals or long requests. Falls back to whichever tier is actually pulled."""
+    """Pick the model: fast by default, escalate to the bigger one ONLY for genuinely
+    heavy work. Short conversational turns always stay fast so voice replies are snappy
+    and the Mac never lags. Falls back to whichever tier is actually pulled.
+    Set JARVIS_LOCK_FAST_MODEL=1 to pin the fast tier for everything."""
+    if os.environ.get("JARVIS_LOCK_FAST_MODEL", "0") == "1":
+        return FAST_MODEL if has_model(FAST_MODEL) else COMPLEX_MODEL
     text = (user_input or "").lower()
-    want_complex = len(text.split()) > 60 or any(s in text for s in _COMPLEX_SIGNALS)
+    words = len(text.split())
+    # Short turns (typical voice back-and-forth) NEVER escalate — keeps it instant.
+    want_complex = words > 12 and (words > 80 or any(s in text for s in _COMPLEX_SIGNALS))
     primary = COMPLEX_MODEL if want_complex else FAST_MODEL
     if has_model(primary):
         return primary

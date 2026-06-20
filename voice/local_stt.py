@@ -11,7 +11,9 @@ _MODEL = None
 # bump via JARVIS_WHISPER_MODEL=base.en for more accuracy if your CPU has headroom.
 _MODEL_NAME = os.environ.get("JARVIS_WHISPER_MODEL", "tiny.en")
 _DISABLED = os.environ.get("JARVIS_LOCAL_STT", "1") == "0"
-_THREADS = int(os.environ.get("JARVIS_WHISPER_THREADS", str(max(4, (os.cpu_count() or 4)))))
+# Use about half the cores — leaves headroom so the Mac stays responsive while
+# the always-on wake listener transcribes (override via JARVIS_WHISPER_THREADS).
+_THREADS = int(os.environ.get("JARVIS_WHISPER_THREADS", str(max(2, (os.cpu_count() or 4) // 2))))
 
 
 def available() -> bool:

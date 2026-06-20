@@ -264,128 +264,28 @@ class JsApi:
     # ── MICROPHONE ──────────────────────────────────────────────────────────
 
     def start_recording(self):
-        """VAD-based recording. Opens mic, waits for speech, auto-stops on silence,
-        transcribes, then fires autoTranscript(text) or autoTranscriptEmpty() in JS.
-        Returns True immediately — result comes back asynchronously via evaluate_js."""
-        if self._recording:
-            return True  # already running
-
-        self._recording = True
-        self._chunks = []
-
-        def _vad_thread():
-            import queue as _q
-            import numpy as np
-            import sounddevice as sd
-
-            SR          = 16000
-            CHUNK_SECS  = 0.4
-            CHUNK_SAMP  = int(SR * CHUNK_SECS)
-            ENERGY_ON   = 300    # int16 RMS — speech start
-            ENERGY_OFF  = 200    # int16 RMS — speech end
-            SILENCE_END = 6      # chunks of silence before auto-stop (~2.4 s)
-            MAX_CHUNKS  = 75     # hard cap ~30 s
-
-            q: _q.Queue = _q.Queue()
-            speech_started = False
-            silent_count   = 0
-            chunks_all     = []
-
-            def _cb(indata, frames, t, status):
-                q.put(indata.copy())
-
-            try:
-                with sd.InputStream(samplerate=SR, channels=1, dtype="int16",
-                                    blocksize=CHUNK_SAMP, callback=_cb):
-                    while self._recording and len(chunks_all) < MAX_CHUNKS:
-                        try:
-                            chunk = q.get(timeout=1.5)
-                        except _q.Empty:
-                            break
-
-                        rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-
-                        if rms >= ENERGY_ON:
-                            speech_started = True
-                            silent_count   = 0
-                            chunks_all.append(chunk)
-                        elif speech_started:
-                            chunks_all.append(chunk)
-                            silent_count += 1
-                            if silent_count >= SILENCE_END:
-                                break   # natural end of utterance
-                        # else: pre-speech silence, discard
-            except Exception as e:
-                print(f"[VAD] {e}", flush=True)
-
-            self._recording = False
-            self._stream    = None
-
-            # Transcribe
-            text = ""
-            if chunks_all:
-                try:
-                    import numpy as np
-                    import scipy.io.wavfile as wavfile
-                    import tempfile as tf
-
-                    audio = np.concatenate(chunks_all, axis=0)
-                    with tf.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                        tmp = f.name
-                    wavfile.write(tmp, SR, audio)
-                    # Prefer fully-local STT (offline, free); fall back to Groq when online.
-                    try:
-                        from voice import local_stt
-                        if local_stt.available():
-                            text = local_stt.transcribe(tmp)
-                    except Exception:
-                        text = ""
-                    if not text:
-                        groq_key = _load_groq_key()
-                        if groq_key:
-                            from groq import Groq
-                            client = Groq(api_key=groq_key)
-                            with open(tmp, "rb") as fh:
-                                result = client.audio.transcriptions.create(
-                                    model="whisper-large-v3-turbo",
-                                    file=("audio.wav", fh, "audio/wav"),
-                                    response_format="text",
-                                )
-                            text = (result or "").strip()
-                    try:
-                        os.unlink(tmp)
-                    except Exception:
-                        pass
-                except Exception as e:
-                    print(f"[VAD transcribe] {e}", flush=True)
-
-            # Fire callback into JS
-            try:
-                import json as _json
-                if self._bubble:
-                    if text:
-                        self._bubble.evaluate_js(
-                            f"autoTranscript({_json.dumps(text)})"
-                        )
-                    else:
-                        self._bubble.evaluate_js("autoTranscriptEmpty()")
-            except Exception as e:
-                print(f"[VAD callback] {e}", flush=True)
-
-        threading.Thread(target=_vad_thread, daemon=True).start()
+        """Capture the next utterance via the SINGLE always-open wake-listener stream
+        (mode flip to 'command'). We no longer open a second mic stream here — two
+        concurrent CoreAudio input streams read silence (the 'no response' bug). The
+        transcript comes back asynchronously through the listener's on_command →
+        autoTranscript / autoTranscriptEmpty."""
+        try:
+            if self._wake_listener:
+                self._wake_listener.capture_now()
+            elif self._bubble:
+                self._bubble.evaluate_js("autoTranscriptEmpty()")
+        except Exception as e:
+            print(f"[rec] capture_now error: {e}", flush=True)
         return True
 
     def stop_recording(self):
-        """Force-stop VAD recording early (barge-in / cancel).
-        Returns empty string — result will still arrive via autoTranscript callback."""
-        self._recording = False
-        if self._stream:
-            try:
-                self._stream.stop()
-                self._stream.close()
-            except Exception:
-                pass
-            self._stream = None
+        """Cancel command capture (barge-in / cancel) — revert the single-stream wake
+        listener to listening for the wake word."""
+        try:
+            if self._wake_listener:
+                self._wake_listener.cancel_capture()
+        except Exception:
+            pass
         return ""
 
     # ── CAMERA ──────────────────────────────────────────────────────────────
@@ -640,6 +540,13 @@ def _on_loaded():
         _window.evaluate_js("window.__PYWEBVIEW = true;")
     except Exception:
         pass
+    # Enter fullscreen AFTER the window is on-screen + active. Toggling at create-time
+    # (fullscreen=True) is silently ignored in a frozen app before the window is
+    # realized; doing it here is deterministic (windowed → fullscreen).
+    try:
+        _window.toggle_fullscreen()
+    except Exception as e:
+        print(f"[fullscreen] {e}", flush=True)
     threading.Thread(target=_greet, daemon=True).start()
 
 
@@ -669,7 +576,12 @@ def _alfred_already_running() -> int:
     try:
         out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
                              capture_output=True, text=True)
-        return pid if "app/main.py" in out.stdout else 0
+        cmd = out.stdout or ""
+        # Recognize BOTH the dev launch (`python app/main.py`) AND the frozen bundle
+        # (`…/JARVIS.app/Contents/MacOS/JARVIS`). Without the bundle markers the singleton
+        # never matches a running .app, so every launch spawned ANOTHER Alfred.
+        is_alfred = ("app/main.py" in cmd or "JARVIS.app" in cmd or "/MacOS/JARVIS" in cmd)
+        return pid if is_alfred else 0
     except Exception:
         try:
             os.kill(pid, 0)
@@ -752,13 +664,14 @@ def main():
     # (/boot) that hands off to the living environment (/alfred), which IS the whole
     # experience. Native voice/vision callbacks (wakeWordFired, autoTranscript) fire
     # into this window.
+    _sw, _sh = _screen_size()
     _window = webview.create_window(
         title="Alfred",
         url=f"http://127.0.0.1:{FLASK_PORT}/boot",
-        fullscreen=True,
+        width=_sw, height=_sh, x=0, y=0,   # fill the screen immediately…
         frameless=True,
         js_api=_js_api,
-    )
+    )   # …then _on_loaded toggles true fullscreen once the window is realized
 
     _js_api._hud    = _window   # back-compat: any HUD-targeted call hits the environment
     _js_api._bubble = _window   # wake-word + transcript callbacks fire in the environment
@@ -780,7 +693,30 @@ def main():
                 except Exception as e:
                     print(f"[Wake] evaluate_js: {e}", flush=True)
 
-            _js_api._wake_listener = WakeWordListener(on_wake=_on_wake)
+            def _on_command(text):
+                # The wake listener captured an utterance — hand it to the UI exactly
+                # like the old recorder did (autoTranscript / autoTranscriptEmpty).
+                try:
+                    if _js_api._bubble:
+                        import json as _json
+                        if text and text.strip():
+                            _js_api._bubble.evaluate_js(f"autoTranscript({_json.dumps(text)})")
+                        else:
+                            _js_api._bubble.evaluate_js("autoTranscriptEmpty()")
+                except Exception as e:
+                    print(f"[Wake] on_command evaluate_js: {e}", flush=True)
+
+            def _on_level(rms):
+                # The WebView no longer captures audio (it would starve the native mic),
+                # so feed the native mic level to the UI so the waveform still reacts.
+                try:
+                    if _js_api._bubble:
+                        _js_api._bubble.evaluate_js(f"window.setMicLevel&&setMicLevel({float(rms):.0f})")
+                except Exception:
+                    pass
+
+            _js_api._wake_listener = WakeWordListener(
+                on_wake=_on_wake, on_command=_on_command, on_level=_on_level)
             _js_api._wake_listener.start()
             print("[Wake] listener started (system-wide, always-on)", flush=True)
         except Exception as e:
