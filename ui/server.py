@@ -1221,18 +1221,18 @@ def end_session():
 
 
 if __name__ == "__main__":
-    # Parent-death watchdog: if the desktop app that spawned us dies, exit instead of
-    # lingering as an orphan that holds port 8080 (which broke the next launch).
-    _ppid0 = os.getppid()
+    # Parent-death watchdog: only if the desktop app that spawned us TRULY dies (we get
+    # reparented to launchd, ppid==1) do we exit, so we don't linger as an orphan on 8080.
+    # ppid==1 ONLY — a transient reparent or a stray exception must never kill a healthy server.
     def _watch_parent():
         import time as _t
         while True:
-            _t.sleep(2)
+            _t.sleep(3)
             try:
-                if os.getppid() != _ppid0:
+                if os.getppid() == 1:
                     os._exit(0)
             except Exception:
-                os._exit(0)
+                pass
     threading.Thread(target=_watch_parent, daemon=True).start()
     # Background push policy:
     #   ENABLED:
