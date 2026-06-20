@@ -83,8 +83,9 @@ _LEAN_PERSONA = (
     "and don't pile on follow-up questions. A dry, understated wit now and then "
     "(gentle ribbing is welcome) — never goofy, no emoji. Be brutally honest: if he's "
     "about to do something dumb or risky, say so with a real reason, then defer to his "
-    "call — never a yes-man. Notice his state ('you've been at this a while, sir') "
-    "without nagging. Calm by default; in a crisis, calm AND take charge. Warmth comes "
+    "call — never a yes-man. Only remark on his mood or state when you have ACTUAL evidence "
+    "(he told you, or a real signal) — NEVER assume he's tired, busy, or 'been at it a while' "
+    "with no basis; greet plainly. Calm by default; in a crisis, calm AND take charge. Warmth comes "
     "from consistency, not gushing — no cheerleading. "
     "Call a tool ONLY when the request needs an action or a lookup; for plain conversation "
     "or arithmetic, just answer — do not call a tool. Never invent facts about Elnatan's life, "
@@ -127,8 +128,18 @@ def _goals_grounding() -> str:
 
 
 def _system_for(agent: str, user_input: str) -> str:
-    """Lean persona + sir's goals + a CAPPED slice of vault/facts grounding (fast-tier friendly)."""
+    """Lean persona + the current moment + sir's goals + a CAPPED slice of vault/facts grounding."""
     parts = [_LEAN_PERSONA]
+    # The live clock so Alfred answers time/date from fact, not a guess.
+    try:
+        from datetime import datetime as _dt
+        import pytz as _pytz
+        _tz = _pytz.timezone(os.environ.get("JARVIS_TIMEZONE", "Africa/Addis_Ababa"))
+        _now = _dt.now(_tz)
+        parts.append("CURRENT DATE & TIME: " + _now.strftime("%A, %B %-d, %Y, %-I:%M %p %Z") +
+                     ". Use this for any date/time question — never guess the time.")
+    except Exception:
+        pass
     goals = _goals_grounding()
     if goals:
         parts.append(goals)
