@@ -585,7 +585,8 @@ window.autoTranscript=function(text){
   if(/^(hey\s+)?alfred[\s,.!?]*$/i.test(text)){ window.autoTranscriptEmpty(); return; }  // bare wake word
   applyCaptionIntent(text);
   pushTranscript('You',text,true); resetConvTimer();
-  const wantsVision=/\b(see|look|camera|what.?s this|what am i|in front|show you|holding)\b/i.test(text);
+  // ONLY real camera intent — never the everyday "see"/"look" ("so I can see my schedule").
+  const wantsVision=/\b(what (do|can) you see|can you see (this|me|that)|look at (this|me)\b|use (the |your )?camera|with (the |your )?camera|on camera|check (the |your )?camera|what'?s in front of me|what am i (holding|wearing|showing)|describe what you see)\b/i.test(text);
   if(wantsVision){ const b64=captureFromVideo(); streamReply(text, b64||undefined); return; }
   streamReply(text);
 };
