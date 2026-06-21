@@ -35,6 +35,13 @@ _CMD_ENERGY_ON   = int(os.environ.get("ALFRED_CMD_THRESH", "180"))  # command sp
 _CMD_SILENCE_END = int(os.environ.get("ALFRED_CMD_SILENCE", "1"))  # ~0.5 s silence → end (snappy)
 _CMD_PRE_MAX     = 8.0    # seconds to wait for the command to start before giving up
 
+# Self-healing mic: if the input stream delivers PURE digital silence (rms exactly 0)
+# for this many consecutive 0.5 s chunks, the CoreAudio stream is dead — a previous
+# process exited without releasing the device (the dead-mic-after-relaunch bug). We
+# close and reopen a fresh stream until real audio flows again. A live mic always has
+# a non-zero noise floor, so this never trips on a genuinely quiet room.
+_DEAD_STREAM_CHUNKS = int(os.environ.get("ALFRED_DEAD_RESET", "6"))
+
 
 class WakeWordListener:
     """Continuous wake-word detector that calls `on_wake` on detection."""
@@ -157,12 +164,16 @@ class WakeWordListener:
         cmd_deadline = 0.0
         cmd_peak     = 0.0
         prev_mode    = self._mode
+        needs_settle = False
 
         while self._running:
             try:
+                if needs_settle:
+                    _t.sleep(0.8); needs_settle = False   # let CoreAudio release before reopening
                 with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                                     blocksize=CHUNK_SAMPLES, callback=_cb):
                     print(f"[Wake] mic open (single stream, gate={_ENERGY_THRESH})", flush=True)
+                    dead_zeros = 0; ambient_logged = False; opened_at = _t.time()
                     while self._running:
                         try:
                             chunk = q.get(timeout=0.3)
@@ -182,6 +193,20 @@ class WakeWordListener:
 
                         rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                         # (UI waveform runs on its own animation; no per-frame bridge push.)
+
+                        # Self-heal a dead input stream: pure digital silence means a
+                        # prior process never released the device. Reopen until it's live.
+                        if rms == 0.0:
+                            dead_zeros += 1
+                            if dead_zeros >= _DEAD_STREAM_CHUNKS:
+                                print("[Wake] input is pure silence — resetting mic stream", flush=True)
+                                needs_settle = True
+                                break
+                        else:
+                            dead_zeros = 0
+                        if not ambient_logged and _t.time() - opened_at > 1.2:
+                            ambient_logged = True
+                            print(f"[Wake] mic live — ambient RMS={rms:.0f}", flush=True)
 
                         if self._mode == "command":
                             if rms > cmd_peak:

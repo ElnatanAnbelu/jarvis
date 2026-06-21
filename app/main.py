@@ -130,7 +130,16 @@ class JsApi:
             os.remove(_LOCK_PATH)
         except Exception:
             pass
-        # 4) HARD exit — terminates the whole process (wake listener, TTS daemons,
+        # 4) release the mic cleanly: stop the wake listener so its CoreAudio input
+        #    stream closes and macOS frees the device. Hard-exiting with the stream
+        #    still open leaves the NEXT launch reading pure silence (dead-mic-on-relaunch).
+        try:
+            if self._wake_listener:
+                self._wake_listener.stop()
+                time.sleep(0.4)   # give the listener thread time to exit its stream
+        except Exception:
+            pass
+        # 5) HARD exit — terminates the whole process (wake listener, TTS daemons,
         #    GUI thread) even if destroy() hung. This is the line that makes the
         #    close button actually work, every time.
         import os as _os
