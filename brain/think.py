@@ -467,26 +467,65 @@ _PROJECT_SIGNALS = frozenset({
 })
 
 
+_STATUS_SKIP = frozenset({
+    "are you there", "are you online", "are you awake", "are you up",
+    "hello", "hey", "hi", "ping", "test", "you there", "you up",
+    "you awake", "you online", "hey are you there",
+})
+
+
+def _vault_search(user_input: str, max_results: int = 5) -> str:
+    """Run a single FAISS/keyword vault search and cache it per turn.
+
+    Both the personal-context gate (_should_query_personal) and the actual
+    retrieval (_get_personal_context) call through here, so a turn embeds and
+    searches the vault at most once — the decision is made on the SAME result
+    that gets injected (no double search, no drift between gate and content)."""
+    cached = _vault_search._cache  # type: ignore[attr-defined]
+    if cached and cached[0] == (user_input, max_results):
+        return cached[1]
+    result = ""
+    try:
+        from memory.vault import VaultManager
+        import memory.vault as _vm
+        if not hasattr(_vm, '_second_brain_instance'):
+            _vm._second_brain_instance = VaultManager()
+        result = _vm._second_brain_instance.search_vault(user_input, max_results=max_results) or ""
+    except Exception:
+        result = ""
+    _vault_search._cache = ((user_input, max_results), result)  # type: ignore[attr-defined]
+    return result
+
+
+_vault_search._cache = None  # type: ignore[attr-defined]
+
+
 def _should_query_personal(user_input: str) -> bool:
-    """Query vault for personal questions and open-ended conversation.
-    Skip for pure status checks and short command queries."""
+    """Decide whether this turn is genuinely about the owner / his world.
+
+    Cheap fast-paths first (latency): too-short, pure status pings, and obvious
+    technical/project turns skip the vault entirely. For everything else we let
+    the Second Brain's own FAISS embeddings answer the question — we query the
+    vault and treat the turn as personal IFF semantic search surfaces a
+    genuinely relevant note (above vault's cosine threshold). This means the
+    brain is grounded whenever there's a RIGHT note to ground it on, and stays
+    fast/clean when there isn't — far sharper than keyword overlap heuristics."""
     if not user_input or len(user_input.strip()) < 6:
         return False
-    lower = user_input.lower().strip().rstrip("?!. ")
+    lower_stripped = user_input.lower().strip().rstrip("?!. ")
     # Pure status / capability checks — no vault needed
-    _STATUS_SKIP = frozenset({
-        "are you there", "are you online", "are you awake", "are you up",
-        "hello", "hey", "hi", "ping", "test", "you there", "you up",
-        "you awake", "you online", "hey are you there",
-    })
-    if lower in _STATUS_SKIP:
+    if lower_stripped in _STATUS_SKIP:
         return False
     lower_full = user_input.lower()
     p_score = sum(1 for s in _PERSONAL_SIGNALS if s in lower_full)
     j_score = sum(1 for s in _PROJECT_SIGNALS if s in lower_full)
-    # Fire on: personal signals, OR open-ended conversation (no project signal, 4+ words)
-    is_conversational = j_score == 0 and len(lower_full.split()) >= 4
-    return p_score >= j_score or is_conversational
+    # Cheap technical fast-path: clearly a code/dev turn with no personal angle →
+    # skip the embedding lookup entirely so pure-technical latency stays low.
+    if j_score > 0 and p_score == 0:
+        return False
+    # Otherwise consult the embeddings: only "personal" if a relevant note exists.
+    # The same cached result is reused by _get_personal_context.
+    return bool(_vault_search(user_input))
 
 
 def _should_query_project(user_input: str) -> bool:
@@ -497,17 +536,9 @@ def _should_query_project(user_input: str) -> bool:
 
 
 def _get_personal_context(user_input: str) -> str:
-    try:
-        from memory.vault import VaultManager, DEFAULT_VAULT_PATH
-        # Use the module singleton if available, else create instance
-        import memory.vault as _vm
-        if not hasattr(_vm, '_second_brain_instance'):
-            _vm._second_brain_instance = VaultManager()
-        results = _vm._second_brain_instance.search_vault(user_input, max_results=5)
-        if results:
-            return f"\nSTORED FACTS (your Second Brain notes — the ONLY facts you have here; relay them as written, add no place/date/number/status not present):\n{results}\n"
-    except Exception:
-        pass
+    results = _vault_search(user_input)
+    if results:
+        return f"\nSTORED FACTS (your Second Brain notes — the ONLY facts you have here; relay them as written, add no place/date/number/status not present):\n{results}\n"
     return ""
 
 
@@ -653,6 +684,39 @@ def select_model(user_input: str) -> str:
     # 4. Default: Sonnet handles everything else
     return CLAUDE_MODELS["sonnet"]
 
+def _dedup_context(ctx: str) -> str:
+    """P6: collapse duplicate fact/wiki/vault lines so the model reads each fact
+    once. The same fact can surface in stored-facts AND in a vault note AND in
+    the wiki block; without this the model sees the same line repeated, which is
+    slower to read and can produce 'X (×N)' style echoes. We drop exact-duplicate
+    non-trivial content lines (keeping the first), but never touch section
+    headers, blank lines, code fences, or short structural markers — so the
+    layout the model relies on is preserved."""
+    if not ctx:
+        return ctx
+    seen = set()
+    out = []
+    in_code = False
+    for line in ctx.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            out.append(line)
+            continue
+        # Never dedup inside code fences, blank lines, headers, or short markers.
+        if (in_code or not stripped or stripped.endswith(":")
+                or stripped.startswith("#") or stripped.startswith("###")
+                or len(stripped) < 8):
+            out.append(line)
+            continue
+        key = stripped.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(line)
+    return "\n".join(out)
+
+
 def _build_context(user_input: str = "", include_history: bool = True) -> str:
     from memory.memory import get_last_session_summary, get_history_summary
     facts = get_facts()
@@ -685,6 +749,10 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
         biz = _get_business_context()
         if biz:
             ctx += biz
+    # P6: collapse facts/wiki/vault/business duplicates so each fact is read
+    # once. Done BEFORE history is appended — conversation turns are never
+    # deduped (a user legitimately repeating themselves must survive verbatim).
+    ctx = _dedup_context(ctx)
     if include_history:
         # When a rolling summary exists, inject it then only show the last 10 verbatim.
         # When no summary yet (early conversation), show the full 30-message window.
