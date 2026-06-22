@@ -847,6 +847,146 @@ class VaultManager:
             sensitivity="high",
         )
 
+    # ── Fact registration (check → register-if-missing → dedupe) ────────────────
+
+    # Topic keyword → (area, sensitivity). Drives where a learned personal fact
+    # lands and whether it auto-writes (low risk) or must go through the
+    # risk-tiered proposal flow (family / money / health → high). Order matters:
+    # the first keyword found in the note title (lowercased) wins.
+    _TOPIC_ROUTING = (
+        # high-risk: family / relationships / money / business / health / decisions
+        ("family",        ("Relationships", "high")),
+        ("relationship",  ("Relationships", "high")),
+        ("friend",        ("Relationships", "high")),
+        ("contact",       ("Relationships", "high")),
+        ("mom",           ("Relationships", "high")),
+        ("dad",           ("Relationships", "high")),
+        ("sister",        ("Relationships", "high")),
+        ("brother",       ("Relationships", "high")),
+        ("parent",        ("Relationships", "high")),
+        ("health",        ("Personal",      "high")),
+        ("sleep",         ("Personal",      "high")),
+        ("money",         ("Business",      "high")),
+        ("finance",       ("Business",      "high")),
+        ("business",      ("Business",      "high")),
+        ("decision",      ("Decisions",     "high")),
+        # medium / low-risk: goals, interests, habits, learning
+        ("goal",          ("Goals",         "medium")),
+        ("habit",         ("Personal",      "medium")),
+        ("personal",      ("Personal",      "medium")),
+        ("interest",      ("Learning",      "low")),
+        ("hobby",         ("Learning",      "low")),
+        ("reading",       ("Learning",      "low")),
+        ("book",          ("Learning",      "low")),
+        ("learning",      ("Learning",      "low")),
+        ("fitness",       ("Personal",      "medium")),
+        ("gym",           ("Personal",      "medium")),
+    )
+
+    @staticmethod
+    def _normalize_fact(text: str) -> str:
+        """Normalize a fact for dedupe comparison: lowercase, strip markdown
+        bullets / attribution, collapse whitespace, drop the trailing
+        '(learned …)' annotation and punctuation. Two facts that differ only
+        in casing, bullet markers, dates, or surrounding punctuation collapse
+        to the same key so the bloat 'Alfred is used for X ×6' is impossible."""
+        if not text:
+            return ""
+        t = text.lower()
+        # Drop a leading list marker ("- ", "* ", "1. ")
+        t = re.sub(r'^\s*(?:[-*+]|\d+\.)\s+', '', t)
+        # Drop a trailing "(learned YYYY-MM-DD)" / "*(learned …)*" annotation
+        t = re.sub(r'\*?\(\s*learned[^)]*\)\*?', '', t)
+        # Drop markdown emphasis and remaining punctuation, collapse whitespace
+        t = re.sub(r'[*_`>#]', ' ', t)
+        t = re.sub(r'[^\w\s]', ' ', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
+
+    def _route_topic(self, note_title: str) -> tuple:
+        """Map a note title to (area, sensitivity). Defaults to Personal/medium
+        so an unrecognized personal topic is proposed, never silently auto-written."""
+        lower = (note_title or "").lower()
+        for kw, (area, sens) in self._TOPIC_ROUTING:
+            if kw in lower:
+                return area, sens
+        return "Personal", "medium"
+
+    def _note_body_text(self, title_or_path: str) -> str:
+        """Return the normalized-per-line set of an existing note's body, or ''
+        if the note doesn't exist. Used for fact-level dedupe."""
+        path = self._resolve_note_path(title_or_path)
+        if path is None or not path.exists():
+            return ""
+        try:
+            return self._body_only(path.read_text(encoding="utf-8"))
+        except Exception:
+            return ""
+
+    def fact_exists(self, area: str, title: str, fact: str) -> bool:
+        """Return True if `fact` (normalized) already appears in the target note
+        OR in a pending/active proposal for the same target. Prevents writing a
+        fact that is already known or already queued for review."""
+        norm = self._normalize_fact(fact)
+        if not norm:
+            return True  # nothing to write
+        # 1. Already in the live note?
+        body = self._note_body_text(f"{area}/{title}")
+        if body:
+            for line in body.splitlines():
+                ln = self._normalize_fact(line)
+                if ln and (ln == norm or norm in ln or ln in norm):
+                    return True
+        # 2. Already staged in a pending/active proposal for this target?
+        proposals_dir = self.vault_path / "_JARVIS" / "Proposals"
+        if proposals_dir.exists():
+            target = f"{area}/{self._safe_title(title)}"
+            for p in proposals_dir.rglob("*.md"):
+                try:
+                    fm = self._parse_frontmatter(p)
+                except Exception:
+                    continue
+                if fm.get("status") not in ("pending", None):
+                    continue
+                if fm.get("target_note") != target and fm.get("proposal_id") != self._safe_title(title):
+                    continue
+                try:
+                    text = p.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                for line in text.splitlines():
+                    ln = self._normalize_fact(line)
+                    if ln and (ln == norm or norm in ln or ln in norm):
+                        return True
+        return False
+
+    def register_fact(self, title: str, fact: str, source: str) -> str:
+        """Check → register-if-missing. Routes a single learned personal fact to
+        the right vault area at the right risk tier:
+
+          • low-risk areas (Learning, Daily) auto-write via create_note/update_note
+          • family / money / health / decisions / relationships (high) and
+            goals / personal (medium) go through the risk-tiered propose_change flow
+
+        DEDUPE is enforced first: a fact already present in the note or in a
+        pending proposal is never written again. Returns a short status string.
+        """
+        fact = (fact or "").strip()
+        if not fact:
+            return "skipped: empty fact"
+        area, sensitivity = self._route_topic(title)
+        safe = self._safe_title(title)
+        if self.fact_exists(area, safe, fact):
+            return f"duplicate: {area}/{safe} already knows this"
+
+        line = f"- {fact} *(learned {datetime.now(timezone.utc).strftime('%Y-%m-%d')})*"
+        existing_path = self._resolve_note_path(f"{area}/{safe}")
+        if existing_path and existing_path.exists():
+            return self.update_note(f"{area}/{safe}", line, source=source,
+                                    sensitivity=sensitivity)
+        return self.create_note(safe, line, area=area, source=source,
+                                sensitivity=sensitivity)
+
     def _faiss_search(self, query: str, max_results: int = 3) -> str:
         import numpy as np
         model = _get_embed_model()

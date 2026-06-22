@@ -175,12 +175,21 @@ def run_loop(push_fn, interval: float = 1200.0):
         except Exception:
             pass
         # knows-me synthesis (plan §6): surface one learned theme per pass, quiet-aware.
+        # synthesize_one() also PERSISTS the insight to the Second Brain vault
+        # (topical note + Personal Model, deduped) so the brain grows on disk.
         try:
             from brain import synthesis
             from memory import rhythm
             item = synthesis.synthesize_one()
             if item and rhythm.should_surface(item):
                 push_fn(item)
+        except Exception:
+            pass
+        # TTL housekeeping: archive long-since-synthesized observations so the
+        # staging store stays clean and the backlog can't grow without bound.
+        try:
+            from brain import synthesis
+            synthesis.archive_synthesized()
         except Exception:
             pass
         time.sleep(interval)

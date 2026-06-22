@@ -302,6 +302,38 @@ def _run_extractor(prompt: str) -> str:
         return ""
 
 
+# ── Vault registration (check → register-if-missing → dedupe) ───────────────────
+
+_vault_mgr = None
+_vault_lock = threading.Lock()
+
+
+def _get_vault():
+    """Lazily build (and cache) a VaultManager. Honors SECONDBRAIN_PATH so tests
+    never touch the owner's real Desktop vault. Returns None if unavailable."""
+    global _vault_mgr
+    with _vault_lock:
+        if _vault_mgr is None:
+            try:
+                from memory.vault import VaultManager
+                _vault_mgr = VaultManager()
+            except Exception:
+                _vault_mgr = None
+        return _vault_mgr
+
+
+def _register_personal_fact(note_title: str, fact: str):
+    """Register one extracted personal fact into the Second Brain vault, deduped
+    and risk-tiered. Never raises — failure here must not break learn()."""
+    try:
+        vm = _get_vault()
+        if vm is None:
+            return
+        vm.register_fact(note_title, fact, source="conversation:auto-extracted")
+    except Exception:
+        pass
+
+
 def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
     """Background: extract facts (LOCAL model), route to personal brain or project wiki."""
     text = _run_extractor(_extract_prompt(user_msg, jarvis_msg))
@@ -319,7 +351,8 @@ def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
                     continue
                 ts = datetime.now().strftime("%Y-%m-%d")
                 if _is_personal_topic(current_note):
-                    # Route personal facts to the Second Brain observation staging layer
+                    # Route personal facts to the Second Brain observation staging
+                    # layer (raw signals for the synthesis loop)…
                     try:
                         from memory.observations import add_observation
                         add_observation(
@@ -331,6 +364,12 @@ def _extract_and_update_bg(user_msg: str, jarvis_msg: str):
                     except Exception:
                         # Fall back to project wiki if observations unavailable
                         update_note(current_note, f"- {fact} *(learned {ts})*")
+                    # …AND register the concrete fact into the Second Brain vault
+                    # itself: check → register-if-missing → dedupe. Low-risk areas
+                    # auto-write; family/money/health/decisions route through the
+                    # risk-tiered proposal flow inside register_fact(). A fact the
+                    # vault already knows is silently dropped (no ×6 bloat).
+                    _register_personal_fact(current_note, fact)
                 else:
                     # Technical/project facts stay in the project wiki (graphify vault)
                     update_note(current_note, f"- {fact} *(learned {ts})*")
