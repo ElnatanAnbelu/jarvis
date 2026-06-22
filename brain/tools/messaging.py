@@ -46,6 +46,41 @@ def read_emails(count: int = 5) -> str:
 
 
 @tool(
+    description=(
+        "Read recent iMessages/SMS (READ-ONLY) from this Mac's local Messages "
+        "database. Returns the latest few messages per recent conversation, or "
+        "pass a contact name/number to read just that thread. Does NOT send or "
+        "reply. If macOS Full Disk Access isn't granted, returns a clear note."
+    ),
+    parameters={
+        "contact": {"type": "string", "description": "Optional contact name or handle to read one thread. Omit for recent threads."},
+        "count":   {"type": "integer", "description": "Latest messages per thread to return (default 5)."},
+    },
+    risk="low",
+)
+def read_imessages(contact: str = None, count: int = 5) -> str:
+    from control.messages import read_recent_imessages as _read
+    return _read(contact, count)
+
+
+@tool(
+    description=(
+        "Read recent WhatsApp messages (READ-ONLY) via the local WhatsApp bridge. "
+        "Does NOT send or reply. If WhatsApp isn't connected (no WHATSAPP_TOKEN / "
+        "bridge not running), returns a clear note instead of failing."
+    ),
+    parameters={
+        "contact": {"type": "string", "description": "Optional contact name or number to read one chat. Omit for recent chats."},
+        "count":   {"type": "integer", "description": "Latest messages to return (default 5)."},
+    },
+    risk="low",
+)
+def read_whatsapp(contact: str = None, count: int = 5) -> str:
+    from control.messages import read_whatsapp_recent as _read
+    return _read(contact, count)
+
+
+@tool(
     description="Send a WhatsApp message to a phone number or contact",
     parameters={
         "to":      {"type": "string", "description": "Phone number with country code e.g. +251911202059"},
