@@ -352,4 +352,4 @@ def get_context(query: str) -> str:
     notes = search_relevant(query)
     if not notes:
         return ""
-    return f"\nSTORED FACTS (relay exactly what is written; add no place, date, number, or status not present here):\n{notes}\n"
+    return f"\nRELEVANT MEMORY:\n{notes}\n"
