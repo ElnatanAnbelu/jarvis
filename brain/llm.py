@@ -19,6 +19,8 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 # the heavy model when it's worth it.
 FAST_MODEL = os.environ.get("JARVIS_FAST_MODEL") or os.environ.get("JARVIS_LOCAL_MODEL") or "qwen2.5:7b"
 COMPLEX_MODEL = os.environ.get("JARVIS_COMPLEX_MODEL", "qwen3:14b")
+# Local vision model (VLM) — lets Alfred SEE the camera fully offline (no cloud).
+VISION_MODEL = os.environ.get("JARVIS_VISION_MODEL", "llava:7b")
 DEFAULT_MODEL = FAST_MODEL
 _TIMEOUT = float(os.environ.get("JARVIS_LLM_TIMEOUT", "120"))
 
@@ -145,6 +147,37 @@ def chat_stream(messages: list, model: str = None, think: bool = False, temperat
             except Exception:
                 continue
             chunk = d.get("message", {}).get("content", "")
+            if chunk:
+                yield chunk
+            if d.get("done"):
+                break
+
+
+def vision_available() -> bool:
+    """True if a local vision model (VLM) is pulled — Alfred can see offline."""
+    return has_model(VISION_MODEL)
+
+
+def vision_stream(prompt: str, image_b64: str, model: str = None, temperature: float = 0.4):
+    """Stream a description of an image from a LOCAL vision model via Ollama
+    /api/generate. `image_b64` is base64 JPEG (no data: prefix). Fully offline."""
+    body = {
+        "model": model or VISION_MODEL,
+        "prompt": prompt or "Describe what you see, concisely, as if speaking aloud.",
+        "images": [image_b64],
+        "stream": True,
+        "options": {"temperature": temperature},
+    }
+    with requests.post(f"{OLLAMA_URL}/api/generate", json=body, timeout=_TIMEOUT, stream=True) as r:
+        r.raise_for_status()
+        for line in r.iter_lines():
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            chunk = d.get("response", "")
             if chunk:
                 yield chunk
             if d.get("done"):

@@ -1463,57 +1463,65 @@ def think_stream(user_input: str, model: str = None, agent: str = "JARVIS", sour
 
 
 def think_vision_stream(user_input: str, image_b64: str):
-    """Route a vision request: send image + question to Claude vision model and stream the reply."""
+    """Vision request: try the LOCAL vision model (Ollama VLM) first — fully offline,
+    free — and fall back to cloud vision ONLY if the cloud escape-hatch is enabled."""
     _load_env()
-    import anthropic, base64
+    prompt = (user_input or "Describe what you see in this image concisely and naturally.") + (
+        "\n\nReply in 1-3 short spoken sentences. No markdown. Write for the ear, not the eye.")
 
+    # 1) Local VLM (preferred — offline, no cloud).
+    try:
+        from brain import llm
+        if llm.available() and llm.vision_available():
+            got = False
+            for chunk in llm.vision_stream(prompt, image_b64):
+                if chunk:
+                    got = True
+                    yield expand_abbreviations(chunk)
+            if got:
+                return
+    except Exception as e:
+        print(f"[Vision] local VLM failed: {e}", flush=True)
+
+    # 2) Cloud fallback — ONLY if the cloud escape-hatch is explicitly on.
+    try:
+        from brain.agent import cloud_reasoning_allowed
+        cloud_ok = cloud_reasoning_allowed()
+    except Exception:
+        cloud_ok = False
+    if not cloud_ok:
+        yield ("I can't see through the camera just now, sir — my local vision model isn't "
+               "loaded yet. It only takes a quick 'ollama pull llava:7b' to give me eyes.")
+        return
+
+    import anthropic, base64
     api_key = (os.environ.get("ANTHROPIC_API_KEY") or
                os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip()
     if not api_key:
-        yield "I can see the camera feed, but I don't have an API key configured, sir."
+        yield "I can see the camera feed, but I have no local vision model or API key, sir."
         return
-
     try:
         client = anthropic.Anthropic(api_key=api_key)
         img_bytes = base64.b64decode(image_b64)
         clean_b64 = base64.b64encode(img_bytes).decode()
-
-        prompt = user_input or "Describe what you see in this image concisely and naturally, as if speaking aloud."
-
         with client.messages.stream(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
             messages=[{
                 "role": "user",
                 "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": clean_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            prompt + "\n\n"
-                            "Reply in 1-3 short spoken sentences. No markdown. "
-                            "Write for the ear, not the eye."
-                        ),
-                    },
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": clean_b64}},
+                    {"type": "text", "text": prompt},
                 ],
             }],
-            system=(
-                "You are JARVIS, a personal AI assistant. Describe what you see naturally and concisely. "
-                "Write as if speaking aloud — short sentences, no bullet points, no markdown."
-            ),
+            system=("You are Alfred, a personal AI. Describe what you see naturally and concisely. "
+                    "Write as if speaking aloud — short sentences, no markdown."),
         ) as stream:
             for chunk in stream.text_stream:
                 if chunk:
                     yield expand_abbreviations(chunk)
     except Exception as e:
-        print(f"[Vision] think_vision_stream error: {e}", flush=True)
+        print(f"[Vision] cloud fallback error: {e}", flush=True)
         yield "I couldn't process the camera feed, sir. Check the logs."
 
 
