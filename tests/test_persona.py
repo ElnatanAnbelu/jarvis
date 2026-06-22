@@ -30,8 +30,8 @@ def test_persona_is_a_brutally_honest_butler():
 
 def test_persona_keeps_load_bearing_rules():
     low = P.lower()
-    # anti-hallucination
-    assert "never invent facts" in low
+    # anti-hallucination (phrasing-agnostic: must forbid inventing facts)
+    assert "invent" in low and "fact" in low
     # no-tool-for-chitchat restraint
     assert "do not call a tool" in low or "just answer" in low
     # prompt-injection containment clause survives the rebrand

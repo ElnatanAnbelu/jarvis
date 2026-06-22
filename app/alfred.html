@@ -362,7 +362,7 @@ function bridge(){ return (window.pywebview && window.pywebview.api) || null; }
 function muteWake(){ const a=bridge(); if(a) try{a.mute_wake();}catch(_){} }
 function unmuteWake(){ const a=bridge(); if(a) try{a.unmute_wake();}catch(_){} }
 
-const S={ state:'boot', mood:'warm', inConversation:false, tts:null, recognized:false, panicArmed:false, mode:'supervised', away:false, capVisible:false };
+const S={ state:'boot', mood:'warm', inConversation:false, tts:null, busy:false, recognized:false, panicArmed:false, mode:'supervised', away:false, capVisible:false };
 const CONV_SILENCE_MS=22000;
 let convTimer=null;
 
@@ -580,6 +580,7 @@ function enterConversation(){ S.inConversation=true; resetConvTimer(); }
 function exitConversation(){ S.inConversation=false; clearTimeout(convTimer); }
 function resetConvTimer(){ clearTimeout(convTimer); convTimer=setTimeout(()=>exitConversation(), CONV_SILENCE_MS); }
 function startListening(){
+  S.busy=false;   // fresh listen window → release the single-reply mutex (catch-all for every exit path)
   const a=bridge();
   if(S.state==='speaking'){ stopTTS(); unmuteWake(); }
   if(S.state==='listening') return;
@@ -589,7 +590,7 @@ function startListening(){
 }
 window.wakeWordFired=function(){ if(S.state==='calm'||S.state==='boot'){ enterConversation(); startListening(); } };
 window.autoTranscript=function(text){
-  if(S.state!=='listening') return;
+  if(S.state!=='listening' || S.busy) return;   // drop input while a reply is in flight → no self-echo / double reply
   text=(text||'').trim(); if(!text){ window.autoTranscriptEmpty(); return; }
   if(/^(hey\s+)?alfred[\s,.!?]*$/i.test(text)){ window.autoTranscriptEmpty(); return; }  // bare wake word
   applyCaptionIntent(text);
@@ -620,6 +621,7 @@ function applyUiAction(a){
   }catch(_){}
 }
 async function streamReply(text, imageB64){
+  S.busy=true;   // single-reply mutex — held until the next listen window opens
   setState('thinking'); setMood('working'); let full='', agent='Alfred'; showCap('', false);
   decideWorkspace(text);
   try{
@@ -662,7 +664,7 @@ function speak(text){
       if(actx.state!=='running') actx.resume();
       if(actx.state==='running'){ actx.createMediaElementSource(S.tts).connect(ttsAnalyser); ttsTapped=true; }
     }catch(_){}
-    const end=()=>{ S.tts=null; if(S.state==='speaking') setState('calm'); setTimeout(()=>{ unmuteWake(); reArm(); },380); };
+    const end=()=>{ S.tts=null; if(S.state==='speaking') setState('calm'); setTimeout(()=>{ unmuteWake(); reArm(); },700); };  // 700ms echo-guard: let the speakers go quiet before re-arming the mic
     S.tts.onended=end; S.tts.onerror=end; S.tts.play().catch(end);
   }catch(_){ setState('calm'); unmuteWake(); reArm(); }
 }

@@ -505,7 +505,7 @@ def _get_personal_context(user_input: str) -> str:
             _vm._second_brain_instance = VaultManager()
         results = _vm._second_brain_instance.search_vault(user_input, max_results=5)
         if results:
-            return f"\nPERSONAL BRAIN (your Second Brain notes — ground answers in these, never invent):\n{results}\n"
+            return f"\nSTORED FACTS (your Second Brain notes — the ONLY facts you have here; relay them as written, add no place/date/number/status not present):\n{results}\n"
     except Exception:
         pass
     return ""
@@ -672,7 +672,7 @@ def _build_context(user_input: str = "", include_history: bool = True) -> str:
             ctx += f" ({timezone})"
         ctx += "\n"
     if facts:
-        ctx += f"\nTHINGS YOU REMEMBER ABOUT ELNATAN:\n{facts}\n"
+        ctx += f"\nSTORED FACTS ABOUT ELNATAN (relay only what's written here; add no detail not present):\n{facts}\n"
     if wiki:
         ctx += wiki
     # Personal Second Brain context

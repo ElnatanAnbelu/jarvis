@@ -32,7 +32,7 @@ _ENERGY_THRESH = int(os.environ.get("ALFRED_WAKE_THRESH", "450"))
 
 # Command-capture VAD (used after the wake word, on the SAME always-open stream).
 _CMD_ENERGY_ON   = int(os.environ.get("ALFRED_CMD_THRESH", "180"))  # command speech onset (catches quieter speech)
-_CMD_SILENCE_END = int(os.environ.get("ALFRED_CMD_SILENCE", "1"))  # ~0.5 s silence → end (snappy)
+_CMD_SILENCE_END = int(os.environ.get("ALFRED_CMD_SILENCE", "2"))  # ~1.0 s silence → end (won't split one sentence into two captures)
 _CMD_PRE_MAX     = 8.0    # seconds to wait for the command to start before giving up
 
 # Self-healing mic: if the input stream delivers PURE digital silence (rms exactly 0)
