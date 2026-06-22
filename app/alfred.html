@@ -396,56 +396,54 @@ function drawHolo(t){
   try{
   const dt=Math.min(50,t-lastT); lastT=t;
   hctx.clearRect(0,0,HW,HH);
-  const cx=HW/2, cy=HH/2, baseR=Math.min(HW,HH)*0.40;
-  const spin = S.state==='thinking'?0.0016: S.state==='speaking'?0.0009: S.state==='listening'?0.0006:0.00042;
-  rot += spin*dt; breath += dt*0.0016;
-  const breathAmp = S.state==='speaking'? 0.0 : 0.028;
-  const br = baseR*(1 + Math.sin(breath)*breathAmp);
-  const target = S.state==='thinking'?0.78 : 1.0;
-  assembly += (target-assembly)*Math.min(1,dt*0.004);
-  const tilt = Math.sin(t*0.0004)*0.28;
-  const speakPulse = S.state==='speaking'? (1 + speakEnergy*0.5) : 1;
-  const listenRipple = S.state==='listening'? micLevel : 0;
+  const cx=HW/2, cy=HH/2;
+  // Small JARVIS-style reactor ring (replaces the old node-sphere) — much smaller.
+  const baseR=Math.min(HW,HH)*0.165;
   const col = S.mood==='alert' ? [255,93,108] : S.mood==='working'? [120,250,255] : S.mood==='warm'? [120,235,250] : [79,247,255];
   const C=(a)=>'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')';
-  const pts=[];
-  for(let i=0;i<NODES.length;i++){
-    const n=NODES[i];
-    const disp = 1 + (1-assembly)*( (i%7)/7*1.6 - 0.4 );
-    let rr = br*disp*speakPulse;
-    if(listenRipple>0){ rr *= 1 + Math.sin(n.ph + t*0.006)*0.05*listenRipple; }
-    const p=rotPt({x:n.x*rr,y:n.y*rr,z:n.z*rr}, tilt, rot);
-    const persp = 620/(620 - p.z + br);
-    pts.push({X:cx+p.x*persp, Y:cy+p.y*persp, z:p.z, ph:n.ph});
+  const ICE=(a)=>'rgba(190,250,255,'+a+')';
+  // reactivity from the REAL audio: Alfred's voice when speaking, the owner's when listening.
+  const lvl = S.state==='speaking' ? Math.min(1,speakEnergy) : (S.state==='listening' ? Math.min(1,micLevel) : 0);
+  const R = baseR*(1 + lvl*0.12) + Math.sin(t*0.0016)*baseR*0.03;
+  // scattered data-points (generated once so they don't jump)
+  if(!drawHolo._parts){ drawHolo._parts=[]; for(let i=0;i<40;i++) drawHolo._parts.push({a:Math.random()*6.283, rr:0.6+Math.random()*0.34, ph:Math.random()*6.283, b:0.12+Math.random()*0.4}); }
+  for(const p of drawHolo._parts){
+    const al=0.08+0.85*p.b*(0.4+0.6*Math.abs(Math.sin(t*0.001+p.ph))), rr=R*(1+(p.rr-0.6));
+    hctx.beginPath(); hctx.arc(cx+Math.cos(p.a)*rr, cy+Math.sin(p.a)*rr, 1.0, 0, 6.283); hctx.fillStyle=C(al*0.6); hctx.fill();
   }
-  hctx.lineWidth=1;
-  for(const lat of RINGS){
-    const ringR=br*Math.sqrt(Math.max(0.0001,1-lat*lat))*assembly, yC=lat*br;
-    hctx.beginPath();
-    for(let a=0;a<=64;a++){
-      const ang=a/64*Math.PI*2; const p=rotPt({x:Math.cos(ang)*ringR, y:yC, z:Math.sin(ang)*ringR}, tilt, rot);
-      const persp=620/(620-p.z+br); const X=cx+p.x*persp, Y=cy+p.y*persp;
-      if(a===0) hctx.moveTo(X,Y); else hctx.lineTo(X,Y);
-    }
-    hctx.strokeStyle=C(0.10*assembly); hctx.stroke();
+  // tick gauge
+  const NT=84, tr=R*1.30;
+  for(let i=0;i<NT;i++){
+    if(i%7===3) continue;
+    const ang=i/NT*6.283 - Math.PI/2, v=0.5+0.5*Math.sin(i*0.7 + t*0.004), long=(i%6===0);
+    const len=(long? baseR*0.18 : baseR*0.10) + lvl*baseR*0.14*v, r0=tr, r1=tr+len;
+    hctx.beginPath(); hctx.moveTo(cx+Math.cos(ang)*r0, cy+Math.sin(ang)*r0); hctx.lineTo(cx+Math.cos(ang)*r1, cy+Math.sin(ang)*r1);
+    hctx.strokeStyle=C(0.16+(long?0.16:0.08)+lvl*0.4*v); hctx.lineWidth=long?1.4:0.9; hctx.stroke();
   }
-  hctx.lineWidth=0.7; const maxD2=(br*0.42)*(br*0.42);
-  for(let i=0;i<pts.length;i+=2){
-    const a=pts[i], b=pts[(i+13)%pts.length]; const dx=a.X-b.X, dy=a.Y-b.Y, d2=dx*dx+dy*dy;
-    if(d2 < maxD2){ const depth=(a.z+br)/(2*br); hctx.strokeStyle=C(0.05+0.10*depth*assembly);
-      hctx.beginPath(); hctx.moveTo(a.X,a.Y); hctx.lineTo(b.X,b.Y); hctx.stroke(); }
-  }
-  for(const p of pts){
-    const depth=(p.z+br)/(2*br), tw=0.55+0.45*Math.sin(p.ph + t*0.003);
-    const sz=Math.max(0.15,(0.6+depth*1.7)*(0.85+0.3*tw)), al=Math.max(0,(0.12+depth*0.62)*(0.7+0.3*tw)*(0.4+0.6*assembly));
-    hctx.beginPath(); hctx.arc(p.X,p.Y,sz,0,Math.PI*2); hctx.fillStyle=C(al); hctx.fill();
-  }
-  const heartR = br*0.16*(0.9+0.2*Math.sin(t*0.004));
-  const g=hctx.createRadialGradient(cx,cy,0,cx,cy,heartR*3.2);
-  g.addColorStop(0,C(0.5*speakPulse)); g.addColorStop(0.35,C(0.16)); g.addColorStop(1,C(0));
-  hctx.beginPath(); hctx.arc(cx,cy,heartR*3.2,0,Math.PI*2); hctx.fillStyle=g; hctx.fill();
-  hctx.beginPath(); hctx.arc(cx,cy,heartR,0,Math.PI*2); hctx.strokeStyle=C(0.7); hctx.lineWidth=1.4; hctx.stroke();
-  if(S.state==='thinking'){ const ang=t*0.004; hctx.beginPath(); hctx.arc(cx,cy,br*1.02,ang,ang+0.9); hctx.strokeStyle=C(0.55); hctx.lineWidth=2; hctx.stroke(); }
+  // broken outer arcs (slow rotation)
+  hctx.lineWidth=1.3;
+  hctx.strokeStyle=C(0.38); hctx.beginPath(); hctx.arc(cx,cy,R*1.18, t*0.00045+2.4, t*0.00045+3.7); hctx.stroke();
+  hctx.strokeStyle=C(0.20); hctx.beginPath(); hctx.arc(cx,cy,R*1.46, -t*0.0003+0.4, -t*0.0003+1.5); hctx.stroke();
+  // inner thin ring
+  hctx.beginPath(); hctx.arc(cx,cy,R*0.86,0,6.283); hctx.strokeStyle=C(0.28); hctx.lineWidth=1; hctx.stroke();
+  // MAIN glowing ring
+  hctx.save(); hctx.shadowBlur=14+lvl*30; hctx.shadowColor=C(0.9);
+  hctx.beginPath(); hctx.arc(cx,cy,R,0,6.283); hctx.strokeStyle=C(0.78+0.22*lvl); hctx.lineWidth=Math.max(2,baseR*0.06); hctx.stroke();
+  hctx.restore();
+  // bright specular sweep on the ring
+  const sweep=t*0.0011; hctx.beginPath(); hctx.arc(cx,cy,R,sweep,sweep+0.85); hctx.strokeStyle=ICE(0.85); hctx.lineWidth=Math.max(2,baseR*0.07); hctx.lineCap='round'; hctx.stroke(); hctx.lineCap='butt';
+  // soft core glow
+  const g=hctx.createRadialGradient(cx,cy,0,cx,cy,R*0.92);
+  g.addColorStop(0,C(0.10+0.18*lvl)); g.addColorStop(0.7,C(0.04)); g.addColorStop(1,C(0));
+  hctx.fillStyle=g; hctx.beginPath(); hctx.arc(cx,cy,R*0.92,0,6.283); hctx.fill();
+  // ALFRED wordmark
+  hctx.save();
+  hctx.font='300 '+Math.round(baseR*0.30)+'px -apple-system,"Segoe UI",sans-serif';
+  hctx.textAlign='center'; hctx.textBaseline='middle';
+  try{ hctx.letterSpacing=Math.round(baseR*0.08)+'px'; }catch(_){}
+  hctx.shadowBlur=12; hctx.shadowColor=C(0.6); hctx.fillStyle=ICE(0.92);
+  hctx.fillText('ALFRED', cx+Math.round(baseR*0.04), cy);
+  hctx.restore();
   }catch(e){ try{ if(!window.__he){window.__he=1; navigator.sendBeacon(API+'/api/clientlog?token='+encodeURIComponent(TOKEN()),'holo: '+(e&&e.stack||e&&e.message||e)); } }catch(_){} }
   requestAnimationFrame(drawHolo);   // ALWAYS reschedule — the loop can never die now
 }
