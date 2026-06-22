@@ -28,8 +28,9 @@ credentials, enrollment, and OS permissions. None of this touches the UI.
   `./venv/bin/python -c "from memory import people; people.add_person('Mom', relationship='family', vip=True)"`
 
 ## 5. Vision model (P1)
-- Alfred sees offline via a local VLM. Pull it once: `ollama pull llava:7b` (already in progress).
-  Override with `JARVIS_VISION_MODEL=moondream` for a lighter/faster model.
+- Alfred sees offline via a local VLM. Pull it once: `ollama pull llava:7b` (downloading now).
+  (Tested moondream — it returns gibberish on this Ollama build, so stick with `llava:7b`; your 32 GB / M5
+  handles it fine, and it only loads into RAM when you actually ask Alfred to see something.)
 
 ## 6. The brain (P2) — how it grows now
 - When you tell Alfred a real fact, it **checks the Second Brain and registers it if missing** (deduped, never
