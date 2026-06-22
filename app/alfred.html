@@ -398,7 +398,7 @@ function drawHolo(t){
   hctx.clearRect(0,0,HW,HH);
   const cx=HW/2, cy=HH/2;
   // Small JARVIS-style reactor ring (replaces the old node-sphere) — much smaller.
-  const baseR=Math.min(HW,HH)*0.165;
+  const baseR=Math.min(HW,HH)*0.135;
   const col = S.mood==='alert' ? [255,93,108] : S.mood==='working'? [120,250,255] : S.mood==='warm'? [120,235,250] : [79,247,255];
   const C=(a)=>'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')';
   const ICE=(a)=>'rgba(190,250,255,'+a+')';
