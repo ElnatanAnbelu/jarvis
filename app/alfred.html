@@ -469,6 +469,10 @@ function drawFlares(t){
 
 /* ── AWARENESS HUD — camera + waveform + clock ───────────────────────────── */
 let micLevel=0, speakEnergy=0, analyser=null, micData=null;
+let actx=null, ttsAnalyser=null, ttsData=null, ttsTapped=false;
+// The native voice pipeline pushes the live mic RMS here (the WebView must not grab the
+// mic itself — that would deafen recognition). Drives the holo core's listen-ripple live.
+window.setMicLevel=function(rms){ const v=Math.max(0,Math.min(1,(rms||0)/1400)); micLevel+=(v-micLevel)*0.5; };
 const wave=$('wave'), wctx=wave.getContext('2d');
 function sizeWave(){ const r=wave.getBoundingClientRect(); wave.width=r.width*DPR; wave.height=r.height*DPR; wctx.setTransform(DPR,0,0,DPR,0,0); }
 async function initMedia(){
@@ -516,7 +520,14 @@ function drawWave(t){
     const avg=sum/micData.length/255; micLevel += (avg-micLevel)*0.25;
     $('wave-db').textContent = Math.round(-60+micLevel*60)+' dB';
   }
-  if(S.state==='speaking'){ speakEnergy = 0.4+0.6*Math.abs(Math.sin(t*0.012))*Math.abs(Math.sin(t*0.005)); }
+  if(S.state==='speaking' && ttsTapped && ttsAnalyser){
+    try{ ttsAnalyser.getByteTimeDomainData(ttsData);
+      let s=0; for(let i=0;i<ttsData.length;i++){ const d=(ttsData[i]-128)/128; s+=d*d; }
+      const lvl=Math.min(1,Math.sqrt(s/ttsData.length)*4.5);   // real speech-amplitude envelope
+      speakEnergy += (lvl-speakEnergy)*0.45; }
+    catch(_){ speakEnergy = 0.4+0.6*Math.abs(Math.sin(t*0.012))*Math.abs(Math.sin(t*0.005)); }
+  }
+  else if(S.state==='speaking'){ speakEnergy = 0.4+0.6*Math.abs(Math.sin(t*0.012))*Math.abs(Math.sin(t*0.005)); }
   else { speakEnergy += (0-speakEnergy)*0.1; }
   const drive = S.state==='speaking'? speakEnergy : (S.state==='listening'? Math.max(0.06,micLevel*1.6) : micLevel*0.8);
   const accent = S.state==='listening';
@@ -643,6 +654,16 @@ function speak(text){
   stopTTS(); setState('speaking'); showCap(text,false); muteWake();
   try{
     S.tts=new Audio(authedUrl(API+'/api/tts?text='+encodeURIComponent(text.slice(0,800))+'&agent='+encodeURIComponent('Alfred')));
+    // Tap the TTS audio so the holo core pulses to Alfred's REAL voice (not a fake sine).
+    // Only reroute through Web Audio when the context is actually running, so playback
+    // can never be silenced; otherwise the element plays normally + the orb falls back.
+    try{
+      if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)();
+        ttsAnalyser=actx.createAnalyser(); ttsAnalyser.fftSize=256;
+        ttsData=new Uint8Array(ttsAnalyser.fftSize); ttsAnalyser.connect(actx.destination); }
+      if(actx.state!=='running') actx.resume();
+      if(actx.state==='running'){ actx.createMediaElementSource(S.tts).connect(ttsAnalyser); ttsTapped=true; }
+    }catch(_){}
     const end=()=>{ S.tts=null; if(S.state==='speaking') setState('calm'); setTimeout(()=>{ unmuteWake(); reArm(); },380); };
     S.tts.onended=end; S.tts.onerror=end; S.tts.play().catch(end);
   }catch(_){ setState('calm'); unmuteWake(); reArm(); }

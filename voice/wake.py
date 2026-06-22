@@ -208,6 +208,14 @@ class WakeWordListener:
                             ambient_logged = True
                             print(f"[Wake] mic live — ambient RMS={rms:.0f}", flush=True)
 
+                        # Feed the live mic level to the UI while capturing the user's
+                        # speech so the holo core ripples in time with his voice.
+                        if self._on_level and self._mode == "command":
+                            try:
+                                self._on_level(rms)
+                            except Exception:
+                                pass
+
                         if self._mode == "command":
                             if rms > cmd_peak:
                                 cmd_peak = rms
