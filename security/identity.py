@@ -80,8 +80,29 @@ def enroll_voice(sample_paths) -> str:
     Strong speaker verification activates when an embedding lib (resemblyzer) is present;
     the samples also feed the cloned voice."""
     try:
+        paths = [str(p) for p in (sample_paths or [])]
         memory.set_flag("voice_enrolled", True)
-        memory.set_flag("voice_ref_count", len(list(sample_paths)))
+        memory.set_flag("voice_ref_count", len(paths))
+        # If the speaker-embedding stack is present, compute and store a reference
+        # embedding now so verify_voice() can do a real match. Best-effort: if the
+        # lib/samples aren't usable we still mark enrolled (samples feed the clone)
+        # and verify_voice() degrades gracefully to PIN/face.
+        try:
+            import numpy as np
+            from resemblyzer import VoiceEncoder, preprocess_wav
+            enc = VoiceEncoder()
+            embs = []
+            for p in paths:
+                try:
+                    embs.append(enc.embed_utterance(preprocess_wav(p)))
+                except Exception:
+                    continue
+            if embs:
+                ref = np.mean(np.stack(embs), axis=0)
+                np.save(str(_enroll_dir() / "voice_emb.npy"), ref)
+                memory.set_flag("voice_embedding_ready", True)
+        except Exception:
+            pass
         return "Voice enrolled."
     except Exception as e:
         return f"Voice enrollment failed: {e}"
@@ -127,11 +148,75 @@ def verify_face() -> bool:
         return False
 
 
+_VOICE_MATCH_THRESHOLD = float(os.environ.get("JARVIS_VOICE_MATCH_THRESHOLD", "0.75"))
+
+
+def _voice_capture_seconds() -> float:
+    return float(os.environ.get("JARVIS_VOICE_CAPTURE_SEC", "3"))
+
+
 def verify_voice() -> bool:
-    """Strong speaker verification needs an embedding model (resemblyzer, not installed).
-    Until then this stays graceful-False so PIN/face carry identity — the enrolled voice
-    samples are kept for that upgrade and for the cloned voice."""
-    return False
+    """STRONG local speaker verification — real speaker-embedding match (resemblyzer's
+    VoiceEncoder) of a fresh mic sample against the enrolled reference embedding.
+
+    Honest degradation (never a silent placeholder, never a hard failure):
+      * resemblyzer / sounddevice not installed, or no enrolled reference  → log WHY and
+        return False so PIN/face carry identity.
+      * lib present + enrollment ready → capture ~3s of mic audio, embed it, and accept
+        only if cosine similarity to the reference clears the threshold.
+
+    Enrollment stores the reference embedding at <enroll>/voice_emb.npy (written by
+    enroll_voice when the lib is available)."""
+    import pathlib
+
+    def _log(msg, **kw):
+        try:
+            from obs.log import log_event
+            log_event("identity.verify_voice", level="info", detail=msg, **kw)
+        except Exception:
+            pass
+
+    if not memory.get_flag("voice_enrolled", False):
+        _log("no enrolled voice — falling back to PIN/face", available=False)
+        return False
+
+    emb_path = _enroll_dir() / "voice_emb.npy"
+    if not emb_path.exists():
+        _log("voice enrolled but no reference embedding — install resemblyzer and "
+             "re-enroll to enable speaker match; falling back", available=False)
+        return False
+
+    try:
+        import numpy as np
+        from resemblyzer import VoiceEncoder
+        import sounddevice as sd
+    except Exception as e:  # lib genuinely unavailable — be explicit, don't pretend
+        _log(f"speaker-embedding stack unavailable ({type(e).__name__}: {e}) — "
+             f"falling back to PIN/face", available=False)
+        return False
+
+    try:
+        ref = np.load(str(emb_path))
+        sr = 16000
+        seconds = _voice_capture_seconds()
+        audio = sd.rec(int(seconds * sr), samplerate=sr, channels=1, dtype="float32")
+        sd.wait()
+        wav = np.asarray(audio, dtype="float32").flatten()
+        if wav.size == 0 or float(np.abs(wav).mean()) < 1e-4:
+            _log("captured silence — cannot verify speaker; falling back", available=True)
+            return False
+        live = VoiceEncoder().embed_utterance(wav)
+        ref = ref / (np.linalg.norm(ref) or 1.0)
+        live = live / (np.linalg.norm(live) or 1.0)
+        sim = float(np.dot(ref, live))
+        ok = sim >= _VOICE_MATCH_THRESHOLD
+        _log(f"speaker similarity {sim:.3f} (threshold {_VOICE_MATCH_THRESHOLD:.2f})",
+             available=True, matched=ok)
+        return ok
+    except Exception as e:
+        _log(f"speaker verification errored ({type(e).__name__}: {e}) — falling back",
+             available=True)
+        return False
 
 
 def biometrics_ready() -> bool:

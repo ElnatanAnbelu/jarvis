@@ -43,10 +43,21 @@ def forget_subject(identifier: str) -> str:
     except Exception:
         pass
 
-    # 3. Invalidate the vault search index so rebuilds exclude the archived notes.
+    # 3. Invalidate the vault search index so the archived notes stop serving from
+    #    the in-RAM FAISS cache. The LIVE index lives on the VaultManager *singleton*
+    #    used by the RAG tools (brain.tools.second_brain._vault), not on the module —
+    #    merely touching memory.vault did nothing (a forgotten subject kept resurfacing
+    #    from cached chunks until the next lazy rebuild). Reset the singleton's index
+    #    state under its own lock so the next search rebuilds from disk (archived
+    #    notes excluded).
     try:
-        from memory import vault as _v
-        _v._EMBED_MODEL  # touch module; index rebuilds lazily from area folders (archived notes excluded)
+        from brain.tools import second_brain as _sb
+        vm = _sb._vault()
+        with vm._index_lock:
+            vm._index = None
+            vm._chunks = []
+            vm._titles = []
+            vm._last_build = 0.0
     except Exception:
         pass
 
