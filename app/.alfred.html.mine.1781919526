@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>ALFRED</title>
+<style>
+/* ============================================================================
+   ALFRED — the living environment. Immersive holographic war-room.
+   Fully self-contained · offline · no external assets. Holo-schematic cyan.
+   ========================================================================= */
+:root{
+  --bg:#000307; --bg-2:#02060d; --cyan:#4ff7ff; --cyan-soft:#8df9ff; --cyan-deep:#18a8c4;
+  --line:rgba(79,247,255,.22); --line-hi:rgba(79,247,255,.55);
+  --ink:#cdeef6; --ink-dim:#6f97a6; --ink-faint:#46707e; --amber:#ffb547;
+  --red:#ff5d6c; --green:#54f0b8;
+  --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --glow:0 0 20px rgba(79,247,255,.28);
+  --panel-bg:linear-gradient(165deg, rgba(6,20,30,.82), rgba(2,8,14,.92));
+}
+*{box-sizing:border-box; margin:0; padding:0; -webkit-user-select:none; user-select:none;}
+html,body{height:100%; width:100%; overflow:hidden; background:var(--bg); color:var(--ink);
+  font-family:var(--mono); font-size:14px; letter-spacing:.02em; cursor:default;}
+body{position:fixed; inset:0;}
+
+#room{position:absolute; inset:0; overflow:hidden; perspective:1400px; transform-style:preserve-3d;}
+.bg-nebula{position:absolute; inset:-20%;
+  background:
+    radial-gradient(60% 50% at 30% 20%, rgba(24,168,196,.10), transparent 60%),
+    radial-gradient(50% 60% at 78% 78%, rgba(79,247,255,.08), transparent 60%),
+    radial-gradient(40% 40% at 50% 50%, rgba(8,30,42,.55), transparent 70%),
+    var(--bg);
+  animation:nebula 32s ease-in-out infinite alternate;}
+@keyframes nebula{0%{transform:translate(0,0) scale(1.02);}100%{transform:translate(-2.4%,1.6%) scale(1.06);}}
+.bg-grid{position:absolute; inset:-30%;
+  background-image:
+    linear-gradient(rgba(79,247,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79,247,255,.05) 1px, transparent 1px);
+  background-size:64px 64px;
+  transform:rotateX(64deg) translateZ(-220px) scale(2.1);
+  transform-origin:50% 90%;
+  mask-image:radial-gradient(80% 70% at 50% 60%, #000 30%, transparent 78%);
+  -webkit-mask-image:radial-gradient(80% 70% at 50% 60%, #000 30%, transparent 78%);
+  animation:gridFloat 22s linear infinite;}
+@keyframes gridFloat{0%{background-position:0 0;}100%{background-position:0 64px;}}
+.bg-scanlines{position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,8,12,.30) 3px, rgba(0,0,0,0) 4px);
+  mix-blend-mode:overlay; animation:scan 8s linear infinite;}
+@keyframes scan{0%{background-position-y:0;}100%{background-position-y:160px;}}
+.bg-vignette{position:absolute; inset:0; pointer-events:none;
+  box-shadow:inset 0 0 200px 60px rgba(0,2,5,.9), inset 0 0 60px rgba(0,3,8,.7);}
+.bg-flares{position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen; opacity:.7;}
+
+#mood{position:absolute; inset:0; pointer-events:none; transition:background 2.2s ease, opacity 2.2s ease; opacity:0;}
+body[data-mood="working"] #mood{opacity:.5; background:radial-gradient(70% 60% at 50% 45%, rgba(79,247,255,.10), transparent 65%);}
+body[data-mood="warm"] #mood{opacity:.45; background:radial-gradient(70% 60% at 50% 45%, rgba(255,181,71,.07), transparent 65%);}
+body[data-mood="alert"] #mood{opacity:.6; background:radial-gradient(80% 70% at 50% 45%, rgba(255,93,108,.12), transparent 62%);}
+
+#core-wrap{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(62vh,620px); height:min(62vh,620px); transition:all 1.05s cubic-bezier(.22,1,.36,1); z-index:14;
+  filter:drop-shadow(0 0 40px rgba(79,247,255,.18)); cursor:pointer;}
+body.docked #core-wrap{left:auto; top:auto; right:26px; bottom:96px; width:188px; height:188px; transform:translate(0,0);}
+#holo{width:100%; height:100%; display:block;}
+#core-halo{position:absolute; inset:-12%; border-radius:50%; pointer-events:none;
+  background:radial-gradient(circle, rgba(79,247,255,.16), transparent 62%);
+  opacity:0; transition:opacity .6s ease; mix-blend-mode:screen;}
+body[data-state="speaking"] #core-halo{opacity:1; animation:haloPulse 1.4s ease-in-out infinite;}
+body[data-state="listening"] #core-halo{opacity:.85;}
+body[data-state="thinking"] #core-halo{opacity:.6;}
+@keyframes haloPulse{0%,100%{transform:scale(1);opacity:.7;}50%{transform:scale(1.07);opacity:1;}}
+
+#cap{position:absolute; left:50%; top:calc(50% + min(31vh,310px) - 4px);
+  transform:translate(-50%,0); max-width:min(680px,72vw); text-align:center;
+  font-size:18px; line-height:1.45; color:var(--cyan-soft); letter-spacing:.015em;
+  text-shadow:0 0 18px rgba(79,247,255,.35); opacity:0; transition:opacity .5s ease, transform 1s cubic-bezier(.22,1,.36,1);
+  pointer-events:none; z-index:16; min-height:1.4em;}
+#cap.show{opacity:1;}
+#cap .cursor{display:inline-block; width:.5em; height:1.05em; background:var(--cyan);
+  margin-left:.06em; vertical-align:-.16em; animation:blink 1s steps(2) infinite; box-shadow:var(--glow);}
+@keyframes blink{50%{opacity:0;}}
+body.docked #cap{left:auto; right:26px; top:auto; bottom:300px; transform:none; text-align:right; max-width:340px; font-size:14px; color:var(--ink);}
+
+#core-status{position:absolute; left:50%; top:calc(50% - min(31vh,310px) - 26px);
+  transform:translate(-50%,0); font-size:11px; letter-spacing:.42em; text-transform:uppercase;
+  color:var(--ink-dim); opacity:.85; transition:opacity .6s ease, color .6s ease; white-space:nowrap; z-index:16;}
+body.docked #core-status{opacity:0;}
+body[data-state="listening"] #core-status{color:var(--cyan); text-shadow:var(--glow);}
+body[data-state="thinking"] #core-status{color:var(--cyan-soft);}
+body[data-mood="alert"] #core-status{color:var(--red);}
+
+#hud{position:absolute; left:22px; top:20px; z-index:30; width:268px; display:flex; flex-direction:column; gap:12px;}
+.hud-card{position:relative; background:var(--panel-bg); border:1px solid var(--line); border-radius:12px; padding:11px 12px;
+  backdrop-filter:blur(7px); box-shadow:inset 0 0 0 1px rgba(79,247,255,.04), 0 12px 40px rgba(0,4,10,.6);}
+.hud-card::before{content:""; position:absolute; top:7px; left:7px; width:9px; height:9px; border-top:1px solid var(--line-hi); border-left:1px solid var(--line-hi);}
+.hud-card::after{content:""; position:absolute; bottom:7px; right:7px; width:9px; height:9px; border-bottom:1px solid var(--line-hi); border-right:1px solid var(--line-hi);}
+.hud-label{font-size:9.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--ink-faint);
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+.hud-label .dot{width:6px; height:6px; border-radius:50%; background:var(--cyan); box-shadow:var(--glow); animation:pulseDot 2.6s ease-in-out infinite;}
+@keyframes pulseDot{0%,100%{opacity:.4;}50%{opacity:1;}}
+
+#cam-card{padding:0; overflow:hidden;}
+#cam-stage{position:relative; width:100%; aspect-ratio:16/10; background:#020a0e; overflow:hidden;}
+#cam-video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:contrast(1.05) saturate(.7) hue-rotate(150deg) brightness(.9); opacity:.92; transform:scaleX(-1);}
+#cam-stage.novideo #cam-video{display:none;}
+#cam-grain{position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, transparent 0, transparent 2px, rgba(79,247,255,.04) 3px); mix-blend-mode:screen;}
+#cam-sweep{position:absolute; left:0; right:0; height:34%; pointer-events:none; background:linear-gradient(180deg, transparent, rgba(79,247,255,.16), transparent); animation:camSweep 4.2s ease-in-out infinite; mix-blend-mode:screen;}
+@keyframes camSweep{0%{top:-34%;}100%{top:104%;}}
+#face-frame{position:absolute; border:1.5px solid var(--cyan); border-radius:3px; left:24%; top:18%; width:52%; height:62%;
+  box-shadow:0 0 14px rgba(79,247,255,.5), inset 0 0 12px rgba(79,247,255,.18); transition:all .28s cubic-bezier(.22,1,.36,1); opacity:0;}
+#face-frame.on{opacity:1;}
+#face-frame .c{position:absolute; width:9px; height:9px; border-color:var(--cyan-soft);}
+#face-frame .tl{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid;}
+#face-frame .tr{top:-1px;right:-1px;border-top:2px solid;border-right:2px solid;}
+#face-frame .bl{bottom:-1px;left:-1px;border-bottom:2px solid;border-left:2px solid;}
+#face-frame .br{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid;}
+#cam-tag{position:absolute; left:7px; bottom:6px; font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:var(--cyan-soft);
+  text-shadow:0 0 8px rgba(0,0,0,.9); background:rgba(2,8,14,.5); padding:2px 6px; border-radius:4px; border:1px solid var(--line);}
+#cam-tag .rec{color:var(--green);}
+#cam-noface{position:absolute; right:7px; bottom:6px; font-size:9px; letter-spacing:.1em; color:var(--ink-faint); text-shadow:0 0 8px #000;}
+
+#wave{display:block; width:100%; height:46px;}
+#wave-meta{display:flex; justify-content:space-between; font-size:9px; color:var(--ink-faint); letter-spacing:.1em; margin-top:5px;}
+
+#presence-card .grid{display:grid; grid-template-columns:1fr 1fr; gap:8px 10px;}
+.p-item{display:flex; flex-direction:column; gap:2px;}
+.p-k{font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-faint);}
+.p-v{font-size:13px; color:var(--ink); letter-spacing:.02em;}
+.p-v.accent{color:var(--cyan-soft); text-shadow:var(--glow);}
+#clock{font-variant-numeric:tabular-nums; font-size:15px; color:var(--cyan-soft); letter-spacing:.06em; text-shadow:var(--glow);}
+
+#rail{position:absolute; right:22px; top:20px; z-index:30; display:flex; gap:8px; align-items:center;}
+.chip{position:relative; background:var(--panel-bg); border:1px solid var(--line); border-radius:9px; padding:8px 11px;
+  font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); cursor:pointer; transition:all .18s ease;
+  display:flex; align-items:center; gap:7px; backdrop-filter:blur(6px);}
+.chip:hover{border-color:var(--line-hi); color:var(--ink); box-shadow:var(--glow);}
+.chip .ind{width:7px; height:7px; border-radius:50%; background:var(--ink-faint); transition:all .25s ease;}
+.chip.on .ind{background:var(--cyan); box-shadow:var(--glow);}
+.chip.on{color:var(--cyan-soft); border-color:var(--line-hi);}
+.chip.danger{color:var(--red); border-color:rgba(255,93,108,.35);}
+.chip.danger:hover{background:rgba(255,93,108,.12); box-shadow:0 0 16px rgba(255,93,108,.4);}
+.chip.danger.armed{background:var(--red); color:#0a0203; animation:panicFlash .7s ease-in-out infinite;}
+@keyframes panicFlash{0%,100%{box-shadow:0 0 14px rgba(255,93,108,.6);}50%{box-shadow:0 0 28px rgba(255,93,108,1);}}
+
+#workspace{position:absolute; inset:96px 26px 84px 308px; z-index:18; pointer-events:none; display:grid; gap:16px; opacity:0;
+  transition:opacity .8s ease; grid-auto-rows:minmax(0,1fr);}
+body.docked #workspace{pointer-events:auto; opacity:1;}
+#workspace.cols-1{grid-template-columns:1fr;}
+#workspace.cols-2{grid-template-columns:1fr 1fr;}
+#workspace.cols-3{grid-template-columns:1fr 1fr 1fr;}
+
+.panel{position:relative; background:var(--panel-bg); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column;
+  min-height:0; min-width:0; overflow:hidden; backdrop-filter:blur(9px);
+  box-shadow:inset 0 0 0 1px rgba(79,247,255,.045), 0 24px 60px rgba(0,3,9,.66);
+  transform:translateY(18px) scale(.97); opacity:0; animation:panelIn .7s cubic-bezier(.22,1,.36,1) forwards;}
+@keyframes panelIn{to{transform:translateY(0) scale(1); opacity:1;}}
+.panel.wide{grid-column:span 2;} .panel.tall{grid-row:span 2;}
+.panel::before{content:""; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, var(--line-hi), transparent); opacity:.7;}
+.panel-head{display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid var(--line); flex:0 0 auto;}
+.panel-head .ph-dot{width:8px; height:8px; border-radius:2px; background:var(--cyan); box-shadow:var(--glow); transform:rotate(45deg);}
+.panel-head .ph-title{font-size:10.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--cyan-soft); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.panel-head .ph-x{cursor:pointer; color:var(--ink-faint); font-size:14px; line-height:1; padding:0 2px; transition:color .15s;}
+.panel-head .ph-x:hover{color:var(--red);}
+.panel-body{flex:1 1 auto; min-height:0; overflow:auto; padding:12px;}
+.panel-body::-webkit-scrollbar{width:8px;height:8px;}
+.panel-body::-webkit-scrollbar-thumb{background:rgba(79,247,255,.18); border-radius:8px;}
+.panel-body::-webkit-scrollbar-track{background:transparent;}
+
+.code-wrap{display:flex; flex-direction:column; height:100%; padding:0;}
+.code-edit{flex:1 1 auto; min-height:80px; background:#01060b; border:none; outline:none; resize:none; color:var(--cyan-soft);
+  font-family:var(--mono); font-size:13px; line-height:1.55; padding:12px; -webkit-user-select:text; user-select:text;}
+.code-bar{flex:0 0 auto; display:flex; gap:8px; align-items:center; padding:8px 10px; border-top:1px solid var(--line);}
+.code-out{flex:0 0 auto; max-height:38%; overflow:auto; background:#000408; border-top:1px solid var(--line); padding:10px 12px;
+  font-size:12px; color:var(--ink-dim); white-space:pre-wrap; -webkit-user-select:text; user-select:text;}
+.code-out .ok{color:var(--green);} .code-out .err{color:var(--red);}
+
+.web-bar{flex:0 0 auto; display:flex; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line);}
+.web-bar input{flex:1; background:#01070c; border:1px solid var(--line); border-radius:7px; color:var(--ink); padding:6px 10px;
+  font-family:var(--mono); font-size:12px; outline:none; -webkit-user-select:text; user-select:text;}
+.web-bar input:focus{border-color:var(--line-hi); box-shadow:var(--glow);}
+.web-frame{flex:1; width:100%; border:none; background:#fff;}
+
+.brain-stream{font-size:13.5px; line-height:1.6; color:var(--ink); white-space:pre-wrap; -webkit-user-select:text; user-select:text;}
+.brain-ask{display:flex; gap:8px; padding:9px 10px; border-top:1px solid var(--line); flex:0 0 auto;}
+.brain-ask input{flex:1; background:#01070c; border:1px solid var(--line); border-radius:7px; color:var(--ink); padding:7px 10px;
+  font-family:var(--mono); font-size:12px; outline:none; -webkit-user-select:text; user-select:text;}
+
+.approval{border:1px solid var(--line); border-radius:10px; padding:10px 11px; margin-bottom:10px; display:flex; gap:10px; align-items:flex-start;}
+.approval .info{flex:1; min-width:0;}
+.atag{font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--amber); margin-bottom:4px;}
+.atag.red{color:var(--red);} .atag.ok{color:var(--cyan-soft);}
+.atitle{font-size:13px; color:var(--ink); margin-bottom:3px; word-break:break-word;}
+.adesc{font-size:11px; color:var(--ink-dim); line-height:1.4; word-break:break-word;}
+.a-actions{display:flex; flex-direction:column; gap:6px; flex:0 0 auto;}
+.feed-row{display:flex; align-items:center; gap:9px; padding:7px 2px; border-bottom:1px solid rgba(79,247,255,.07); font-size:12px;}
+.feed-row .ic{width:8px; height:8px; border-radius:50%; flex:0 0 auto;}
+.ic.ok{background:var(--green);} .ic.no{background:var(--red);} .ic.rv{background:var(--ink-faint);}
+.feed-row .ftext{flex:1; min-width:0; color:var(--ink-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.feed-row .ftext b{color:var(--ink);}
+.feed-row .fres.no{color:var(--red);} .feed-row .fres.ok{color:var(--green);}
+.health-row{display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid rgba(79,247,255,.07); font-size:12px;}
+.health-row .hk{color:var(--ink-dim); letter-spacing:.05em;}
+.health-row .hv{display:flex; align-items:center; gap:7px; color:var(--ink);}
+.health-row .hv .led{width:7px; height:7px; border-radius:50%;}
+.led.live{background:var(--green); box-shadow:0 0 8px var(--green);}
+.led.stale{background:var(--amber);} .led.down{background:var(--red);}
+.empty-line{color:var(--ink-faint); font-size:12px; text-align:center; padding:18px 8px;}
+.empty-line .ok{color:var(--green); margin-right:6px;}
+
+.btn{font-family:var(--mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; border:1px solid var(--line);
+  background:rgba(79,247,255,.06); color:var(--cyan-soft); border-radius:7px; padding:6px 11px; cursor:pointer; transition:all .15s ease; white-space:nowrap;}
+.btn:hover{border-color:var(--line-hi); background:rgba(79,247,255,.14); box-shadow:var(--glow);}
+.btn.reject{color:var(--red); border-color:rgba(255,93,108,.3);}
+.btn.reject:hover{background:rgba(255,93,108,.14); box-shadow:0 0 12px rgba(255,93,108,.4);}
+.btn.run{color:var(--green); border-color:rgba(84,240,184,.35);}
+.btn.run:hover{background:rgba(84,240,184,.12);}
+.btn.undo{font-size:9px; padding:4px 8px; flex:0 0 auto;}
+.btn[disabled]{opacity:.4; cursor:not-allowed;}
+
+#dock{position:absolute; left:50%; bottom:20px; transform:translateX(-50%); z-index:32; display:flex; gap:9px;
+  background:var(--panel-bg); border:1px solid var(--line); border-radius:14px; padding:9px 12px; backdrop-filter:blur(9px); box-shadow:0 18px 50px rgba(0,3,9,.6);}
+.dock-btn{display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; padding:4px 9px; border-radius:9px; transition:all .15s ease; min-width:62px;}
+.dock-btn:hover{background:rgba(79,247,255,.08);}
+.dock-btn.active{background:rgba(79,247,255,.12);}
+.dock-btn svg{width:20px; height:20px; stroke:var(--ink-dim); fill:none; stroke-width:1.5; transition:stroke .15s;}
+.dock-btn:hover svg, .dock-btn.active svg{stroke:var(--cyan);}
+.dock-btn span{font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint);}
+.dock-btn:hover span, .dock-btn.active span{color:var(--ink-dim);}
+.dock-sep{width:1px; background:var(--line); margin:4px 2px;}
+
+#pin-modal{position:absolute; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(0,2,5,.78); backdrop-filter:blur(4px);}
+#pin-modal.show{display:flex;}
+.pin-box{background:var(--panel-bg); border:1px solid var(--line-hi); border-radius:16px; padding:26px 28px; width:320px; text-align:center; box-shadow:0 0 60px rgba(79,247,255,.2);}
+.pin-box .pt{font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--cyan-soft); margin-bottom:6px;}
+.pin-box .pd{font-size:12px; color:var(--ink-dim); margin-bottom:18px; line-height:1.5;}
+#pin-input{width:100%; background:#01070c; border:1px solid var(--line); border-radius:9px; color:var(--cyan-soft); font-family:var(--mono);
+  font-size:22px; letter-spacing:.5em; text-align:center; padding:12px; outline:none; -webkit-user-select:text; user-select:text;}
+#pin-input:focus{border-color:var(--line-hi); box-shadow:var(--glow);}
+.pin-actions{display:flex; gap:10px; margin-top:18px;}
+.pin-actions .btn{flex:1; padding:9px;}
+#pin-err{color:var(--red); font-size:11px; min-height:1.2em; margin-top:8px;}
+
+#toast{position:absolute; left:50%; bottom:96px; transform:translateX(-50%) translateY(20px); z-index:50; background:var(--panel-bg);
+  border:1px solid var(--line-hi); border-radius:10px; padding:10px 16px; font-size:12px; color:var(--ink); opacity:0;
+  transition:all .4s ease; pointer-events:none; max-width:62vw; box-shadow:var(--glow);}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+#toast.err{border-color:rgba(255,93,108,.5); color:#ffd2d6;}
+
+#transcript{position:absolute; left:22px; bottom:20px; z-index:28; width:268px; max-height:230px; background:var(--panel-bg);
+  border:1px solid var(--line); border-radius:12px; backdrop-filter:blur(7px); display:flex; flex-direction:column; overflow:hidden; transition:opacity .6s ease;}
+#transcript .th{font-size:9px; letter-spacing:.3em; text-transform:uppercase; color:var(--ink-faint); padding:9px 11px 6px; flex:0 0 auto;}
+#transcript .tlist{overflow:auto; padding:0 11px 11px; font-size:11.5px; line-height:1.45;}
+.tline{margin-bottom:7px;} .tline .who{color:var(--cyan-soft); letter-spacing:.05em;}
+.tline.me .who{color:var(--amber);} .tline .txt{color:var(--ink-dim);}
+body:not(.docked) #transcript{opacity:0; pointer-events:none;}
+.tlist::-webkit-scrollbar{width:6px;} .tlist::-webkit-scrollbar-thumb{background:rgba(79,247,255,.16);border-radius:6px;}
+
+::selection{background:rgba(79,247,255,.3); color:#fff;}
+</style>
+</head>
+<body data-state="boot" data-mood="warm">
+
+<div id="room">
+  <div class="bg-nebula"></div>
+  <div class="bg-grid"></div>
+  <canvas class="bg-flares" id="flares"></canvas>
+  <div class="bg-scanlines"></div>
+  <div id="mood"></div>
+  <div class="bg-vignette"></div>
+</div>
+
+<div id="core-status">SYSTEMS NOMINAL</div>
+<div id="core-wrap">
+  <div id="core-halo"></div>
+  <canvas id="holo"></canvas>
+</div>
+<div id="cap"></div>
+
+<aside id="hud">
+  <div class="hud-card" id="cam-card">
+    <div class="hud-label" style="padding:9px 11px 0;">OPTICAL <span class="dot"></span></div>
+    <div id="cam-stage" class="novideo">
+      <video id="cam-video" autoplay muted playsinline></video>
+      <div id="cam-grain"></div>
+      <div id="cam-sweep"></div>
+      <div id="face-frame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></div>
+      <div id="cam-tag">OPTICAL <span class="rec">●</span></div>
+      <div id="cam-noface">no signal</div>
+    </div>
+  </div>
+  <div class="hud-card" id="wave-card">
+    <div class="hud-label">ACOUSTIC <span class="dot"></span></div>
+    <canvas id="wave"></canvas>
+    <div id="wave-meta"><span id="wave-state">idle</span><span id="wave-db">—</span></div>
+  </div>
+  <div class="hud-card" id="presence-card">
+    <div class="hud-label">PRESENCE <span id="clock">--:--</span></div>
+    <div class="grid">
+      <div class="p-item"><span class="p-k">Owner</span><span class="p-v accent" id="p-owner">Awaiting</span></div>
+      <div class="p-item"><span class="p-k">Mood</span><span class="p-v" id="p-mood">Composed</span></div>
+      <div class="p-item"><span class="p-k">Mode</span><span class="p-v" id="p-mode">Supervised</span></div>
+      <div class="p-item"><span class="p-k">Link</span><span class="p-v" id="p-link">Local</span></div>
+    </div>
+  </div>
+</aside>
+
+<div id="rail">
+  <div class="chip" id="chip-mode"><span class="ind"></span><span id="chip-mode-t">Supervised</span></div>
+  <div class="chip" id="chip-away"><span class="ind"></span>Away</div>
+  <div class="chip danger" id="chip-panic">PANIC</div>
+  <div class="chip" id="chip-quit">Quit</div>
+</div>
+
+<main id="workspace" class="cols-2"></main>
+
+<div id="transcript">
+  <div class="th">TRANSCRIPT</div>
+  <div class="tlist" id="tlist"></div>
+</div>
+
+<nav id="dock">
+  <div class="dock-btn" data-panel="code"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg><span>Code</span></div>
+  <div class="dock-btn" data-panel="web"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span>Web</span></div>
+  <div class="dock-btn" data-panel="brain"><svg viewBox="0 0 24 24"><path d="M12 3a4 4 0 00-4 4v1a3 3 0 00-1 6v2a3 3 0 003 3h4a3 3 0 003-3v-2a3 3 0 00-1-6V7a4 4 0 00-4-4z"/></svg><span>Brain</span></div>
+  <div class="dock-sep"></div>
+  <div class="dock-btn" data-panel="approvals"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span>Approvals</span></div>
+  <div class="dock-btn" data-panel="activity"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><span>Activity</span></div>
+  <div class="dock-btn" data-panel="health"><svg viewBox="0 0 24 24"><path d="M12 21C7 17 3 13 3 8a4 4 0 018-1 4 4 0 018 1c0 5-4 9-9 13z"/></svg><span>Health</span></div>
+</nav>
+
+<div id="pin-modal">
+  <div class="pin-box">
+    <div class="pt">Authorisation Required</div>
+    <div class="pd" id="pin-desc">This action moves money, sir. Your PIN, if you would.</div>
+    <input id="pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="12" />
+    <div id="pin-err"></div>
+    <div class="pin-actions">
+      <button class="btn reject" id="pin-cancel">Cancel</button>
+      <button class="btn" id="pin-ok">Authorise</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================================
+   ALFRED runtime. Single surface. Wired to the live backend contract.
+   ========================================================================= */
+const API='';                                    // same-origin Flask server
+const TOKEN=()=>window.__JARVIS_TOKEN__||'';     // injected by the server
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function jfetch(url,opt){
+  opt=opt||{}; opt.headers=Object.assign({}, opt.headers, {'X-JARVIS-Token':TOKEN()});
+  return fetch(url,opt);
+}
+function authedUrl(u){ return u + (u.indexOf('?')>=0?'&':'?') + 'token=' + encodeURIComponent(TOKEN()); }
+
+function bridge(){ return (window.pywebview && window.pywebview.api) || null; }
+function muteWake(){ const a=bridge(); if(a) try{a.mute_wake();}catch(_){} }
+function unmuteWake(){ const a=bridge(); if(a) try{a.unmute_wake();}catch(_){} }
+let _wakeMuted=null;
+/* The wake listener and the conversation recorder can't both own the mic. Wake word is
+   active ONLY when truly idle; while listening/thinking/speaking or mid-conversation we
+   RELEASE the mic so the recorder isn't starved to silence. */
+function syncWake(){
+  // ONE mic stream now: mute ONLY while Alfred is SPEAKING (echo guard). Listening and
+  // idle keep the mic live — the wake listener captures the wake word AND the command.
+  const shouldMute=(S.state==='speaking');
+  if(shouldMute && _wakeMuted!==true){ _wakeMuted=true; muteWake(); }
+  else if(!shouldMute && _wakeMuted!==false){ _wakeMuted=false; unmuteWake(); }
+}
+
+const S={ state:'boot', mood:'warm', inConversation:false, tts:null, recognized:false, panicArmed:false, mode:'supervised', away:false, capVisible:false };
+const CONV_SILENCE_MS=22000;
+let convTimer=null;
+
+function setState(s){
+  S.state=s; document.body.dataset.state=s;
+  $('core-status').textContent = s==='listening'?'LISTENING': s==='thinking'?'PROCESSING': s==='speaking'?'SPEAKING':
+    S.mood==='alert'?'ATTENTION REQUIRED':'SYSTEMS NOMINAL';
+  $('wave-state').textContent = s==='listening'?'capturing':(s==='speaking'?'speaking':'idle');
+  syncWake();
+}
+function setMood(m){
+  S.mood=m; document.body.dataset.mood=m;
+  const map={warm:'Composed',calm:'At ease',working:'Focused',alert:'Vigilant'};
+  $('p-mood').textContent=map[m]||'Composed';
+}
+
+/* ── HOLO CORE — Alfred's living body ─────────────────────────────────────── */
+const holo=$('holo'), hctx=holo.getContext('2d');
+let HW=0,HH=0; const DPR=Math.min(window.devicePixelRatio||1,2);
+function sizeHolo(){ const r=holo.getBoundingClientRect(); HW=Math.max(2,r.width); HH=Math.max(2,r.height);
+  holo.width=HW*DPR; holo.height=HH*DPR; hctx.setTransform(DPR,0,0,DPR,0,0); }
+const NODES=[];
+(function genNodes(){ const N=460, ga=Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<N;i++){ const y=1-(i/(N-1))*2, r=Math.sqrt(Math.max(0,1-y*y)), t=ga*i;
+    NODES.push({x:Math.cos(t)*r, y:y, z:Math.sin(t)*r, ph:Math.random()*Math.PI*2}); } })();
+const RINGS=[]; for(let k=-3;k<=3;k++){ RINGS.push(k/3.4); }
+let rot=0, breath=0, assembly=0, lastT=performance.now();
+function rotPt(p,ax,ay){ let x=p.x,y=p.y,z=p.z;
+  const cx=Math.cos(ay),sx=Math.sin(ay); let nx=x*cx+z*sx, nz=-x*sx+z*cx; x=nx; z=nz;
+  const cy=Math.cos(ax),sy=Math.sin(ax); const ny=y*cy-z*sy; nz=y*sy+z*cy; y=ny; z=nz; return {x,y,z}; }
+function drawHolo(t){
+  const dt=Math.min(50,t-lastT); lastT=t;
+  hctx.clearRect(0,0,HW,HH);
+  const cx=HW/2, cy=HH/2, baseR=Math.min(HW,HH)*0.40;
+  const spin = S.state==='thinking'?0.0016: S.state==='speaking'?0.0009: S.state==='listening'?0.0006:0.00042;
+  rot += spin*dt; breath += dt*0.0016;
+  const breathAmp = S.state==='speaking'? 0.0 : 0.028;
+  const br = baseR*(1 + Math.sin(breath)*breathAmp);
+  const target = S.state==='thinking'?0.78 : 1.0;
+  assembly += (target-assembly)*Math.min(1,dt*0.004);
+  const tilt = Math.sin(t*0.0004)*0.28;
+  const speakPulse = S.state==='speaking'? (1 + speakEnergy*0.5) : 1;
+  const listenRipple = S.state==='listening'? micLevel : 0;
+  const col = S.mood==='alert' ? [255,93,108] : S.mood==='working'? [120,250,255] : S.mood==='warm'? [120,235,250] : [79,247,255];
+  const C=(a)=>'rgba('+col[0]+','+col[1]+','+col[2]+','+a+')';
+  const pts=[];
+  for(let i=0;i<NODES.length;i++){
+    const n=NODES[i];
+    const disp = 1 + (1-assembly)*( (i%7)/7*1.6 - 0.4 );
+    let rr = br*disp*speakPulse;
+    if(listenRipple>0){ rr *= 1 + Math.sin(n.ph + t*0.006)*0.05*listenRipple; }
+    const p=rotPt({x:n.x*rr,y:n.y*rr,z:n.z*rr}, tilt, rot);
+    const persp = 620/(620 - p.z + br);
+    pts.push({X:cx+p.x*persp, Y:cy+p.y*persp, z:p.z, ph:n.ph});
+  }
+  hctx.lineWidth=1;
+  for(const lat of RINGS){
+    const ringR=br*Math.sqrt(Math.max(0.0001,1-lat*lat))*assembly, yC=lat*br;
+    hctx.beginPath();
+    for(let a=0;a<=64;a++){
+      const ang=a/64*Math.PI*2; const p=rotPt({x:Math.cos(ang)*ringR, y:yC, z:Math.sin(ang)*ringR}, tilt, rot);
+      const persp=620/(620-p.z+br); const X=cx+p.x*persp, Y=cy+p.y*persp;
+      if(a===0) hctx.moveTo(X,Y); else hctx.lineTo(X,Y);
+    }
+    hctx.strokeStyle=C(0.10*assembly); hctx.stroke();
+  }
+  hctx.lineWidth=0.7; const maxD2=(br*0.42)*(br*0.42);
+  for(let i=0;i<pts.length;i+=2){
+    const a=pts[i], b=pts[(i+13)%pts.length]; const dx=a.X-b.X, dy=a.Y-b.Y, d2=dx*dx+dy*dy;
+    if(d2 < maxD2){ const depth=(a.z+br)/(2*br); hctx.strokeStyle=C(0.05+0.10*depth*assembly);
+      hctx.beginPath(); hctx.moveTo(a.X,a.Y); hctx.lineTo(b.X,b.Y); hctx.stroke(); }
+  }
+  for(const p of pts){
+    const depth=(p.z+br)/(2*br), tw=0.55+0.45*Math.sin(p.ph + t*0.003);
+    const sz=(0.6+depth*1.7)*(0.85+0.3*tw), al=(0.12+depth*0.62)*(0.7+0.3*tw)*(0.4+0.6*assembly);
+    hctx.beginPath(); hctx.arc(p.X,p.Y,sz,0,Math.PI*2); hctx.fillStyle=C(al); hctx.fill();
+  }
+  const heartR = br*0.16*(0.9+0.2*Math.sin(t*0.004));
+  const g=hctx.createRadialGradient(cx,cy,0,cx,cy,heartR*3.2);
+  g.addColorStop(0,C(0.5*speakPulse)); g.addColorStop(0.35,C(0.16)); g.addColorStop(1,C(0));
+  hctx.beginPath(); hctx.arc(cx,cy,heartR*3.2,0,Math.PI*2); hctx.fillStyle=g; hctx.fill();
+  hctx.beginPath(); hctx.arc(cx,cy,heartR,0,Math.PI*2); hctx.strokeStyle=C(0.7); hctx.lineWidth=1.4; hctx.stroke();
+  if(S.state==='thinking'){ const ang=t*0.004; hctx.beginPath(); hctx.arc(cx,cy,br*1.02,ang,ang+0.9); hctx.strokeStyle=C(0.55); hctx.lineWidth=2; hctx.stroke(); }
+  requestAnimationFrame(drawHolo);
+}
+
+/* ── ambient flares ──────────────────────────────────────────────────────── */
+const flares=$('flares'), fctx=flares.getContext('2d');
+let particles=[];
+function sizeFlares(){ flares.width=window.innerWidth*DPR; flares.height=window.innerHeight*DPR; fctx.setTransform(DPR,0,0,DPR,0,0); }
+function genParticles(){ particles=[]; const n=Math.round(window.innerWidth/26);
+  for(let i=0;i<n;i++) particles.push({ x:Math.random()*window.innerWidth, y:Math.random()*window.innerHeight,
+    s:Math.random()*1.4+0.2, vy:(Math.random()*0.18+0.04), a:Math.random()*0.4+0.1, ph:Math.random()*6.28}); }
+function drawFlares(t){
+  fctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+  for(const p of particles){
+    p.y-=p.vy; if(p.y<-4){p.y=window.innerHeight+4; p.x=Math.random()*window.innerWidth;}
+    const tw=0.6+0.4*Math.sin(t*0.001+p.ph);
+    fctx.beginPath(); fctx.arc(p.x,p.y,p.s,0,Math.PI*2); fctx.fillStyle='rgba(79,247,255,'+(p.a*tw*0.5)+')'; fctx.fill();
+  }
+  requestAnimationFrame(drawFlares);
+}
+
+/* ── AWARENESS HUD — camera + waveform + clock ───────────────────────────── */
+let micLevel=0, micTarget=0, speakEnergy=0, analyser=null, micData=null;
+const wave=$('wave'), wctx=wave.getContext('2d');
+function sizeWave(){ const r=wave.getBoundingClientRect(); wave.width=r.width*DPR; wave.height=r.height*DPR; wctx.setTransform(DPR,0,0,DPR,0,0); }
+async function initMedia(){
+  try{
+    const cs=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:400}}});
+    const v=$('cam-video'); v.srcObject=cs; $('cam-stage').classList.remove('novideo'); $('cam-noface').style.display='none';
+    initFaceDetect(v);
+  }catch(_){ $('cam-noface').textContent='optical offline'; }
+  // Audio is owned by the NATIVE voice pipeline (sounddevice). The WebView must NOT also
+  // grab the mic via getUserMedia(audio) — that starves the native stream and deafens
+  // wake/command capture. The waveform level is fed in natively via window.setMicLevel().
+}
+window.setMicLevel=function(rms){
+  let v=(+rms||0)/1500; if(!isFinite(v)) v=0;        // guard NaN/inf (would corrupt visuals)
+  micTarget=Math.max(0,Math.min(1,v));               // int16 RMS → 0..1
+  try{ $('wave-db').textContent=Math.round(-60+micTarget*60)+' dB'; }catch(_){}
+};
+async function initFaceDetect(v){
+  if(!('FaceDetector' in window)){ $('face-frame').classList.add('on'); return; }
+  let fd; try{ fd=new window.FaceDetector({fastMode:true,maxDetectedFaces:1}); }catch(_){ $('face-frame').classList.add('on'); return; }
+  const ff=$('face-frame');
+  async function loop(){
+    if(v.readyState>=2 && v.videoWidth){
+      try{
+        const faces=await fd.detect(v);
+        if(faces && faces.length){
+          const b=faces[0].boundingBox, vw=v.videoWidth, vh=v.videoHeight;
+          ff.style.left=((1-(b.x+b.width)/vw)*100)+'%'; ff.style.top=((b.y/vh)*100)+'%';
+          ff.style.width=((b.width/vw)*100)+'%'; ff.style.height=((b.height/vh)*100)+'%';
+          ff.classList.add('on'); markRecognized(true);
+        } else { ff.classList.remove('on'); markRecognized(false); }
+      }catch(_){ }
+    }
+    setTimeout(loop,360);
+  }
+  loop();
+}
+let recogTimer=null;
+function markRecognized(on){
+  if(on){
+    if(!S.recognized){ S.recognized=true; $('p-owner').textContent='Elnatan'; $('cam-tag').innerHTML='RECOGNISED <span class="rec">●</span>'; }
+    clearTimeout(recogTimer); recogTimer=setTimeout(()=>{ S.recognized=false; $('p-owner').textContent='Present'; $('cam-tag').innerHTML='OPTICAL <span class="rec">●</span>'; },2200);
+  }
+}
+function drawWave(t){
+  const w=wave.getBoundingClientRect().width, h=wave.getBoundingClientRect().height;
+  wctx.clearRect(0,0,w,h);
+  micLevel += (micTarget-micLevel)*0.15;          // native mic level (smoothed each frame)
+  if(analyser && micData){
+    analyser.getByteFrequencyData(micData);
+    let sum=0; for(let i=0;i<micData.length;i++) sum+=micData[i];
+    const avg=sum/micData.length/255; micLevel += (avg-micLevel)*0.25;
+    $('wave-db').textContent = Math.round(-60+micLevel*60)+' dB';
+  }
+  if(S.state==='speaking'){ speakEnergy = 0.4+0.6*Math.abs(Math.sin(t*0.012))*Math.abs(Math.sin(t*0.005)); }
+  else { speakEnergy += (0-speakEnergy)*0.1; }
+  const drive = S.state==='speaking'? speakEnergy : (S.state==='listening'? Math.max(0.06,micLevel*1.6) : micLevel*0.8);
+  const accent = S.state==='listening';
+  const mid=h/2, bars=48, bw=w/bars;
+  for(let i=0;i<bars;i++){
+    const center=Math.abs(i-bars/2)/(bars/2), env=(1-center*center), n=0.5+0.5*Math.sin(t*0.006 + i*0.5);
+    const amp=(h*0.42)*drive*env*(0.4+0.6*n) + 0.6, x=i*bw+bw*0.5;
+    wctx.beginPath(); wctx.moveTo(x,mid-amp); wctx.lineTo(x,mid+amp);
+    wctx.strokeStyle = accent? 'rgba(141,249,255,'+(0.5+0.4*env)+')' : 'rgba(79,247,255,'+(0.28+0.4*env*drive)+')';
+    wctx.lineWidth=Math.max(1.4,bw*0.5); wctx.lineCap='round'; wctx.stroke();
+  }
+  requestAnimationFrame(drawWave);
+}
+function tickClock(){ const d=new Date(); $('clock').textContent=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+setInterval(tickClock,1000); tickClock();
+
+/* ── CAPTION + TRANSCRIPT ─────────────────────────────────────────────────── */
+let capTimer=null;
+/* Voice-first: the caption (subtitle) stays HIDDEN unless sir explicitly asks to see
+   it ("show me" / "pull it up" / "captions on"); "voice only" / "hide" turns it off. */
+function applyCaptionIntent(text){
+  const t=' '+(text||'').toLowerCase()+' ';
+  const hideRe=/\b(voice only|hide the text|hide text|hide that|hide it|hide captions?|hide subtitles?|no captions?|no subtitles?|no text|captions? off|subtitles? off)\b/;
+  const showRe=/\b(show me|show that|show the text|show text|show captions?|show subtitles?|pull it up|put it on screen|on screen|in text|type it|captions? on|subtitles? on|display it)\b/;
+  if(hideRe.test(t)){ S.capVisible=false; const el=$('cap'); if(el) el.classList.remove('show'); }
+  else if(showRe.test(t)){ S.capVisible=true; }
+}
+function showCap(text, streaming){
+  if(!S.capVisible) return;                 // hidden by default — proper voice conversation
+  const el=$('cap'); el.innerHTML = esc(text) + (streaming?'<span class="cursor"></span>':''); el.classList.add('show');
+  clearTimeout(capTimer); if(!streaming) capTimer=setTimeout(()=>el.classList.remove('show'), 7000);
+}
+function pushTranscript(who,text,me){
+  if(!text) return; const list=$('tlist'); const d=document.createElement('div'); d.className='tline'+(me?' me':'');
+  d.innerHTML='<span class="who">'+esc(who)+'</span> <span class="txt">'+esc(text)+'</span>';
+  list.appendChild(d); list.scrollTop=list.scrollHeight; while(list.children.length>40) list.removeChild(list.firstChild);
+}
+
+/* ── VOICE LOOP — native bridge VAD ↔ /api/stream ↔ /api/tts ─────────────── */
+function enterConversation(){ S.inConversation=true; resetConvTimer(); syncWake(); }
+function exitConversation(){ S.inConversation=false; clearTimeout(convTimer); syncWake(); }
+function resetConvTimer(){ clearTimeout(convTimer); convTimer=setTimeout(()=>exitConversation(), CONV_SILENCE_MS); }
+function startListening(){
+  const a=bridge();
+  if(S.state==='speaking'){ stopTTS(); }
+  if(S.state==='listening') return;
+  setState('listening'); setMood(S.mood==='alert'?'alert':'working');
+  if(!a){ return; }
+  try{ a.start_recording(); }catch(_){ setState('calm'); }
+}
+window.wakeWordFired=function(){ if(S.state==='calm'||S.state==='boot'){ enterConversation(); startListening(); } };
+window.autoTranscript=function(text){
+  if(S.state!=='listening') return;
+  text=(text||'').trim(); if(!text){ window.autoTranscriptEmpty(); return; }
+  // A bare wake word ("Alfred") is not a command — re-listen for the real one.
+  if(/^(hey\s+)?alfred[\s,.!?]*$/i.test(text)){ window.autoTranscriptEmpty(); return; }
+  applyCaptionIntent(text);
+  pushTranscript('You',text,true); resetConvTimer();
+  const wantsVision=/\b(see|look|camera|what.?s this|what am i|in front|show you|holding)\b/i.test(text);
+  if(wantsVision){ const a=bridge();
+    if(a && a.capture_frame){ Promise.resolve(a.capture_frame()).then(b64=>streamReply(text,b64||undefined)).catch(()=>streamReply(text)); return; } }
+  streamReply(text);
+};
+window.autoTranscriptEmpty=function(){
+  if(S.state!=='listening') return;
+  setState('calm');
+  if(S.inConversation){ resetConvTimer(); setTimeout(startListening,300); } else setMood('warm');
+};
+async function streamReply(text, imageB64){
+  setState('thinking'); setMood('working'); let full='', agent='Alfred'; showCap('', false);
+  clearTimeout(S.thinkGuard);
+  // Watchdog: NEVER stay stuck on 'thinking' if the request hangs or anything throws.
+  S.thinkGuard=setTimeout(()=>{ if(S.state==='thinking'){ setState('calm'); reArm(); } }, 30000);
+  try{
+    decideWorkspace(text);
+    let url=API+'/api/stream?message='+encodeURIComponent(text);
+    if(imageB64) url+='&image_b64='+encodeURIComponent(imageB64);
+    const res=await jfetch(url);
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop()||'';
+      for(const line of lines){
+        const tr=line.trim(); if(!tr.startsWith('data: ')) continue;
+        let evt; try{ evt=JSON.parse(tr.slice(6)); }catch(_){ continue; }
+        if(evt.type==='thinking'){ setState('thinking'); }
+        else if(evt.type==='speaker'){ agent=evt.name||agent; }
+        else if(evt.type==='text'){ full+=evt.chunk||''; showCap(full, true); }
+        else if(evt.type==='done'){ full=evt.full||full; agent=evt.agent||agent; }
+        else if(evt.type==='error'){ toast(evt.text||'A fault, sir.', true); }
+      }
+    }
+  }catch(e){ toast('I lost the thread, sir. '+(e&&e.message||''), true); }
+  clearTimeout(S.thinkGuard);
+  const clean=(full||'').replace(/\[[A-Z]+:[^\]]*\]/g,'').replace(/\s{2,}/g,' ').trim();
+  pushTranscript('Alfred',clean,false);
+  if(clean) speak(clean); else { setState('calm'); reArm(); }
+}
+function reArm(){ setMood(S.mood==='alert'?'alert':'warm'); if(S.inConversation){ resetConvTimer(); setTimeout(startListening,320); } }
+function stopTTS(){ clearTimeout(S.speakGuard); if(S.tts){ try{S.tts.pause();}catch(_){} S.tts.src=''; S.tts=null; } }
+function speak(text){
+  stopTTS(); setState('speaking'); showCap(text,false);
+  let ended=false;
+  const end=()=>{ if(ended) return; ended=true; clearTimeout(S.speakGuard); S.tts=null;
+    if(S.state==='speaking') setState('calm'); setTimeout(()=>{ reArm(); },380); };
+  try{
+    S.tts=new Audio(authedUrl(API+'/api/tts?text='+encodeURIComponent(text.slice(0,800))+'&agent='+encodeURIComponent('Alfred')));
+    S.tts.onended=end; S.tts.onerror=end; S.tts.play().catch(end);
+    // Watchdog: NEVER stay stuck on 'speaking' if onended/onerror don't fire.
+    S.speakGuard=setTimeout(end, Math.min(45000, 3500+(text||'').length*95));
+  }catch(_){ end(); }
+}
+async function greet(){
+  setState('thinking'); let full='';
+  try{
+    const res=await jfetch(API+'/api/stream?message=__init__');
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){ const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop()||'';
+      for(const line of lines){ const tr=line.trim(); if(!tr.startsWith('data: ')) continue;
+        let evt; try{evt=JSON.parse(tr.slice(6));}catch(_){continue;}
+        if(evt.type==='text'){ full+=evt.chunk||''; showCap(full,true); }
+        else if(evt.type==='done'){ full=evt.full||full; }
+      }
+    }
+  }catch(_){ full='Good evening, sir. All systems are online and at your disposal.'; }
+  const clean=(full||'').replace(/\[[A-Z]+:[^\]]*\]/g,'').trim() || 'Good evening, sir. Standing by.';
+  pushTranscript('Alfred',clean,false);
+  setMood('warm'); enterConversation();
+  if(clean){ speak(clean); }                 // greet OUT LOUD, then speak() re-arms listening
+  else { setState('calm'); setTimeout(()=>{ if(S.state==='calm') startListening(); }, 2200); }
+}
+
+/* ── WORKSPACE — dock + auto-arrange ─────────────────────────────────────── */
+const PANELS={};
+function dock(){ if(!document.body.classList.contains('docked')){ document.body.classList.add('docked'); setMood('working'); } }
+function maybeUndock(){ if(Object.keys(PANELS).length===0){ document.body.classList.remove('docked'); if(S.mood==='working') setMood('warm'); } }
+function relayout(){ const ws=$('workspace'); const n=Object.keys(PANELS).length; ws.className = n<=1?'cols-1' : (n===2||n===4)?'cols-2':'cols-3'; }
+function openPanel(kind){
+  dock();
+  if(PANELS[kind]){ PANELS[kind].el.scrollIntoView({behavior:'smooth'}); markDock(); return PANELS[kind]; }
+  const el=document.createElement('section'); el.className='panel'; el.dataset.kind=kind;
+  const titles={code:'CODE · TERMINAL',web:'WEB BROWSER',brain:'SECOND BRAIN',approvals:'PENDING APPROVALS',activity:'ACTIVITY · LEDGER',health:'SYSTEM HEALTH'};
+  el.innerHTML='<div class="panel-head"><span class="ph-dot"></span><span class="ph-title">'+titles[kind]+'</span><span class="ph-x" title="dismiss">✕</span></div><div class="panel-body"></div>';
+  $('workspace').appendChild(el);
+  const body=el.querySelector('.panel-body');
+  el.querySelector('.ph-x').addEventListener('click',()=>closePanel(kind));
+  const rec={el,kind,body,refresh:null}; PANELS[kind]=rec; buildPanel(rec); relayout(); markDock(); return rec;
+}
+function closePanel(kind){
+  const rec=PANELS[kind]; if(!rec) return; if(rec.refresh) clearInterval(rec.refresh);
+  rec.el.style.animation='panelIn .4s reverse forwards';
+  setTimeout(()=>{ rec.el.remove(); delete PANELS[kind]; relayout(); maybeUndock(); markDock(); },300);
+}
+function markDock(){ document.querySelectorAll('.dock-btn').forEach(b=>{ b.classList.toggle('active', !!PANELS[b.dataset.panel]); }); }
+function decideWorkspace(text){
+  const t=(text||'').toLowerCase();
+  const map=[
+    [/\b(code|terminal|run (this|the)|python|script|shell|compile|execute)\b/, 'code'],
+    [/\b(browse|website|open .*\.(com|org|io|net)|search the web|web page|url|http)\b/, 'web'],
+    [/\b(note|second brain|vault|wiki|remember|knowledge|what did i write|my notes)\b/, 'brain'],
+    [/\b(approv|pending|waiting on me|confirm|authorise|authorize|sign off)\b/, 'approvals'],
+    [/\b(activity|what (have you|did you) (do|done)|ledger|undo|recent action|while i was away)\b/, 'activity'],
+    [/\b(health|status|system|daemon|diagnostic|are you (ok|online)|uptime)\b/, 'health'],
+    [/\b(dashboard|control room|operator|open everything|war.?room)\b/, '*'],
+  ];
+  let opened=false;
+  for(const pair of map){ const re=pair[0], kind=pair[1];
+    if(re.test(t)){ if(kind==='*'){ ['approvals','activity','health'].forEach(openPanel); opened=true; } else { openPanel(kind); opened=true; } } }
+  return opened;
+}
+function buildPanel(rec){ ({code:buildCode, web:buildWeb, brain:buildBrain, approvals:buildApprovals, activity:buildActivity, health:buildHealth})[rec.kind](rec); }
+
+function buildCode(rec){
+  rec.el.classList.add('wide'); rec.body.style.padding='0'; rec.body.style.overflow='hidden';
+  rec.body.innerHTML='<div class="code-wrap"><textarea class="code-edit" spellcheck="false" placeholder="# Python — Alfred will run it for you, sir.">print("Hello, sir.")</textarea><div class="code-bar"><button class="btn run">▶ Run</button><span style="color:var(--ink-faint);font-size:10px;letter-spacing:.1em;">sandboxed · gated · ⌘↵</span></div><pre class="code-out" style="display:none"></pre></div>';
+  const ta=rec.body.querySelector('.code-edit'), out=rec.body.querySelector('.code-out'), btn=rec.body.querySelector('.run');
+  btn.addEventListener('click',async()=>{
+    const code=ta.value; if(!code.trim()) return;
+    out.style.display='block'; out.textContent='Running, sir…'; btn.disabled=true;
+    try{
+      const r=await jfetch(API+'/api/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:'python',code})});
+      const j=await r.json(); out.innerHTML='<span class="'+(j.success?'ok':'err')+'">'+esc(j.output||(j.success?'(no output)':'failed'))+'</span>';
+    }catch(e){ out.innerHTML='<span class="err">Execution refused: '+esc(e.message||'')+'</span>'; }
+    btn.disabled=false;
+  });
+  ta.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') btn.click(); });
+}
+function buildWeb(rec){
+  rec.el.classList.add('wide'); rec.el.classList.add('tall');
+  rec.body.style.padding='0'; rec.body.style.display='flex'; rec.body.style.flexDirection='column';
+  rec.body.innerHTML='<div class="web-bar"><input type="text" placeholder="https://…  or a query, sir" value="https://duckduckgo.com/"><button class="btn">Go</button></div><iframe class="web-frame" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>';
+  const inp=rec.body.querySelector('input'), frame=rec.body.querySelector('.web-frame'), go=rec.body.querySelector('.btn');
+  function nav(){ let u=inp.value.trim(); if(!u) return;
+    if(!/^https?:\/\//i.test(u)){ u=/\.[a-z]{2,}($|\/)/i.test(u)?'https://'+u:'https://duckduckgo.com/?q='+encodeURIComponent(u); }
+    inp.value=u; frame.src=u; }
+  go.addEventListener('click',nav); inp.addEventListener('keydown',e=>{ if(e.key==='Enter') nav(); });
+  frame.src=inp.value;
+}
+function buildBrain(rec){
+  rec.body.innerHTML='<div class="brain-stream">Ask, and I shall consult the Second Brain, sir.</div>';
+  const streamEl=rec.body.querySelector('.brain-stream');
+  const ask=document.createElement('div'); ask.className='brain-ask';
+  ask.innerHTML='<input type="text" placeholder="Ask the vault…"><button class="btn">Ask</button>';
+  rec.el.appendChild(ask);
+  const inp=ask.querySelector('input'), btn=ask.querySelector('.btn');
+  async function run(){
+    const q=inp.value.trim(); if(!q) return; inp.value=''; streamEl.textContent=''; let full='';
+    try{
+      const res=await jfetch(API+'/api/stream?message='+encodeURIComponent(q));
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+      while(true){ const {done,value}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop()||'';
+        for(const line of lines){ const tr=line.trim(); if(!tr.startsWith('data: ')) continue;
+          let evt; try{evt=JSON.parse(tr.slice(6));}catch(_){continue;}
+          if(evt.type==='text'){ full+=evt.chunk||''; streamEl.textContent=full; }
+          else if(evt.type==='done'){ full=evt.full||full; streamEl.textContent=full.replace(/\[[A-Z]+:[^\]]*\]/g,'').trim(); }
+        }
+      }
+    }catch(e){ streamEl.textContent='The vault is unreachable, sir.'; }
+  }
+  btn.addEventListener('click',run); inp.addEventListener('keydown',e=>{ if(e.key==='Enter') run(); });
+}
+
+/* ── OPERATOR DASHBOARDS ─────────────────────────────────────────────────── */
+function relTime(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; const s=(Date.now()-d.getTime())/1000;
+  if(s<60) return Math.max(1,Math.round(s))+'s ago'; if(s<3600) return Math.round(s/60)+'m ago'; if(s<86400) return Math.round(s/3600)+'h ago'; return Math.round(s/86400)+'d ago'; }
+function riskTag(r){ r=(r||'').toLowerCase();
+  if(/money|pay|transfer|irrevers|delete|send/.test(r)) return {t:'● HIGH RISK · '+r,c:'red'};
+  if(r) return {t:'● '+r,c:''}; return {t:'● review',c:''}; }
+function buildApprovals(rec){ rec.refresh=setInterval(()=>loadApprovals(rec),5000); loadApprovals(rec); }
+async function loadApprovals(rec){
+  try{
+    const r=await jfetch(API+'/api/pending'); const j=await r.json();
+    if(j.mode){ S.mode=j.mode; syncMode(); } if(typeof j.away==='boolean'){ S.away=j.away; syncAway(); }
+    const items=j.pending||[];
+    if(!items.length){ rec.body.innerHTML='<div class="empty-line"><span class="ok">✓</span>Nothing awaits your decision, sir.</div>'; return; }
+    rec.body.innerHTML=items.map(it=>{
+      const rt=riskTag(it.risk); const when=it.created_at?(' · '+relTime(it.created_at)):'';
+      const reason=it.reason||it.result||'Awaiting your decision, sir.';
+      return '<div class="approval" data-id="'+esc(it.id)+'"><div class="info"><div class="atag '+rt.c+'">'+esc(rt.t)+when+'</div><div class="atitle">'+esc(it.tool_name||'Pending action')+'</div><div class="adesc">'+esc(reason)+'</div></div><div class="a-actions"><button class="btn approve" data-act="approve" data-id="'+esc(it.id)+'">Approve</button><button class="btn reject" data-act="reject" data-id="'+esc(it.id)+'">Reject</button></div></div>';
+    }).join('');
+    rec.body.querySelectorAll('.btn').forEach(b=>b.addEventListener('click',()=>{ const id=b.dataset.id, act=b.dataset.act; if(act==='approve') approveFlow(id,rec); else rejectFlow(id,rec); }));
+  }catch(_){ rec.body.innerHTML='<div class="empty-line">Approvals unreachable, sir.</div>'; }
+}
+function approveFlow(id,rec,pin){
+  jfetch(API+'/api/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pin?{id:+id,pin:pin}:{id:+id})})
+    .then(r=>r.json()).then(j=>{ const res=String(j.result||'');
+      if(/pin/i.test(res) && /(need|require|enter|provide)/i.test(res)){ askPin(id,rec,res); return; }
+      toast(res||'Approved, sir.'); loadApprovals(rec); maybeRefresh('activity');
+    }).catch(()=>toast('Approval failed, sir.',true));
+}
+function rejectFlow(id,rec){
+  jfetch(API+'/api/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+id})})
+    .then(r=>r.json()).then(j=>{ toast(String(j.result||'Rejected, sir.')); loadApprovals(rec); }).catch(()=>toast('Rejection failed, sir.',true));
+}
+let _pinTarget=null;
+function askPin(id,rec,desc){
+  _pinTarget={id:id,rec:rec}; $('pin-input').value=''; $('pin-err').textContent='';
+  $('pin-desc').textContent=(desc&&desc.length<140)?desc:'This action moves money, sir. Your PIN, if you would.';
+  $('pin-modal').classList.add('show'); setTimeout(()=>$('pin-input').focus(),60);
+}
+$('pin-cancel').addEventListener('click',()=>$('pin-modal').classList.remove('show'));
+$('pin-ok').addEventListener('click',submitPin);
+$('pin-input').addEventListener('keydown',e=>{ if(e.key==='Enter') submitPin(); });
+function submitPin(){
+  const pin=$('pin-input').value.trim(); if(!pin){ $('pin-err').textContent='A PIN is required, sir.'; return; }
+  const t=_pinTarget; if(!t) return; $('pin-modal').classList.remove('show'); approveFlow(t.id,t.rec,pin);
+}
+function buildActivity(rec){ rec.refresh=setInterval(()=>loadActivity(rec),6000); loadActivity(rec); }
+async function loadActivity(rec){
+  try{
+    const r=await jfetch(API+'/api/activity'); const j=await r.json(); const rows=j.recent||[];
+    if(!rows.length){ rec.body.innerHTML='<div class="empty-line">No actions on the ledger yet, sir.</div>'; return; }
+    rec.body.innerHTML=rows.map(rw=>{
+      const ic=rw.reverted?'rv':(rw.success?'ok':'no'); const res=rw.reverted?'reverted':(rw.success?'done':'failed');
+      const rc=rw.reverted?'':(rw.success?'ok':'no');
+      const undo=rw.reversible?'<button class="btn undo" data-undo="'+esc(rw.id)+'">Undo</button>':'';
+      return '<div class="feed-row"><span class="ic '+ic+'"></span><span class="ftext"><b>'+esc(rw.tool||'action')+'</b> <span class="fres '+rc+'">· '+res+'</span> <span style="color:var(--ink-faint)">'+esc(relTime(rw.ts))+'</span></span>'+undo+'</div>';
+    }).join('');
+    rec.body.querySelectorAll('[data-undo]').forEach(b=>b.addEventListener('click',()=>{
+      const id=b.dataset.undo; b.disabled=true;
+      jfetch(API+'/api/undo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:+id})})
+        .then(r=>r.json()).then(j=>{ toast(String(j.result||'Reverted, sir.')); loadActivity(rec); })
+        .catch(()=>{ toast('Undo failed, sir.',true); b.disabled=false; });
+    }));
+  }catch(_){ rec.body.innerHTML='<div class="empty-line">Ledger unreachable, sir.</div>'; }
+}
+function buildHealth(rec){ rec.refresh=setInterval(()=>loadHealth(rec),5000); loadHealth(rec); }
+async function loadHealth(rec){
+  try{
+    const r=await jfetch(API+'/api/status'); const j=await r.json(); const daemons=j.daemons||{};
+    let rows='<div class="health-row"><span class="hk">Core</span><span class="hv"><span class="led live"></span>'+esc(j.status||'online')+' · v'+esc(j.version||'3')+'</span></div>';
+    rows+='<div class="health-row"><span class="hk">Location</span><span class="hv">'+esc(j.location||'local')+'</span></div>';
+    const keys=Object.keys(daemons);
+    if(keys.length){
+      keys.forEach(k=>{ const d=daemons[k]; let cls='live', label='live';
+        if(typeof d==='object' && d){ const alive=d.alive!==undefined?d.alive:(d.live!==undefined?d.live:true); const stale=d.stale;
+          cls=alive?(stale?'stale':'live'):'down'; label=alive?(stale?'stale':'live'):'down'; }
+        else if(typeof d==='boolean'){ cls=d?'live':'down'; label=d?'live':'down'; }
+        else if(typeof d==='string'){ label=d; cls=/down|dead|fail/i.test(d)?'down':(/stale/i.test(d)?'stale':'live'); }
+        rows+='<div class="health-row"><span class="hk">'+esc(k)+'</span><span class="hv"><span class="led '+cls+'"></span>'+esc(label)+'</span></div>'; });
+    } else { rows+='<div class="health-row"><span class="hk">Daemons</span><span class="hv"><span class="led live"></span>nominal</span></div>'; }
+    rows+='<div class="health-row"><span class="hk">Mode</span><span class="hv">'+esc(S.mode)+'</span></div>';
+    rows+='<div class="health-row"><span class="hk">Away</span><span class="hv">'+(S.away?'engaged':'home')+'</span></div>';
+    rec.body.innerHTML=rows;
+  }catch(_){ rec.body.innerHTML='<div class="empty-line">Status unreachable, sir.</div>'; }
+}
+function maybeRefresh(kind){ const rec=PANELS[kind]; if(rec){ ({approvals:loadApprovals,activity:loadActivity,health:loadHealth}[kind])(rec); } }
+
+/* ── OPERATOR RAIL — mode / away / panic / quit ──────────────────────────── */
+function syncMode(){ const c=$('chip-mode'); c.classList.toggle('on', S.mode==='auto');
+  $('chip-mode-t').textContent = S.mode==='auto'?'Auto':'Supervised'; $('p-mode').textContent = S.mode==='auto'?'Autonomous':'Supervised'; }
+function syncAway(){ $('chip-away').classList.toggle('on', S.away); $('p-link').textContent = S.away?'Away · armed':'Local'; }
+$('chip-mode').addEventListener('click',()=>{
+  const next = S.mode==='auto'?'supervised':'auto';
+  jfetch(API+'/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:next})})
+    .then(r=>r.json()).then(j=>{ S.mode=j.mode||next; syncMode(); toast('Mode: '+S.mode+', sir.'); maybeRefresh('health'); })
+    .catch(()=>toast('Could not change mode, sir.',true));
+});
+$('chip-away').addEventListener('click',()=>{
+  const next=!S.away;
+  jfetch(API+'/api/away',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:next})})
+    .then(r=>r.json()).then(j=>{ S.away=!!j.away; syncAway(); toast(S.away?'Away mode engaged, sir.':'Welcome home, sir.'); maybeRefresh('health'); })
+    .catch(()=>toast('Could not toggle away, sir.',true));
+});
+$('chip-panic').addEventListener('click',function(){
+  if(!S.panicArmed){ S.panicArmed=true; this.classList.add('armed'); this.textContent='CONFIRM';
+    toast('Press again to halt everything, sir.',true);
+    this._t=setTimeout(()=>{ S.panicArmed=false; this.classList.remove('armed'); this.textContent='PANIC'; },4000); return; }
+  clearTimeout(this._t); S.panicArmed=false; this.classList.remove('armed'); this.textContent='PANIC'; setMood('alert');
+  jfetch(API+'/api/panic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minutes:1440})})
+    .then(r=>r.json()).then(j=>{ toast('Everything halted, sir. '+(j.result||''),true); maybeRefresh('approvals'); maybeRefresh('activity'); })
+    .catch(()=>toast('Panic signal failed — try Telegram, sir.',true));
+});
+$('chip-quit').addEventListener('click',()=>{ const a=bridge(); if(a&&a.quit_app){ try{a.quit_app();}catch(_){} } });
+
+document.querySelectorAll('.dock-btn').forEach(b=>{ b.addEventListener('click',()=>{ const k=b.dataset.panel; if(PANELS[k]) closePanel(k); else openPanel(k); }); });
+
+let toastTimer=null;
+function toast(msg,err){ const t=$('toast'); t.textContent=msg; t.classList.toggle('err',!!err); t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),4200); }
+
+$('core-wrap').addEventListener('click',()=>{ if(S.state==='speaking'){ stopTTS(); setState('calm'); } enterConversation(); startListening(); });
+
+/* ── BOOT ─────────────────────────────────────────────────────────────────── */
+function resizeAll(){ sizeHolo(); sizeWave(); sizeFlares(); genParticles(); }
+window.addEventListener('resize', resizeAll);
+window.addEventListener('pywebviewready',()=>{ const a=bridge(); if(a && a.start_wake_listener){ try{a.start_wake_listener();}catch(_){} } });
+document.addEventListener('DOMContentLoaded',()=>{
+  resizeAll(); syncMode(); syncAway();
+  requestAnimationFrame(drawHolo); requestAnimationFrame(drawFlares); requestAnimationFrame(drawWave);
+  initMedia();
+  jfetch(API+'/api/pending').then(r=>r.json()).then(j=>{ if(j.mode){S.mode=j.mode;syncMode();} if(typeof j.away==='boolean'){S.away=j.away;syncAway();} }).catch(()=>{});
+  setMood('warm'); setState('calm');
+  setTimeout(greet, 500);
+});
+</script>
+</body>
+</html>
